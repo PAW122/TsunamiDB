@@ -6,42 +6,36 @@ import (
 	"encoding/binary"
 )
 
+// Encode encodes a string into a custom binary format
 func Encode(data string) ([]byte, types.Encoded) {
 	var buf bytes.Buffer
 
 	// Wersja (2 bajty) - przykładowa wersja 1.0 (0x01 0x00)
 	binary.Write(&buf, binary.LittleEndian, uint16(1))
 
-	// Miejsce na wskaźniki (wypełniane później)
-	startPos := buf.Len() + 4 + 4 + 4 // 2 bajty wersji + 4 na start + 4 na end + 4 na długość
-	endPos := startPos + len(data)
+	// StartPointer powinien wskazywać na początek DANYCH, więc pomijamy nagłówek
+	headerSize := 2 + 4 + 4 + 4 // version(2) + startPtr(4) + endPtr(4) + length(4)
+	startPtr := headerSize
+	endPtr := startPtr + len(data)
 
 	// DataStart Pointer (4 bajty)
-	binary.Write(&buf, binary.LittleEndian, uint32(startPos))
+	binary.Write(&buf, binary.LittleEndian, uint32(startPtr))
 
 	// DataEnd Pointer (4 bajty)
-	binary.Write(&buf, binary.LittleEndian, uint32(endPos))
+	binary.Write(&buf, binary.LittleEndian, uint32(endPtr))
 
 	// DataLength (4 bajty)
 	binary.Write(&buf, binary.LittleEndian, uint32(len(data)))
 
-	// Data (treść)
+	// Właściwe dane
 	buf.WriteString(data)
 
+	// Struktura wynikowa
 	res_data := types.Encoded{
 		Version:      1,
-		StartPointer: startPos,
-		EndPointer:   endPos,
+		StartPointer: startPtr,
+		EndPointer:   endPtr,
 	}
 
 	return buf.Bytes(), res_data
 }
-
-/*
-dane:
-2 bytes -> version
-dataStart Pointer
-dataEnd Pointer
-dataLength
-data
-*/

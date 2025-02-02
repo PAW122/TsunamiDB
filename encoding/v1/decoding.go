@@ -4,9 +4,11 @@ import (
 	"TsunamiDB/types"
 	"bytes"
 	"encoding/binary"
+	"fmt"
 )
 
 func DecodeRawData(data []byte) string {
+	fmt.Println("Decoding raw data:", data)
 	return string(data) // Po prostu zwracamy stringa, bo dane to surowa sekcja `data`
 }
 

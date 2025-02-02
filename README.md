@@ -23,3 +23,20 @@ na ich podstawie serwer albo stworzy nową sieć, albo połączy się do już is
 *można dodać jakiś system integracji sieic (np w przypadku 2 oddzielnych sieci można by je połączyć)
 np komendą (admin console > server-network-1 > $ move-to-network <addr>),
 spowoduje to przeniesienie serwerów do innej sieci
+
+# todo:
+dodac funkcje nadpisywania danych jezeli key juz istnieje (jezeli pointery nie pozwalaja na zapisanie w danym miejscu to zapisac na koncu pliku
+i dodac pointery do tego miejsca)
+    + opcja czyszczenia po usuniediu - trzeba usunac stare dane albo oznaczyc jako (tak jak w alokatorze w C) ze dane miejsce jest puste,
+    jezeli cos bedzie chcialo sie zapisac to zostanie pierw wcisniete w wolne miejsce zamiast na koniec pliku.
+    + funkcja naprawiania defragmentacji Pliku ->
+        > po wlaczeniu zapisywac nowe dane do innego pliku dopuki ten sie nie skonzcy formatowac
+        > poprzesuwac all dane, przeliczyc na nowo pointery, zaktualizowac mapy
+        > przeniesc dane z pliku tymczasowego do głównego
+
+todo fs:
+    + zrobic max wielkosci 1 pliku bin i wtedy zapisywac do innego
+    + zamienic jsona na hash mape o ile jeszcze nie jest mapa w ramie
+    + zrobic opcje w map do odnoszenie sie do subMap tak aby mozna bylo miec wiele plikow map
+        > np jezeli jest duzo wpisow z account.??? to mozna z automatu zrobic nowa mape dla account
+        > i dodac zasade, arg[0] w key to account to odczytoj i zapisauj juz donowej mapy i nowego bin

@@ -1,60 +1,62 @@
 package main
 
 import (
-	encoder_v1 "TsunamiDB/encoding/v1"
-	// types "TsunamiDB/types"
 	dataManager_v1 "TsunamiDB/data/dataManager/v1"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
+	encoder_v1 "TsunamiDB/encoding/v1"
 	"fmt"
 )
 
 func main() {
 	fmt.Println("TsunamiDB")
 
-	// Enkodowanie
-	encoded, res_data := encoder_v1.Encode("Hello, World!")
-	fmt.Println("Encoded:", encoded)
-	// encoder_v1.Encode("test2")
+	// 🔹 Enkodowanie, zapis do pliku & mapy
+	encoded, _ := encoder_v1.Encode("Hello, World")
+	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, "data.bin")
+	if err != nil {
+		fmt.Println("Error saving to file:", err)
+		return
+	}
+	fileSystem_v1.SaveElementByKey("test5", "data.bin", int(startPtr), int(endPtr))
 
-	// Zapis do pliku
-	fileSystem_v1.SaveElementByKey("test", "data.bin", res_data.StartPointer, res_data.EndPointer)
-	dataManager_v1.SaveDataToFile(encoded, "data.bin")
+	encoded, _ = encoder_v1.Encode("Hello")
+	startPtr, endPtr, err = dataManager_v1.SaveDataToFile(encoded, "data.bin")
+	if err != nil {
+		fmt.Println("Error saving to file:", err)
+		return
+	}
+	fileSystem_v1.SaveElementByKey("test6", "data.bin", int(startPtr), int(endPtr))
 
-	// Dekodowanie z zakodowanych danych
-	decoded := encoder_v1.Decode(encoded)
-	fmt.Println("Decoded:", decoded)
-
-	// Odczytanie danych z pliku według pointerów
-	data, err := dataManager_v1.ReadDataFromFile("data.bin", decoded.StartPointer, decoded.EndPointer)
+	// 🔹 Pobranie wskaźników z mapy
+	fs_data, err := fileSystem_v1.GetElementByKey("test5")
+	if err != nil {
+		fmt.Println("Error retrieving element from map:", err)
+		return
+	}
+	// 🔹 Odczytanie danych z pliku według wskaźników z mapy
+	data, err := dataManager_v1.ReadDataFromFile("data.bin", int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 	if err != nil {
 		fmt.Println("Error reading from file:", err)
 		return
 	}
 
-	fmt.Println("Read from file:", data)
+	// 🔹 Ponowne dekodowanie odczytanych danych
+	decoded_obj := encoder_v1.Decode(data)
+	fmt.Println("Decoded res:", decoded_obj.Data)
 
-	// Ponowne dekodowanie odczytanych danych
-	decoded_string := encoder_v1.DecodeRawData(data)
-	fmt.Println("Decoded again:", decoded_string)
-
-	fmt.Println("Map Test")
-
-	fs_data, err := fileSystem_v1.GetElementByKey("test")
+	//2
+	fs_data, err = fileSystem_v1.GetElementByKey("test6")
 	if err != nil {
-		fmt.Print(err)
+		fmt.Println("Error retrieving element from map:", err)
 		return
 	}
-
-	fmt.Println("FS Data:", fs_data)
-	data2, err := dataManager_v1.ReadDataFromFile("data.bin", fs_data.StartPtr, fs_data.EndPtr)
+	data, err = dataManager_v1.ReadDataFromFile("data.bin", int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 	if err != nil {
 		fmt.Println("Error reading from file:", err)
 		return
 	}
 
-	fmt.Println("Read from file:", data2)
-
-	// Ponowne dekodowanie odczytanych danych
-	decoded_string2 := encoder_v1.DecodeRawData(data2)
-	fmt.Println("Decoded res:", decoded_string2)
+	// 🔹 Ponowne dekodowanie odczytanych danych
+	decoded_obj = encoder_v1.Decode(data)
+	fmt.Println("Decoded res:", decoded_obj.Data)
 }
