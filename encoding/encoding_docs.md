@@ -1,13 +1,15 @@
 # /encoding
 
-zamiana jsona na cusom bin data
+V1:
 
-zamiana custom bin data na jsona
+encoding:
+2bytes -> version
+4bytes -> start ptr
+4bytes -> end ptr
+4bytes -> len
+?bytes -> data
 
-(na początek można zapisać czyty str jako bin, potem można coś pozmieniać)
+= 14bytes + data.len -> bin
 
-nie trzeba stosować start ani end bitów/tagów bo te dane będą w mapie
-
-data:
-
-<2 bits (version)> <data str-to-bin>
+# do przemyslenia:
+czy chcemy w mapach zapisywac start pointery np do calego elementu zapisanego (versja, ptr, ptr, len, data)
