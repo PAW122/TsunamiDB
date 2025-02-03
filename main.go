@@ -10,6 +10,9 @@ import (
 func main() {
 	fmt.Println("TsunamiDB")
 
+	// 🔹 Testowanie /data & /encoding
+	// todo: połączyć do core
+
 	// 🔹 Enkodowanie, zapis do pliku & mapy
 	encoded, _ := encoder_v1.Encode("Hello, World")
 	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, "data.bin")

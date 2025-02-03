@@ -40,3 +40,39 @@ todo fs:
     + zrobic opcje w map do odnoszenie sie do subMap tak aby mozna bylo miec wiele plikow map
         > np jezeli jest duzo wpisow z account.??? to mozna z automatu zrobic nowa mape dla account
         > i dodac zasade, arg[0] w key to account to odczytoj i zapisauj juz donowej mapy i nowego bin
+
+# lib
++ zrobić bibliotekę na początek do go do obsługi db
+
+# dodac typy danych
+any -> tak jak teraz dziala
+string -> tylko string
+numbers -> wszystkie liczbowe
+big_json -> json
+    > zapisywac normalnie same sciezki key jsona + pointery do wartosci.
+    > tak zeby jak najszybciej pracowac na danych
+file -> obslugiwane przez fs (nie zapisywane do pliku db)
+    > w bin dodac bit odp za sprawdzanie czy dane to plik, jezeli tak to
+    w data powinien byc odnsnik do mapy i przechowysania plikow 
+
+# api funcs:
+write
+read
+over_write
+increment
+
+# commands:
+$ - admin
+> - user
+
+$ add user <username> <password> <r/w perms> -> user_api_key
+$ users list
+$ user password reset <user> <new_password>
+> user password reset <old_password> <new_password>
+
+# todo kiedys:
++ docs web
+
++ opcja uruchomienia db w trybie smb
+    - db zapisywała by pliki i inne rzeczy tak samo jak wcześniej, ale zamiast z poleceń nrmanych
+    była by obsługiwana np przez windowsa który widział by ją jako dysk sieciowy.

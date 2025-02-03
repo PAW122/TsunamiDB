@@ -8,8 +8,8 @@ import (
 /**
  * @param data -> binary data to save
  * @param filePath -> path to file
- * @return startPtr -> start position in file
- * @return endPtr -> end position in file
+ * @return startPtr -> data start position in file
+ * @return endPtr -> data end position in file
  * @return error -> error if occurred
  */
 func SaveDataToFile(data []byte, filePath string) (int64, int64, error) {
@@ -21,7 +21,7 @@ func SaveDataToFile(data []byte, filePath string) (int64, int64, error) {
 	defer file.Close()
 
 	// Pobierz aktualną wielkość pliku (gdzie zaczniemy zapis)
-	startPtr, err := file.Seek(0, os.SEEK_END)
+	startPtr, err := file.Seek(0, io.SeekEnd)
 	if err != nil {
 		return 0, 0, err
 	}
