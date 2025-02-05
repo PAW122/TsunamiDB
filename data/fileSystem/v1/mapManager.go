@@ -57,8 +57,6 @@ func loadMap() error {
 
 // Zapisuje mapę do pliku JSON
 func saveMap() error {
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	file, err := os.Create(mapFilePath)
 	if err != nil {
@@ -90,7 +88,8 @@ func GetElementByKey(key string) (*GetElement_output, error) {
 
 // Zapisuje nowy element w mapie
 func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
-
+	mutex.Lock()
+	defer mutex.Unlock()
 	// Załaduj mapę, jeśli nie jest w pamięci
 	err := loadMap()
 	if err != nil {
@@ -106,5 +105,28 @@ func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
 	}
 
 	// Zapis mapy do pliku
+	return saveMap()
+}
+
+// Usuwa element z mapy na podstawie klucza
+func RemoveElementByKey(key string) error {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	// Załaduj mapę, jeśli nie jest w pamięci
+	err := loadMap()
+	if err != nil {
+		return err
+	}
+
+	// Sprawdź, czy element istnieje
+	if _, exists := dataMap[key]; !exists {
+		return errors.New("element not found")
+	}
+
+	// Usuwamy element z mapy
+	delete(dataMap, key)
+
+	// Zapisujemy zaktualizowaną mapę do pliku
 	return saveMap()
 }

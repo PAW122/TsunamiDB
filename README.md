@@ -71,6 +71,8 @@ $ user password reset <user> <new_password>
 > user password reset <old_password> <new_password>
 
 # todo kiedys:
++ serwer typu network-backup -> zajmuje miejsce innego jeżeli ktorys padnie
++ serwer typu data-backup -> jakiś sys typu RAID do dublowania danych tak aby zawsze był backup
 + docs web
 
 + opcja uruchomienia db w trybie smb
