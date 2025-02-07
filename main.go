@@ -5,14 +5,20 @@ import (
 	defragmentationManager "TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "TsunamiDB/encoding/v1"
+	core "TsunamiDB/servers/core"
 	"fmt"
 )
 
 func main() {
-	fmt.Println("TsunamiDB")
+	// test()
+	core.RunCore()
+}
+
+func test() {
+	fmt.Println("test - TsunamiDB")
 
 	// ************ save data to file 1 ************
-	encoded, _ := encoder_v1.Encode("Hello, World")
+	encoded, _ := encoder_v1.Encode([]byte("Hello, World"))
 	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, "data.bin")
 	if err != nil {
 		fmt.Println("Error saving to file:", err)
@@ -25,7 +31,7 @@ func main() {
 	}
 
 	// ************ save data to file 2 ************
-	encoded, _ = encoder_v1.Encode("Hello")
+	encoded, _ = encoder_v1.Encode([]byte("Hello"))
 	startPtr, endPtr, err = dataManager_v1.SaveDataToFile(encoded, "data.bin")
 	if err != nil {
 		fmt.Println("Error saving to file:", err)
@@ -101,7 +107,7 @@ func main() {
 	*/
 
 	// ************ write data to defragmented space ************
-	encoded, _ = encoder_v1.Encode("Helo")
+	encoded, _ = encoder_v1.Encode([]byte("Helo"))
 	startPtr, endPtr, err = dataManager_v1.SaveDataToFile(encoded, "data.bin")
 	if err != nil {
 		fmt.Println("Error saving to file:", err)

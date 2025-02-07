@@ -7,7 +7,7 @@ import (
 )
 
 // Encode encodes a string into a custom binary format
-func Encode(data string) ([]byte, types.Encoded) {
+func Encode(data []byte) ([]byte, types.Encoded) {
 	var buf bytes.Buffer
 
 	// Wersja (2 bajty) - przykładowa wersja 1.0 (0x01 0x00)
@@ -28,7 +28,7 @@ func Encode(data string) ([]byte, types.Encoded) {
 	binary.Write(&buf, binary.LittleEndian, uint32(len(data)))
 
 	// Właściwe dane
-	buf.WriteString(data)
+	buf.Write(data)
 
 	// Struktura wynikowa
 	res_data := types.Encoded{

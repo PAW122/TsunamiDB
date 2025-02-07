@@ -25,16 +25,14 @@ type FreeBlock struct {
 	Size     int64  `json:"size"`
 }
 
-// **🔹 Funkcja ładuje wolne bloki z pliku JSON**
+// **🔹 Ładowanie wolnych bloków z pliku JSON**
 func loadFreeBlocks() error {
 	if defrag_mapLoaded {
 		return nil
 	}
 
-	// Upewniamy się, że katalog istnieje
 	os.MkdirAll(filepath.Dir(freeSpaceFilePath), os.ModePerm)
 
-	// Sprawdzenie czy plik istnieje
 	file, err := os.Open(freeSpaceFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -45,7 +43,6 @@ func loadFreeBlocks() error {
 	}
 	defer file.Close()
 
-	// Dekodowanie JSON
 	decoder := json.NewDecoder(file)
 	err = decoder.Decode(&freeBlocks)
 	if err != nil {
@@ -56,9 +53,8 @@ func loadFreeBlocks() error {
 	return nil
 }
 
-// **🔹 Funkcja zapisuje wolne bloki do pliku**
+// **🔹 Zapis listy wolnych bloków**
 func saveFreeBlocks() error {
-
 	file, err := os.Create(freeSpaceFilePath)
 	if err != nil {
 		return err
@@ -69,24 +65,19 @@ func saveFreeBlocks() error {
 	return encoder.Encode(freeBlocks)
 }
 
-// **🔹 Dodaje nowy wolny blok do listy**
+// **🔹 Dodaje nowy wolny blok**
 func MarkAsFree(key string, fileName string, startPtr, endPtr int64) error {
 	defrag_mutex.Lock()
 	defer defrag_mutex.Unlock()
 
-	// Załaduj listę wolnych bloków, jeśli jeszcze nie jest w pamięci
 	err := loadFreeBlocks()
 	if err != nil {
 		return err
 	}
 
-	// Obliczamy rozmiar wolnego bloku
 	size := endPtr - startPtr
+	// fmt.Println("DEFRAG DEBUG: Marking block as free:", key, "Size:", size)
 
-	// **DEBUG: Sprawdzamy dodawane bloki**
-	fmt.Println("DEFRAG DEBUG: Marking block as free:", key, "Size:", size)
-
-	// Aktualizacja listy wolnych bloków
 	freeBlocks[key] = FreeBlock{
 		FileName: fileName,
 		StartPtr: startPtr,
@@ -94,12 +85,11 @@ func MarkAsFree(key string, fileName string, startPtr, endPtr int64) error {
 		Size:     size,
 	}
 
-	// Zapis listy do pliku JSON
 	return saveFreeBlocks()
 }
 
-// **🔹 Pobiera największy dostępny wolny blok**
-func GetLargestFreeBlock() (*FreeBlock, error) {
+// **🔹 Pobiera najmniejszy wolny blok, który pasuje do podanego rozmiaru**
+func GetBlock(size int64) (*FreeBlock, error) {
 	defrag_mutex.Lock()
 	defer defrag_mutex.Unlock()
 
@@ -108,37 +98,85 @@ func GetLargestFreeBlock() (*FreeBlock, error) {
 		return nil, err
 	}
 
-	var largestBlock *FreeBlock
+	var bestFitBlock *FreeBlock
 	for _, block := range freeBlocks {
-		if largestBlock == nil || block.Size > largestBlock.Size {
-			largestBlock = &block
+		if block.Size >= size {
+			if bestFitBlock == nil || block.Size < bestFitBlock.Size {
+				bestFitBlock = &block
+			}
 		}
 	}
 
-	if largestBlock == nil {
-		return nil, errors.New("no free blocks available")
+	if bestFitBlock == nil {
+		return nil, errors.New("no suitable free blocks available")
 	}
 
-	return largestBlock, nil
+	// Usunięcie bloku po przydzieleniu
+	delete(freeBlocks, bestFitBlock.FileName)
+	saveFreeBlocks()
+
+	return bestFitBlock, nil
 }
 
-// **🔹 Usuwa blok po jego wykorzystaniu**
-func RemoveFreeBlock(key string) error {
+// **🔹 Sprawdza i aktualizuje wolne bloki po zajęciu miejsca**
+func SaveBlockCheck(startPtr, endPtr int64) {
 	defrag_mutex.Lock()
 	defer defrag_mutex.Unlock()
 
 	err := loadFreeBlocks()
 	if err != nil {
-		return err
+		fmt.Println("ERROR: Could not load free blocks:", err)
+		return
 	}
 
-	if _, exists := freeBlocks[key]; !exists {
-		return errors.New("block not found")
+	for key, block := range freeBlocks {
+		// **Sprawdzenie, czy nowy zapis pokrywa się z wolnym blokiem**
+		if startPtr >= block.StartPtr && endPtr <= block.EndPtr {
+			// fmt.Println("DEFRAG DEBUG: Save overlaps with free block", key)
+
+			// **Cały blok został zajęty - usuwamy go**
+			if startPtr == block.StartPtr && endPtr == block.EndPtr {
+				// fmt.Println("DEFRAG: Entire block occupied, removing", key)
+				delete(freeBlocks, key)
+			} else if startPtr == block.StartPtr {
+				// **Początek bloku jest zajęty - przesuwamy start**
+				// fmt.Println("DEFRAG: Adjusting start of block", key)
+				freeBlocks[key] = FreeBlock{
+					FileName: block.FileName,
+					StartPtr: endPtr,
+					EndPtr:   block.EndPtr,
+					Size:     block.EndPtr - endPtr,
+				}
+			} else if endPtr == block.EndPtr {
+				// **Koniec bloku jest zajęty - przesuwamy koniec**
+				// fmt.Println("DEFRAG: Adjusting end of block", key)
+				freeBlocks[key] = FreeBlock{
+					FileName: block.FileName,
+					StartPtr: block.StartPtr,
+					EndPtr:   startPtr,
+					Size:     startPtr - block.StartPtr,
+				}
+			} else {
+				// **Blok został podzielony na dwa mniejsze**
+				// fmt.Println("DEFRAG: Splitting block", key)
+				freeBlocks[key] = FreeBlock{
+					FileName: block.FileName,
+					StartPtr: block.StartPtr,
+					EndPtr:   startPtr,
+					Size:     startPtr - block.StartPtr,
+				}
+				newKey := fmt.Sprintf("%s_%d", key, endPtr)
+				freeBlocks[newKey] = FreeBlock{
+					FileName: block.FileName,
+					StartPtr: endPtr,
+					EndPtr:   block.EndPtr,
+					Size:     block.EndPtr - endPtr,
+				}
+			}
+
+			// **Zapisujemy zaktualizowane wolne bloki**
+			saveFreeBlocks()
+			return
+		}
 	}
-
-	delete(freeBlocks, key)
-
-	defrag_mutex.Lock()
-	defer defrag_mutex.Unlock()
-	return saveFreeBlocks()
 }

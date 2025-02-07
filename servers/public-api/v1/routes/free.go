@@ -1,0 +1,39 @@
+package routes
+
+import (
+	"fmt"
+	"net/http"
+
+	defragmentationManager "TsunamiDB/data/defragmentationManager"
+	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
+)
+
+func Free(w http.ResponseWriter, r *http.Request) {
+	// /free/<file>/<key>
+
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	pathParts := ParseArgs(r.URL.Path, "free")
+	if pathParts == nil || len(pathParts) < 2 {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Print(w, "Invalid url args")
+		return
+	}
+
+	file := pathParts[2]
+	key := pathParts[3]
+
+	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	if err != nil {
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintln(w, "Error retrieving element from map:", err)
+		return
+	}
+	fileSystem_v1.RemoveElementByKey(key)
+	defragmentationManager.MarkAsFree(key, file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
+
+	fmt.Fprint(w, "free")
+}
