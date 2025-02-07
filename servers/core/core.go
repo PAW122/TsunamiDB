@@ -21,7 +21,11 @@ package core
 import (
 	"flag"
 	"fmt"
+	"log"
+	"os"
+	"strconv"
 
+	networkmanager "TsunamiDB/servers/network-manager"
 	public_api_v1 "TsunamiDB/servers/public-api/v1"
 )
 
@@ -32,6 +36,24 @@ func RunCore() {
 	if *config {
 		fmt.Println("load config")
 	}
+
+	fmt.Println("Starting network manager on port: ", 5845)
+	if len(os.Args) < 2 {
+		log.Fatal("Użycie: go run main.go <port> [peer1] [peer2] ...")
+	}
+
+	port, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		log.Fatal("Niepoprawny port:", err)
+	}
+
+	// Lista znanych peerów (opcjonalna)
+	var knownPeers []string
+	if len(os.Args) > 2 {
+		knownPeers = os.Args[2:]
+	}
+
+	networkmanager.StartNetworkManager(port, knownPeers)
 
 	fmt.Println("Starting server on port: ", 5844)
 	public_api_v1.RunPublicApi_v1(5844)
