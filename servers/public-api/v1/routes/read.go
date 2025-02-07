@@ -45,7 +45,7 @@ func Read(w http.ResponseWriter, r *http.Request) {
 			ReqSendBy: nm.ServerIP, // Pobranie IP z NetworkManager
 		}
 
-		fmt.Println("read network req by, %s", nm.ServerIP)
+		// fmt.Println("read network req by, %s", nm.ServerIP)
 
 		// 🔹 Wysyłamy zapytanie P2P
 		res := nm.SendTaskReq(req)

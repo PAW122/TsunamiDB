@@ -1,4 +1,11 @@
 # TsunamiDB
+
++ execute:
+
+- when starting 1'st server - ```./TsunamiDB.exe 5845```
+    > ./TsunamiDB <port for node's comunication>
+- when starting secound server - ```./TsunamiDB-linux 5845 192.168.55.110:5845```
+    > ./TsunamiDB-linux <same port> <ip and port of other server>
  
 + TODO
 dodac zapisywanie z db jak w TsunamiBocie dla testów

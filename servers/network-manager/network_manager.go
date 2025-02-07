@@ -150,7 +150,7 @@ func (nm *NetworkManager) handleConnection(w http.ResponseWriter, r *http.Reques
 	msgJSON, _ := json.Marshal(msg)
 	conn.WriteMessage(websocket.TextMessage, msgJSON) // Wysyłamy poprawny IP do klienta
 
-	log.Println("Przekazano IP klientowi:", peerIP)
+	// log.Println("Przekazano IP klientowi:", peerIP)
 
 	nm.Lock()
 	nm.peers[peerAddr] = &Peer{Conn: conn, Address: peerAddr, LastActive: time.Now()}
@@ -203,13 +203,13 @@ func (nm *NetworkManager) listenForMessages(peerAddr string, conn *websocket.Con
 		var response types.NMmessage
 		err = json.Unmarshal(message, &response)
 		if err != nil {
-			log.Println("📌 Read unparsed:", string(message))
+			// log.Println("📌 Read unparsed:", string(message))
 			continue
 		}
 
 		// 🔹 Jeśli to odpowiedź (Finished: true), przekazujemy do HandleResponse()
 		if response.Finished {
-			log.Println("📌 Otrzymano odpowiedź od", peerAddr, "dla zadania", response.Task)
+			// log.Println("📌 Otrzymano odpowiedź od", peerAddr, "dla zadania", response.Task)
 			go nm.HandleResponse(response) // Przekazanie odpowiedzi do SendTaskReq()
 			continue
 		}

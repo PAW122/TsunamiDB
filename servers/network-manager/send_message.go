@@ -16,7 +16,7 @@ func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 
 	// 🔹 Pobieramy aktualne IP serwera
 	if nm.ServerIP == "" {
-		log.Println("📌 Brak IP, wysyłam zapytanie do sieci.")
+		// log.Println("📌 Brak IP, wysyłam zapytanie do sieci.")
 
 		// Tworzymy zapytanie `get_my_ip`
 		reqIP := types.NMmessage{
@@ -26,7 +26,7 @@ func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 		// Serializacja zapytania do JSON
 		reqJSON, err := json.Marshal(reqIP)
 		if err != nil {
-			log.Println("📌 Błąd serializacji get_my_ip:", err)
+			// log.Println("📌 Błąd serializacji get_my_ip:", err)
 		} else {
 			nm.BroadcastMessage("", reqJSON) // Wysyłamy do wszystkich peerów
 		}
@@ -36,7 +36,7 @@ func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 
 	// 🔹 Ponownie sprawdzamy IP
 	if nm.ServerIP == "" {
-		log.Println("📌 Nadal brak IP, anuluję żądanie.")
+		// log.Println("📌 Nadal brak IP, anuluję żądanie.")
 		return types.NMmessage{Finished: false}
 	}
 
@@ -67,18 +67,15 @@ func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 	// Czekamy na odpowiedź lub timeout 5s
 	select {
 	case res := <-responseChannel:
-		log.Println("📌 Otrzymano odpowiedź:", res)
+		// log.Println("📌 Otrzymano odpowiedź:", res)
 		return res
 	case <-time.After(5 * time.Second):
-		log.Println("📌 Timeout: brak odpowiedzi od serwerów")
+		// log.Println("📌 Timeout: brak odpowiedzi od serwerów")
+		nm.Lock()
+		delete(nm.responseChannels, reqKey)
+		nm.Unlock()
 		return types.NMmessage{Finished: false}
 	}
-
-	// Usuwamy kanał po zakończeniu
-	nm.Lock()
-	delete(nm.responseChannels, reqKey)
-	nm.Unlock()
-	return types.NMmessage{Finished: false}
 }
 
 // HandleResponse obsługuje odpowiedź z handleMsg() i przekazuje ją do kanału
@@ -90,14 +87,14 @@ func (nm *NetworkManager) HandleResponse(response types.NMmessage) {
 	nm.Unlock()
 
 	if exists {
-		log.Println("📌 Przekazuję odpowiedź dla", reqKey, "od", response.ReqResBy)
+		// log.Println("📌 Przekazuję odpowiedź dla", reqKey, "od", response.ReqResBy)
 		select {
 		case responseChannel <- response:
-			log.Println("📌 Odpowiedź dostarczona do kanału:", reqKey)
+			// log.Println("📌 Odpowiedź dostarczona do kanału:", reqKey)
 		default:
-			log.Println("📌 Kanał odpowiedzi dla", reqKey, "jest pełny.")
+			// log.Println("📌 Kanał odpowiedzi dla", reqKey, "jest pełny.")
 		}
 	} else {
-		log.Println("📌 Brak kanału odpowiedzi dla:", reqKey, "Odpowiedź zostanie zignorowana.")
+		// log.Println("📌 Brak kanału odpowiedzi dla:", reqKey, "Odpowiedź zostanie zignorowana.")
 	}
 }

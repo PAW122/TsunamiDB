@@ -18,11 +18,11 @@ func handleMsg(peerAddr string, message []byte, nm *NetworkManager, conn *websoc
 		return
 	}
 
-	log.Println("📌 Otrzymano wiadomość od", peerAddr, ":", req)
+	// log.Println("📌 Otrzymano wiadomość od", peerAddr, ":", req)
 
 	// 🔹 Ignorujemy odpowiedzi (Finished: true) - zapobiega pętli!
 	if req.Finished {
-		log.Println("📌 Ignoruję wiadomość, bo jest już oznaczona jako Finished")
+		// log.Println("📌 Ignoruję wiadomość, bo jest już oznaczona jako Finished")
 		return
 	}
 
@@ -53,7 +53,7 @@ func handleMsg(peerAddr string, message []byte, nm *NetworkManager, conn *websoc
 	}
 
 	// Bezpośrednie wysłanie odpowiedzi do klienta
-	log.Println("📌 Wysyłam odpowiedź do", peerAddr)
+	// log.Println("📌 Wysyłam odpowiedź do", peerAddr)
 	err = conn.WriteMessage(websocket.TextMessage, responseJSON)
 	if err != nil {
 		log.Println("📌 Błąd wysyłania do", peerAddr, ":", err)
