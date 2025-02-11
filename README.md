@@ -7,8 +7,29 @@
 - when starting secound server - ```./TsunamiDB-linux 5845 192.168.55.110:5845```
     > ./TsunamiDB-linux <same port> <ip and port of other server>
  
++ TO ADD
+    * wartosc type w map dla key,
+    - type list:
+        > counter
+            > skrypt increase, decrease, ...
+        > json
+            > system akcji na jsonie jak w staych db
+        
+
 + TODO
-dodac zapisywanie z db jak w TsunamiBocie dla testów
+    * sprawdzić synchronizację 3 db
+    * jakiś mechanizm dla większych db z mapami któe nie zmieszczą się w pamięci.
+        > można podzielić mapy na 3 części:
+            > ostatnio używane (pamięć)
+            > rzadko używane (plik)
+            > bardzo rzadko używane (plik)
+        > to zmiejszy ilość danych w pamięci 
+
+    * pole script w danych:
+        > można dodać opcje dodania skryptu np
+        delete on parent deletion -> parent posiadał by skrypt aby wykonać free
+        na odpowiednich wartościach key
+        > i inne rzeczy tego typu z sql'a
 
 server-setwork -> sieć pomiędzy serwerami
 client -> łączy się do sieci i udostępnia publiczną komunikację
