@@ -6,28 +6,53 @@ import (
 	"encoding/binary"
 )
 
-// Encode encodes a string into a custom binary format
+// Encode encodes a byte slice into a custom binary format
 func Encode(data []byte) ([]byte, types.Encoded) {
 	var buf bytes.Buffer
 
-	// Wersja (2 bajty) - przykładowa wersja 1.0 (0x01 0x00)
+	// Wersja (2 bajty)
 	binary.Write(&buf, binary.LittleEndian, uint16(1))
 
-	// StartPointer powinien wskazywać na początek DANYCH, więc pomijamy nagłówek
-	headerSize := 2 + 4 + 4 + 4 // version(2) + startPtr(4) + endPtr(4) + length(4)
+	// Określenie rozmiaru pointera
+	headerSize := 2 + 1 + 4 // version(2) + pointerSize(1) + dataLength(4)
 	startPtr := headerSize
 	endPtr := startPtr + len(data)
 
-	// DataStart Pointer (4 bajty)
-	binary.Write(&buf, binary.LittleEndian, uint32(startPtr))
+	// Określenie najmniejszego możliwego rozmiaru pointera
+	var pointerSize uint8
+	if endPtr < 256 {
+		pointerSize = 1 // uint8
+	} else if endPtr < 65536 {
+		pointerSize = 2 // uint16
+	} else if endPtr < 4294967296 {
+		pointerSize = 4 // uint32
+	} else {
+		pointerSize = 8 // uint64
+	}
 
-	// DataEnd Pointer (4 bajty)
-	binary.Write(&buf, binary.LittleEndian, uint32(endPtr))
+	// Zapisz wielkość wskaźnika
+	binary.Write(&buf, binary.LittleEndian, pointerSize)
 
-	// DataLength (4 bajty)
+	// Zapisz startPtr i endPtr w odpowiednim formacie
+	switch pointerSize {
+	case 1:
+		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
+		binary.Write(&buf, binary.LittleEndian, uint8(endPtr))
+	case 2:
+		binary.Write(&buf, binary.LittleEndian, uint16(startPtr))
+		binary.Write(&buf, binary.LittleEndian, uint16(endPtr))
+	case 4:
+		binary.Write(&buf, binary.LittleEndian, uint32(startPtr))
+		binary.Write(&buf, binary.LittleEndian, uint32(endPtr))
+	case 8:
+		binary.Write(&buf, binary.LittleEndian, uint64(startPtr))
+		binary.Write(&buf, binary.LittleEndian, uint64(endPtr))
+	}
+
+	// Zapisz długość danych (4 bajty)
 	binary.Write(&buf, binary.LittleEndian, uint32(len(data)))
 
-	// Właściwe dane
+	// Zapisz dane
 	buf.Write(data)
 
 	// Struktura wynikowa
