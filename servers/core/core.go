@@ -37,7 +37,6 @@ func RunCore() {
 		fmt.Println("load config")
 	}
 
-	fmt.Println("Starting network manager on port: ", 5845)
 	if len(os.Args) < 2 {
 		log.Fatal("Użycie: go run main.go <port> [peer1] [peer2] ...")
 	}
@@ -46,6 +45,7 @@ func RunCore() {
 	if err != nil {
 		log.Fatal("Niepoprawny port:", err)
 	}
+	fmt.Println("Starting network manager on port: ", port)
 
 	// Lista znanych peerów (opcjonalna)
 	var knownPeers []string

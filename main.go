@@ -10,7 +10,7 @@ import (
 )
 
 func main() {
-	test()
+	// test()
 	core.RunCore()
 }
 

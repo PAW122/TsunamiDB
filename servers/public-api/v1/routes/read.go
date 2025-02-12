@@ -34,7 +34,6 @@ func Read(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "Błąd: NetworkManager nie został poprawnie zainicjalizowany")
 		return
 	}
-
 	// Próba pobrania lokalnie
 	fs_data, err := fileSystem_v1.GetElementByKey(key)
 	if err != nil {

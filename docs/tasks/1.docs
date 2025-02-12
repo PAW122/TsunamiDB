@@ -1,0 +1,9 @@
+1. cachowanie wartości key z conn do serwera tak aby nie brodcastować każdego req na all serwery
+2. system auth
+3. json_data_type
+4. sql_commands
+
+--- miej wazne ---
+5. ui
+6. webDav
+7. fs

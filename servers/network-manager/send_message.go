@@ -14,27 +14,19 @@ import (
 func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 	responseChannel := make(chan types.NMmessage, 1)
 
-	// 🔹 Pobieramy aktualne IP serwera
+	// Tworzymy zapytanie `get_my_ip`
 	if nm.ServerIP == "" {
-		// log.Println("📌 Brak IP, wysyłam zapytanie do sieci.")
-
-		// Tworzymy zapytanie `get_my_ip`
 		reqIP := types.NMmessage{
 			Task: "get_my_ip",
 		}
-
-		// Serializacja zapytania do JSON
 		reqJSON, err := json.Marshal(reqIP)
 		if err != nil {
 			// log.Println("📌 Błąd serializacji get_my_ip:", err)
 		} else {
-			nm.BroadcastMessage("", reqJSON) // Wysyłamy do wszystkich peerów
+			nm.BroadcastMessage("", reqJSON)
 		}
-
-		time.Sleep(2 * time.Second) // Dajemy czas na odpowiedź
+		time.Sleep(2 * time.Second)
 	}
-
-	// 🔹 Ponownie sprawdzamy IP
 	if nm.ServerIP == "" {
 		// log.Println("📌 Nadal brak IP, anuluję żądanie.")
 		return types.NMmessage{Finished: false}
@@ -68,6 +60,13 @@ func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 	select {
 	case res := <-responseChannel:
 		// log.Println("📌 Otrzymano odpowiedź:", res)
+
+		/*
+			todo
+			tutaj trzeba cachować conn - has <key
+			key: conn
+		*/
+
 		return res
 	case <-time.After(5 * time.Second):
 		// log.Println("📌 Timeout: brak odpowiedzi od serwerów")
