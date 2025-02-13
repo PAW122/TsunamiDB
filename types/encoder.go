@@ -9,7 +9,7 @@ type Decoded struct {
 }
 
 type Encoded struct {
-	Version      int
-	StartPointer int
-	EndPointer   int
+	Version      int // version uint8
+	StartPointer int // points to begining od data
+	EndPointer   int // points to end of data
 }

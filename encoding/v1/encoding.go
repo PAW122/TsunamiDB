@@ -10,11 +10,11 @@ import (
 func Encode(data []byte) ([]byte, types.Encoded) {
 	var buf bytes.Buffer
 
-	// Wersja (2 bajty)
-	binary.Write(&buf, binary.LittleEndian, uint16(1))
+	// Version (1 bajt)
+	binary.Write(&buf, binary.LittleEndian, uint8(1))
 
 	// Określenie rozmiaru pointera
-	headerSize := 2 + 1 + 4 // version(2) + pointerSize(1) + dataLength(4)
+	headerSize := 1 + 1 // version(1) + pointerSize(1)
 	startPtr := headerSize
 	endPtr := startPtr + len(data)
 
@@ -30,27 +30,31 @@ func Encode(data []byte) ([]byte, types.Encoded) {
 		pointerSize = 8 // uint64
 	}
 
-	// Zapisz wielkość wskaźnika
+	// pointerSize (1)
 	binary.Write(&buf, binary.LittleEndian, pointerSize)
 
 	// Zapisz startPtr i endPtr w odpowiednim formacie
+	/*
+		startPtr (8)
+		endPtr(8 - 64)
+	*/
 	switch pointerSize {
 	case 1:
 		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
 		binary.Write(&buf, binary.LittleEndian, uint8(endPtr))
 	case 2:
-		binary.Write(&buf, binary.LittleEndian, uint16(startPtr))
+		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
 		binary.Write(&buf, binary.LittleEndian, uint16(endPtr))
 	case 4:
-		binary.Write(&buf, binary.LittleEndian, uint32(startPtr))
+		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
 		binary.Write(&buf, binary.LittleEndian, uint32(endPtr))
 	case 8:
-		binary.Write(&buf, binary.LittleEndian, uint64(startPtr))
+		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
 		binary.Write(&buf, binary.LittleEndian, uint64(endPtr))
 	}
 
-	// Zapisz długość danych (4 bajty)
-	binary.Write(&buf, binary.LittleEndian, uint32(len(data)))
+	// Zapisz długość danych (4 bajty) - nie potrzebne, latwe do obl z ptr
+	// binary.Write(&buf, binary.LittleEndian, uint32(len(data)))
 
 	// Zapisz dane
 	buf.Write(data)

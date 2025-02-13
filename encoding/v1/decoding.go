@@ -17,8 +17,8 @@ func Decode(data []byte) types.Decoded {
 	var decoded types.Decoded
 	buf := bytes.NewReader(data)
 
-	// Odczytanie wersji (2 bajty)
-	var version uint16
+	// Odczytanie wersji (1 bajt)
+	var version uint8
 	binary.Read(buf, binary.LittleEndian, &version)
 	decoded.Version = int(version)
 
@@ -35,17 +35,24 @@ func Decode(data []byte) types.Decoded {
 		binary.Read(buf, binary.LittleEndian, &tempEnd)
 		startPos, endPos = uint64(tempStart), uint64(tempEnd)
 	case 2:
-		var tempStart, tempEnd uint16
+		var (
+			tempStart uint8
+			tempEnd   uint16
+		)
 		binary.Read(buf, binary.LittleEndian, &tempStart)
 		binary.Read(buf, binary.LittleEndian, &tempEnd)
 		startPos, endPos = uint64(tempStart), uint64(tempEnd)
 	case 4:
-		var tempStart, tempEnd uint32
+		var (
+			tempStart uint8
+			tempEnd   uint32
+		)
 		binary.Read(buf, binary.LittleEndian, &tempStart)
 		binary.Read(buf, binary.LittleEndian, &tempEnd)
 		startPos, endPos = uint64(tempStart), uint64(tempEnd)
 	case 8:
-		binary.Read(buf, binary.LittleEndian, &startPos)
+		var tempStart uint8
+		binary.Read(buf, binary.LittleEndian, &tempStart)
 		binary.Read(buf, binary.LittleEndian, &endPos)
 	default:
 		fmt.Println("Invalid pointer size:", pointerSize)
@@ -55,12 +62,13 @@ func Decode(data []byte) types.Decoded {
 	decoded.StartPointer = int(startPos)
 	decoded.EndPointer = int(endPos)
 
-	// Odczytanie długości danych (4 bajty)
-	var dataLen uint32
-	binary.Read(buf, binary.LittleEndian, &dataLen)
-	decoded.Length = int(dataLen)
+	// Odczytanie długości danych (4 bajty) (metadata)
+	// var dataLen uint32
+	// binary.Read(buf, binary.LittleEndian, &dataLen)
+	// decoded.Length = int(dataLen))
 
-	// Odczytanie właściwych danych
+	// Odczytanie właściwych danych (Data)
+	dataLen := endPos - startPos
 	decodedData := make([]byte, dataLen)
 	buf.Read(decodedData)
 	decoded.Data = string(decodedData)
