@@ -9,10 +9,11 @@ import (
 	"TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "TsunamiDB/encoding/v1"
+	debug "TsunamiDB/servers/debug"
 )
 
 func Save(w http.ResponseWriter, r *http.Request) {
-
+	defer debug.MeasureTime("> api [save]")()
 	// /save/<file>/<key>
 	// body = []bytes r.Body
 

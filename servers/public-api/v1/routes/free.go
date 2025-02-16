@@ -6,9 +6,11 @@ import (
 
 	defragmentationManager "TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
+	debug "TsunamiDB/servers/debug"
 )
 
 func Free(w http.ResponseWriter, r *http.Request) {
+	defer debug.MeasureTime("> api [free]")()
 	// /free/<file>/<key>
 
 	if r.Method != "GET" {

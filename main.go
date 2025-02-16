@@ -14,6 +14,37 @@ func main() {
 	core.RunCore()
 }
 
+func test2() {
+	// ************ save data to file 1 ************
+	encoded, _ := encoder_v1.Encode([]byte("Hello, World"))
+	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, "data.bin")
+	if err != nil {
+		fmt.Println("Error saving to file:", err)
+		return
+	}
+	err = fileSystem_v1.SaveElementByKey("test5", "data.bin", int(startPtr), int(endPtr))
+	if err != nil {
+		fmt.Println("Error saving to map:", err)
+		return
+	}
+
+	// ************ read data from file 1 ************
+	fs_data, err := fileSystem_v1.GetElementByKey("test5")
+	if err != nil {
+		fmt.Println("Error retrieving element from map:", err)
+		return
+	}
+	// ************ defragmentation - key: test6 ************
+	fs_data, err = fileSystem_v1.GetElementByKey("test5")
+	if err != nil {
+		fmt.Println("Error retrieving element from map:", err)
+		return
+	}
+	fileSystem_v1.RemoveElementByKey("test5")
+	defragmentationManager.MarkAsFree("test5", "data.bin", int64(fs_data.StartPtr), int64(fs_data.EndPtr))
+
+}
+
 func test() {
 	fmt.Println("test - TsunamiDB")
 

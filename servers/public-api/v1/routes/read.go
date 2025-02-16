@@ -7,11 +7,13 @@ import (
 	dataManager_v1 "TsunamiDB/data/dataManager/v1"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "TsunamiDB/encoding/v1"
+	debug "TsunamiDB/servers/debug"
 	networkmanager "TsunamiDB/servers/network-manager"
 	types "TsunamiDB/types"
 )
 
 func Read(w http.ResponseWriter, r *http.Request) {
+	defer debug.MeasureTime("> api [read]")()
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return

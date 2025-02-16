@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+
+	debug "TsunamiDB/servers/debug"
 )
 
 func DecodeRawData(data []byte) string {
@@ -14,6 +16,8 @@ func DecodeRawData(data []byte) string {
 
 // Decode poprawnie odczytuje dane binarne
 func Decode(data []byte) types.Decoded {
+	defer debug.MeasureTime("decode")()
+
 	var decoded types.Decoded
 	buf := bytes.NewReader(data)
 

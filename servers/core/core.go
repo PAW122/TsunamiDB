@@ -25,11 +25,13 @@ import (
 	"os"
 	"strconv"
 
+	debug "TsunamiDB/servers/debug"
 	networkmanager "TsunamiDB/servers/network-manager"
 	public_api_v1 "TsunamiDB/servers/public-api/v1"
 )
 
 func RunCore() {
+	debug.Log("Run Core")
 	config := flag.Bool("config", false, "load config from config.json")
 	flag.Parse()
 

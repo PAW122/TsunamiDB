@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	debug "TsunamiDB/servers/debug"
 )
 
 /**
@@ -15,6 +17,8 @@ import (
  * @return error -> error if occurred
  */
 func ReadDataFromFile(filePath string, dataStartPtr int64, dataEndPtr int64) ([]byte, error) {
+	defer debug.MeasureTime("read-from-file")()
+
 	// Otwórz plik do odczytu
 	file, err := os.Open(filePath)
 	if err != nil {

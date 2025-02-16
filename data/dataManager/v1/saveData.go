@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"TsunamiDB/data/defragmentationManager"
+	debug "TsunamiDB/servers/debug"
 )
 
 /**
@@ -15,6 +16,7 @@ import (
  * @return error -> error if occurred
  */
 func SaveDataToFile(data []byte, filePath string) (int64, int64, error) {
+	defer debug.MeasureTime("save-to-file")()
 	freeBlock, err := defragmentationManager.GetBlock(int64(len(data)))
 	var startPtr int64
 	var endPtr int64

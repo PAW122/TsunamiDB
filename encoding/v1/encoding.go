@@ -4,10 +4,14 @@ import (
 	"TsunamiDB/types"
 	"bytes"
 	"encoding/binary"
+
+	debug "TsunamiDB/servers/debug"
 )
 
 // Encode encodes a byte slice into a custom binary format
 func Encode(data []byte) ([]byte, types.Encoded) {
+	defer debug.MeasureTime("encode")()
+
 	var buf bytes.Buffer
 
 	// Version (1 bajt)

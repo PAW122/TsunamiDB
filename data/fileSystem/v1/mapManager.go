@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	debug "TsunamiDB/servers/debug"
 )
 
 const (
@@ -31,6 +33,8 @@ type GetElement_output struct {
 
 // Funkcja ładuje mapę z pliku JSON
 func loadMap() error {
+	defer debug.MeasureTime("fileSystem [loadMap]")()
+
 	if mapLoaded {
 		return nil
 	}
@@ -62,6 +66,8 @@ func loadMap() error {
 
 // Zapisuje mapę do pliku JSON
 func saveMap() error {
+	defer debug.MeasureTime("fileSystem [saveMap]")()
+
 	file, err := os.Create(mapFilePath)
 	if err != nil {
 		return err
@@ -74,6 +80,8 @@ func saveMap() error {
 
 // Pobiera element z mapy (z cache lub pliku)
 func GetElementByKey(key string) (*GetElement_output, error) {
+	defer debug.MeasureTime("fileSystem [GetElementByKey]")()
+
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -102,6 +110,8 @@ func GetElementByKey(key string) (*GetElement_output, error) {
 
 // Zapisuje nowy element w mapie
 func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
+	defer debug.MeasureTime("fileSystem [SaveElementByKey]")()
+
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -129,6 +139,8 @@ func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
 
 // Usuwa element z mapy i cache
 func RemoveElementByKey(key string) error {
+	defer debug.MeasureTime("fileSystem [RemoveElementByKey]")()
+
 	mutex.Lock()
 	defer mutex.Unlock()
 
@@ -156,6 +168,8 @@ func RemoveElementByKey(key string) error {
 
 // Dodaje element do cache
 func addToCache(key string, element GetElement_output) {
+	defer debug.MeasureTime("fileSystem [addToCache]")()
+
 	// Jeśli cache przekroczył limit, usuń najstarszy element (LRU)
 	if len(cacheData) >= cacheSizeLimit {
 		oldestKey := cacheOrder[0]
@@ -170,6 +184,8 @@ func addToCache(key string, element GetElement_output) {
 
 // Przesuwa element na początek (najczęściej używany)
 func moveToFront(key string) {
+	defer debug.MeasureTime("fileSystem [moveToFront]")()
+
 	// Znajdź indeks elementu
 	for i, v := range cacheOrder {
 		if v == key {
@@ -184,6 +200,8 @@ func moveToFront(key string) {
 
 // Usuwa element z cache order (gdy usuwamy z mapy)
 func removeFromCacheOrder(key string) {
+	defer debug.MeasureTime("fileSystem [removeFromCacheOrder]")()
+
 	for i, v := range cacheOrder {
 		if v == key {
 			cacheOrder = append(cacheOrder[:i], cacheOrder[i+1:]...)
