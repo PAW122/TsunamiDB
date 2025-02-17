@@ -78,3 +78,50 @@
         3. remove key and metadata from map
         4. mark space before taken by data as free
         5. return "free" response
+
++ Save Encrypted
+    - POST
+    - example url:
+        > 127.0.0.1:5844/save_encrypted/<file name>/<key>
+        > 127.0.0.1:5844/save_encrypted/data.bin/test
+    - example body:
+        > <binary obj>
+        > Hello world
+    - example header:
+        > encryption_key <key>
+
+    - res:
+        * "save" -> save succes
+        * "Invalid url args" -> <file name> or <key> param is invalid
+        * "Invalid body" -> error reading request Body
+        * "Error saving to file: ..." -> error saving encoded body content to file
+        * "Error saving to map: ..." -> error saving key to map (data is saved in file but metadata in memory is invalid, data may not be possible to read)
+        * Error Encryptiong data -> errpr ocured while encryption body content
+        * Missing encryption_key header -> encryption_key is not provided
+
+    - description:
+        encrypt & save data based on provided encryption_key 
+
++ Read Encrypted
+    - GET
+    - example url:
+        > 127.0.0.1:5844/read_encrypted/<file name>/<key>
+        > 127.0.0.1:5844/read_encrypted/data.bin/test
+    - example header:
+        > encryption_key <key>
+    - example body response:
+        > <binary/string obj>
+        > Hello world
+    
+
+    - res:
+        * any data in body -> read succes, all data saved with this key is returned in response body
+        * "Invalid url args" -> <file name> or <key> param is invalid
+        * "Error retrieving element from map: ..." -> error occured when reading metatada for key value from map
+        * "Error reading from file: ..." -> error occured when reading encoded file
+        * "Error decryping data" -> error ocured while decrypting data
+        * "Missing encryption_key header" -> encryption key header is missing
+
+    - description:
+        read data from database, decrypt using provided ecryption_key
+        and return 

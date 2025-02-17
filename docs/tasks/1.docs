@@ -31,6 +31,12 @@
     do już zapisanych informacji.
     > jak ktoś będzie chciał edytowac wpis z odwołania to najpierw zamienic odwołanie
     na dane a dopiero potem akcja 
+15. obecnie podczas dostępu do pliku jest on blokowany przez mutex.
+    można blokować podczas sync save, nie blokować podczas async save
+    i pozwolić read na async read dopuki dany blok nie jest w trakcie innej operacji zapisu:
+
+    > BlockManager będzie przechowywał status w jakim miejscu wykonywany jest zapis, jeżeli zapis nie jest
+    wykonywany na danym bloku można pozwolić na jego odczyt asynchronicznie
 
 === todo w ten weekend ===
 0, 2 + stream danych + 13

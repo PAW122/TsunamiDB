@@ -92,6 +92,6 @@ func SaveDataToFile(data []byte, filePath string) (int64, int64, error) {
 	}
 
 	// 🔹 Debug: Wyświetl ścieżkę zapisu
-	fmt.Printf("✅ Dane zapisane: %s (od %d do %d)\n", fullPath, startPtr, endPtr)
+	// fmt.Printf("✅ Dane zapisane: %s (od %d do %d)\n", fullPath, startPtr, endPtr)
 	return startPtr, endPtr, nil
 }
