@@ -3,6 +3,7 @@
 2. system auth
 3. json_data_type
 4. sql_commands
+13. auto reconect
 
 --- miej wazne ---
 5. ui
@@ -13,3 +14,23 @@
 10. opcja performance-no-limits
     > wczytanie wszystkich key do ramu żeby szybko działało
 11. automatyczny backup na innym serweże
+12. komendy
+    + credits
+        > wyświetli liste osob które przyczyniły sie do rozwoju db
+        mozna np bedzie po dadaniu perms ludzi ktorzy podejma sie proby crackowania db
+13. jeżeli wykonywane jest save() w objekcie z "free_block" to po oznaczeniu w pliku tego bloku jako zajętego
+    > można pozwolić na asynchroniczne zapisywanie (na raz można zapisywać w środku pliku i na jego końcu.)
+
+    > opcjonalnie można serwerów z np 4 rdzeniami mieć przygotowane 4 zarezerwowane objekty w pliku tak aby wszystkie 4 mogły na raz dodawać dane
+    > i mieć 1 blokcujący się proces (mutex) który przydzielał by te wolne miejsca tak aby żadne dane nie zostały niepoprawnie nadpisane
+
+    > zrobić test dla np 10k wartości przed i po implementacji
+14. jako forme kompresji (opcjonalną):
+    > dla każdego wpisu robić hasha na podstawie danych, i sprawdzać
+    w pliku z hashami / cache czy już takiego nie ma, jak jest to zamiast zapisywać dane dodać tylko odwołanie
+    do już zapisanych informacji.
+    > jak ktoś będzie chciał edytowac wpis z odwołania to najpierw zamienic odwołanie
+    na dane a dopiero potem akcja 
+
+=== todo w ten weekend ===
+0, 2 + stream danych + 13

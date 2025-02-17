@@ -25,6 +25,14 @@ type FreeBlock struct {
 	StartPtr int64  `json:"startPtr"`
 	EndPtr   int64  `json:"endPtr"`
 	Size     int64  `json:"size"`
+	Tag      string `json:"tag"` // sync / async
+	InUse    bool   // Czy blok jest aktualnie używany
+}
+
+// FileMemory - reprezentacja pamięci w pliku
+type FileMemory struct {
+	mu     sync.Mutex
+	Blocks []*FreeBlock
 }
 
 // **🔹 Ładowanie wolnych bloków z pliku JSON**
@@ -69,6 +77,13 @@ func saveFreeBlocks() error {
 
 	encoder := json.NewEncoder(file)
 	return encoder.Encode(freeBlocks)
+	/*
+		TODO rework
+
+		trzeba zamienić jsona na enkoder,
+		tak to zrobić aby można było asynchrnoiczne blokować dane pointery
+		i edytować dane bez potrzeby wczytywania i zapisywania całego pliku
+	*/
 }
 
 // **🔹 Dodaje nowy wolny blok**

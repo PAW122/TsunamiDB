@@ -14,6 +14,11 @@ func main() {
 	core.RunCore()
 }
 
+/*
+	zrobić funkcje exec_save(amount), exec_read(amount)
+	tak aby móc przetestować wydajność np dla 10 r-w na raz
+*/
+
 func test2() {
 	// ************ save data to file 1 ************
 	encoded, _ := encoder_v1.Encode([]byte("Hello, World"))

@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	debug "TsunamiDB/servers/debug"
 )
+
+var basePath = "./db/data"
 
 /**
  * @param filePath -> path to file
@@ -20,7 +23,7 @@ func ReadDataFromFile(filePath string, dataStartPtr int64, dataEndPtr int64) ([]
 	defer debug.MeasureTime("read-from-file")()
 
 	// Otwórz plik do odczytu
-	file, err := os.Open(filePath)
+	file, err := os.Open(filepath.Join(basePath, filePath))
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +69,45 @@ func ReadDataFromFile(filePath string, dataStartPtr int64, dataEndPtr int64) ([]
 	// fmt.Println("READ SUCCESS: Read", n, "bytes")
 
 	// Zwracamy dokładnie tyle bajtów, ile odczytano
+	return buffer[:n], nil
+}
+
+func StreamDataFromFile(filePath string, start int64, chunkSize int64) ([]byte, error) {
+	// Otwórz plik
+	file, err := os.Open(filepath.Join(basePath, filePath))
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %w", err)
+	}
+	defer file.Close()
+
+	// Pobierz informacje o pliku
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("could not get file info: %w", err)
+	}
+	fileSize := fileInfo.Size()
+
+	// Walidacja zakresu odczytu
+	if start > fileSize {
+		return nil, errors.New("invalid range")
+	}
+	if start+chunkSize > fileSize {
+		chunkSize = fileSize - start
+	}
+
+	// Przesunięcie do pozycji startowej
+	_, err = file.Seek(start, io.SeekStart)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek file: %w", err)
+	}
+
+	// Odczyt danych
+	buffer := make([]byte, chunkSize)
+	n, err := io.ReadFull(file, buffer)
+	if err != nil && err != io.EOF {
+		return nil, fmt.Errorf("failed to stream file: %w", err)
+	}
+
 	return buffer[:n], nil
 }
 

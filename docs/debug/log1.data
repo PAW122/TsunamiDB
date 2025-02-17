@@ -1,0 +1,29 @@
+[DEBUG] encode took 0s
+[DEBUG] defragmentation [loadFreeBlocks] took 516.8µs
+[DEBUG] defragmentation [GetBlock] took 516.8µs
+[DEBUG] fileSystem [loadMap] took 516.8µs
+[DEBUG] fileSystem [GetElementByKey] took 1.0534ms
+[DEBUG] save-to-file took 1.5689ms
+[DEBUG] fileSystem [loadMap] took 0s
+[DEBUG] fileSystem [addToCache] took 0s
+[DEBUG] fileSystem [saveMap] took 515.7µs
+[DEBUG] fileSystem [SaveElementByKey] took 1.5523ms
+[DEBUG] > api [save] took 3.6414ms
+
+
+[DEBUG] encode took 0s  
+[DEBUG] defragmentation [loadFreeBlocks] took 0s    // cachowanie
+[DEBUG] defragmentation [GetBlock] took 503.2µs
+    > follow by:
+        > [DEBUG] defragmentation [saveFreeBlocks] took 1.0299ms
+[DEBUG] fileSystem [moveToFront] took 0s
+[DEBUG] fileSystem [GetElementByKey] took 1.1211ms
+[DEBUG] defragmentation [loadFreeBlocks] took 0s
+[DEBUG] save-to-file took 1.0537ms
+[DEBUG] fileSystem [loadMap] took 0s
+[DEBUG] fileSystem [addToCache] took 0s
+[DEBUG] defragmentation [saveFreeBlocks] took 1.0299ms
+[DEBUG] defragmentation [MarkAsFree] took 1.0299ms
+[DEBUG] fileSystem [saveMap] took 0s
+[DEBUG] fileSystem [SaveElementByKey] took 1.0323ms
+[DEBUG] > api [save] took 3.6973ms

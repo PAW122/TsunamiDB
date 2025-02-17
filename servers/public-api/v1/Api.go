@@ -25,9 +25,10 @@ var client = &http.Client{
 
 func RunPublicApi_v1(port int) {
 	mux := http.NewServeMux()
-	go mux.HandleFunc("/save/", routes.Save) // save
-	go mux.HandleFunc("/read/", routes.Read) // read
-	go mux.HandleFunc("/free/", routes.Free) // delete
+	go mux.HandleFunc("/save/", routes.Save)        // save
+	go mux.HandleFunc("/read/", routes.Read)        // read
+	go mux.HandleFunc("/free/", routes.Free)        // delete
+	go mux.HandleFunc("/stream/", routes.StreamMP4) // stream read
 
 	// Konfiguracja serwera z Connection Pool
 	server := &http.Server{
