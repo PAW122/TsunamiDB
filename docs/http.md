@@ -3,6 +3,10 @@
  - file name
     > use <file name> argument like tabe in sql db
 
+! inportant - no matter what <file name> / <table> u are using one key value can be use only once
+that means if u save table_1: key1 and then table_2: key1
+key1 will be deleted from table_1
+
 + Save
     - POST
     - example url:
