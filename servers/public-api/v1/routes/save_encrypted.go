@@ -48,19 +48,11 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	/*
-		!race condition
-		if save tame is fast enaugth new data (if not limited by space) will be saved
-		in the same place as old data.
-		if not old data is marked as free and new data is saved in other block.
-	*/
 	// free previous data for same key value if exist
-	go func() {
-		prevMetaData, err := fileSystem_v1.GetElementByKey(key)
-		if err == nil {
-			defragmentationManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
-		}
-	}()
+	prevMetaData, err := fileSystem_v1.GetElementByKey(key)
+	if err == nil {
+		defragmentationManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
+	}
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

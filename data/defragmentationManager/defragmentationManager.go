@@ -111,8 +111,8 @@ func MarkAsFree(key string, fileName string, startPtr, endPtr int64) error {
 	return saveFreeBlocks()
 }
 
-// **🔹 Pobiera najmniejszy wolny blok, który pasuje do podanego rozmiaru**
-func GetBlock(size int64) (*FreeBlock, error) {
+// **🔹 Pobiera najmniejszy wolny blok, który pasuje do podanego rozmiaru i nazwy pliku**
+func GetBlock(size int64, fileName string) (*FreeBlock, error) {
 	defer debug.MeasureTime("defragmentation [GetBlock]")()
 
 	defrag_mutex.Lock()
@@ -125,7 +125,8 @@ func GetBlock(size int64) (*FreeBlock, error) {
 
 	var bestFitBlock *FreeBlock
 	for _, block := range freeBlocks {
-		if block.Size >= size {
+		// Sprawdzamy tylko bloki pasujące do nazwy pliku i rozmiaru
+		if block.Size >= size && block.FileName == fileName {
 			if bestFitBlock == nil || block.Size < bestFitBlock.Size {
 				bestFitBlock = &block
 			}
@@ -133,7 +134,7 @@ func GetBlock(size int64) (*FreeBlock, error) {
 	}
 
 	if bestFitBlock == nil {
-		return nil, errors.New("no suitable free blocks available")
+		return nil, errors.New("no suitable free blocks available for the specified file")
 	}
 
 	// Usunięcie bloku po przydzieleniu

@@ -40,7 +40,8 @@ func SaveDataToFile(data []byte, filePath string) (int64, int64, error) {
 	}
 
 	// Spróbuj pobrać wolny blok pamięci
-	freeBlock, err := defragmentationManager.GetBlock(int64(len(data)))
+	// W sekcji "Spróbuj pobrać wolny blok pamięci":
+	freeBlock, err := defragmentationManager.GetBlock(int64(len(data)), filePath)
 	if err == nil {
 		// Użyj znalezionego bloku
 		startPtr = freeBlock.StartPtr
