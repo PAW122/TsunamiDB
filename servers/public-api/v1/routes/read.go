@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
+	dataManager_v2 "TsunamiDB/data/dataManager/v2"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "TsunamiDB/encoding/v1"
 	debug "TsunamiDB/servers/debug"
@@ -64,7 +64,7 @@ func Read(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Jeśli znaleziono lokalnie -> odczytujemy dane
-	data, err := dataManager_v1.ReadDataFromFile(file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
+	data, err := dataManager_v2.ReadDataFromFileAsync(file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, "Error reading from file:", err)

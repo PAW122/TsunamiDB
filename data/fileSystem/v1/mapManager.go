@@ -1,48 +1,48 @@
 package fileSystem_v1
 
 import (
-	"encoding/json"
+	"encoding/gob"
 	"errors"
 	"os"
-	"path/filepath"
 	"sync"
+	"time"
 
 	debug "TsunamiDB/servers/debug"
 )
 
-const (
-	mapFilePath    = "./db/maps/data_map.json"
-	cacheSizeLimit = 10000 // Maksymalna liczba elementów w cache
-)
+const mapFilePath = "./db/maps/data_map.gob"
 
 var (
-	mutex      sync.Mutex
+	mutex      sync.RWMutex
 	dataMap    = make(map[string]GetElement_output)
-	cacheData  = make(map[string]GetElement_output) // Cache
-	cacheOrder []string                             // Kolejność kluczy dla LRU
 	mapLoaded  = false
+	updateChan = make(chan struct{}, 1) // Kanał do sygnalizacji zapisu w tle
 )
 
 // Struktura przechowująca dane o elemencie
+
 type GetElement_output struct {
-	Key      string `json:"key"`
-	FileName string `json:"fileName"`
-	StartPtr int    `json:"startPtr"`
-	EndPtr   int    `json:"endPtr"`
+	Key      string
+	FileName string
+	StartPtr int
+	EndPtr   int
 }
 
-// Funkcja ładuje mapę z pliku JSON
+func init() {
+	go batchSaveWorker()
+}
+
+// Ładowanie mapy z pliku binarnego
 func loadMap() error {
 	defer debug.MeasureTime("fileSystem [loadMap]")()
+
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	if mapLoaded {
 		return nil
 	}
 
-	// Upewnij się, że katalog istnieje
-	os.MkdirAll(filepath.Dir(mapFilePath), os.ModePerm)
-
-	// Sprawdzenie czy plik istnieje
 	file, err := os.Open(mapFilePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -53,10 +53,8 @@ func loadMap() error {
 	}
 	defer file.Close()
 
-	// Dekodowanie JSON
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&dataMap)
-	if err != nil {
+	decoder := gob.NewDecoder(file)
+	if err := decoder.Decode(&dataMap); err != nil {
 		return err
 	}
 
@@ -64,148 +62,68 @@ func loadMap() error {
 	return nil
 }
 
-// Zapisuje mapę do pliku JSON
-func saveMap() error {
-	defer debug.MeasureTime("fileSystem [saveMap]")()
-
-	file, err := os.Create(mapFilePath)
-	if err != nil {
-		return err
+// Zapisuje mapę do pliku binarnego w tle
+func saveMap() {
+	select {
+	case updateChan <- struct{}{}:
+	default:
 	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	return encoder.Encode(dataMap)
 }
 
-// Pobiera element z mapy (z cache lub pliku)
+func batchSaveWorker() {
+	for {
+		<-updateChan
+		time.Sleep(1 * time.Second)
+		mutex.Lock()
+		file, err := os.Create(mapFilePath)
+		if err == nil {
+			encoder := gob.NewEncoder(file)
+			encoder.Encode(dataMap)
+			file.Close()
+		}
+		mutex.Unlock()
+	}
+}
+
+// Pobiera element z mapy
 func GetElementByKey(key string) (*GetElement_output, error) {
 	defer debug.MeasureTime("fileSystem [GetElementByKey]")()
 
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	// Sprawdź cache
-	if element, exists := cacheData[key]; exists {
-		moveToFront(key) // Przesuwamy w kolejności LRU
-		return &element, nil
-	}
-
-	// Załaduj mapę, jeśli nie jest w pamięci
-	err := loadMap()
-	if err != nil {
-		return nil, err
-	}
-
+	mutex.RLock()
 	element, exists := dataMap[key]
+	mutex.RUnlock()
+
 	if !exists {
 		return nil, errors.New("key not found")
 	}
-
-	// Dodaj do cache
-	addToCache(key, element)
-
 	return &element, nil
 }
 
-// Zapisuje nowy element w mapie
+// Zapisuje nowy element w mapie i wyzwala zapis w tle
 func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
 	defer debug.MeasureTime("fileSystem [SaveElementByKey]")()
 
 	mutex.Lock()
-	defer mutex.Unlock()
-
-	// Załaduj mapę, jeśli nie jest w pamięci
-	err := loadMap()
-	if err != nil {
-		return err
-	}
-
-	// Aktualizacja mapy
-	element := GetElement_output{
+	dataMap[key] = GetElement_output{
 		Key:      key,
 		FileName: fileName,
 		StartPtr: startPtr,
 		EndPtr:   endPtr,
 	}
-	dataMap[key] = element
+	mutex.Unlock()
 
-	// Aktualizacja cache
-	addToCache(key, element)
-
-	// Zapis mapy do pliku
-	return saveMap()
+	saveMap()
+	return nil
 }
 
-// Usuwa element z mapy i cache
+// Usuwa element z mapy i wyzwala zapis w tle
 func RemoveElementByKey(key string) error {
 	defer debug.MeasureTime("fileSystem [RemoveElementByKey]")()
 
 	mutex.Lock()
-	defer mutex.Unlock()
-
-	// Załaduj mapę, jeśli nie jest w pamięci
-	err := loadMap()
-	if err != nil {
-		return err
-	}
-
-	// Sprawdź, czy element istnieje
-	if _, exists := dataMap[key]; !exists {
-		return errors.New("element not found")
-	}
-
-	// Usuwamy element z mapy i cache
 	delete(dataMap, key)
-	delete(cacheData, key)
-	removeFromCacheOrder(key)
+	mutex.Unlock()
 
-	// Zapisujemy zaktualizowaną mapę do pliku
-	return saveMap()
-}
-
-// ======== MECHANIZM CACHE (LRU) ========
-
-// Dodaje element do cache
-func addToCache(key string, element GetElement_output) {
-	defer debug.MeasureTime("fileSystem [addToCache]")()
-
-	// Jeśli cache przekroczył limit, usuń najstarszy element (LRU)
-	if len(cacheData) >= cacheSizeLimit {
-		oldestKey := cacheOrder[0]
-		delete(cacheData, oldestKey)
-		cacheOrder = cacheOrder[1:]
-	}
-
-	// Dodaj nowy element do cache
-	cacheData[key] = element
-	cacheOrder = append(cacheOrder, key)
-}
-
-// Przesuwa element na początek (najczęściej używany)
-func moveToFront(key string) {
-	defer debug.MeasureTime("fileSystem [moveToFront]")()
-
-	// Znajdź indeks elementu
-	for i, v := range cacheOrder {
-		if v == key {
-			// Usuń z tej pozycji
-			cacheOrder = append(cacheOrder[:i], cacheOrder[i+1:]...)
-			break
-		}
-	}
-	// Dodaj na koniec (najświeższy)
-	cacheOrder = append(cacheOrder, key)
-}
-
-// Usuwa element z cache order (gdy usuwamy z mapy)
-func removeFromCacheOrder(key string) {
-	defer debug.MeasureTime("fileSystem [removeFromCacheOrder]")()
-
-	for i, v := range cacheOrder {
-		if v == key {
-			cacheOrder = append(cacheOrder[:i], cacheOrder[i+1:]...)
-			break
-		}
-	}
+	saveMap()
+	return nil
 }

@@ -2,10 +2,10 @@
 
 package debug
 
-func Log(log string) {
-
-}
+func Log(log string) {}
 
 func MeasureTime(name string) func() {
 	return func() {} // Pusta funkcja
 }
+
+func PrintTimingStats() {}

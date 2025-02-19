@@ -5,7 +5,7 @@ import (
 	"io"
 	"net/http"
 
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
+	dataManager_v2 "TsunamiDB/data/dataManager/v2"
 	"TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "TsunamiDB/encoding/v1"
@@ -54,7 +54,7 @@ func Save(w http.ResponseWriter, r *http.Request) {
 
 	encoded, _ := encoder_v1.Encode(body)
 	// save to file
-	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, file)
+	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, file)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, "Error saving to file:", err)
