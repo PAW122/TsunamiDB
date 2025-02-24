@@ -1,0 +1,42 @@
+**TsunamiDB License v1.0**
+
+Copyright (c) [2025] [TsunamiStudio]
+
+Permission is hereby granted, free of charge, to any non-commercial individual or entity ("User") to use, copy, modify, and distribute this software and associated documentation files (the "Software"), subject to the following conditions:
+
+### 1. Non-Commercial Use
+- Users may use, modify, and distribute the Software for non-commercial purposes, provided that all modifications and derivative works are made publicly available under the same license.
+- Any modification of the Software must retain this license and must be publicly accessible in source code form.
+
+### 2. Attribution Requirement
+- Any public use of the Software in a website, application, or service must include a clear and legible attribution stating: "Powered by TsunamiDB."
+- The attribution must be displayed in a manner visible to users of the software.
+- The requirement for attribution may be waived only with prior written consent from the original author or copyright holder.
+
+### 3. Commercial Use and Licensing Fees
+Any commercial use of the Software requires a paid license. Commercial use is defined as any use of the Software that directly or indirectly generates revenue, including but not limited to:
+- Integrating the Software into proprietary products or services.
+- Offering the Software as part of a paid service.
+- Using the Software in any business operations exceeding the thresholds defined below.
+
+The following licensing fees apply based on the User’s total annual revenue:
+
+| Annual Revenue         | License Fee  |
+|------------------------|-------------|
+| Up to $100,000        | Free or $100/year |
+| $100,000 - $1,000,000 | 0.5% of revenue (minimum $500/year) |
+| $1,000,000 - $10,000,000 | 1% of revenue (minimum $5,000/year) |
+| Above $10,000,000     | Negotiated individually |
+
+- **Revenue Definition**: Revenue is defined as the total gross revenue of the entity using the Software.
+- **Non-Profit Exception**: Non-profit organizations may apply for a fee waiver.
+- **Startup Exception**: New businesses in their first year of operation may use the Software for free until they reach $100,000 in revenue.
+
+### 4. Disclaimer of Warranty
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+### 5. Termination
+Failure to comply with this license, including non-payment of required licensing fees, will result in termination of the rights granted herein.
+
+For commercial licensing inquiries, contact: [pawelklin10@gmail.com]
+

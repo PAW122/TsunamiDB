@@ -12,8 +12,9 @@ import (
 	types "TsunamiDB/types"
 )
 
-func Read(w http.ResponseWriter, r *http.Request) {
-	defer debug.MeasureTime("> api [read]")()
+func AsyncRead(w http.ResponseWriter, r *http.Request) {
+	defer debug.MeasureTime("> api [async read]")()
+
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -29,49 +30,72 @@ func Read(w http.ResponseWriter, r *http.Request) {
 	file := pathParts[2]
 	key := pathParts[3]
 
-	// Pobranie instancji NetworkManager
-	nm := networkmanager.GetNetworkManager()
-	if nm == nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "Błąd: NetworkManager nie został poprawnie zainicjalizowany")
-		return
-	}
-	// Próba pobrania lokalnie
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
-	if err != nil {
-		// 🔹 Jeśli nie znaleziono -> wysyłamy zapytanie do innych serwerów
-		req := types.NMmessage{
-			Task:      "read",
-			Args:      []string{file, key},
-			ReqSendBy: nm.ServerIP, // Pobranie IP z NetworkManager
+	readChan := make(chan struct {
+		data []byte
+		err  error
+	}, 1)
+
+	readWG.Add(1)
+	go func() {
+		defer readWG.Done()
+
+		fs_data, err := fileSystem_v1.GetElementByKey(key)
+		if err != nil {
+			nm := networkmanager.GetNetworkManager()
+			if nm == nil {
+				readChan <- struct {
+					data []byte
+					err  error
+				}{nil, fmt.Errorf("network manager not initialized")}
+				return
+			}
+
+			req := types.NMmessage{
+				Task:      "read",
+				Args:      []string{file, key},
+				ReqSendBy: nm.ServerIP,
+			}
+			res := nm.SendTaskReq(req)
+			if res.Finished {
+				readChan <- struct {
+					data []byte
+					err  error
+				}{res.Content, nil}
+			} else {
+				readChan <- struct {
+					data []byte
+					err  error
+				}{nil, fmt.Errorf("data not found on any server")}
+			}
+			return
 		}
 
-		// fmt.Println("read network req by, %s", nm.ServerIP)
-
-		// 🔹 Wysyłamy zapytanie P2P
-		res := nm.SendTaskReq(req)
-
-		// 🔹 Sprawdzamy, czy znaleziono wynik na innym serwerze
-		if res.Finished {
-			w.WriteHeader(http.StatusOK)
-			w.Write(res.Content) // Zwracamy dane z innego serwera
-			return
-		} else {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprint(w, "Data not found on any server")
+		data, err := dataManager_v2.ReadDataFromFileAsync(file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
+		if err != nil {
+			readChan <- struct {
+				data []byte
+				err  error
+			}{nil, err}
 			return
 		}
-	}
 
-	// Jeśli znaleziono lokalnie -> odczytujemy dane
-	data, err := dataManager_v2.ReadDataFromFileAsync(file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
-	if err != nil {
+		decodedObj := encoder_v1.Decode(data)
+		readChan <- struct {
+			data []byte
+			err  error
+		}{[]byte(decodedObj.Data), nil}
+	}()
+
+	readWG.Wait()
+	close(readChan)
+
+	res := <-readChan
+	if res.err != nil {
 		w.WriteHeader(http.StatusNotFound)
-		fmt.Fprint(w, "Error reading from file:", err)
+		fmt.Fprint(w, "Error reading from file: ", res.err)
 		return
 	}
 
-	decoded_obj := encoder_v1.Decode(data)
-
-	w.Write([]byte(decoded_obj.Data))
+	w.WriteHeader(http.StatusOK)
+	w.Write(res.data)
 }

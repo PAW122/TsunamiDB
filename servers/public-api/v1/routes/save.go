@@ -12,10 +12,8 @@ import (
 	debug "TsunamiDB/servers/debug"
 )
 
-func Save(w http.ResponseWriter, r *http.Request) {
-	defer debug.MeasureTime("> api [save]")()
-	// /save/<file>/<key>
-	// body = []bytes r.Body
+func AsyncSave(w http.ResponseWriter, r *http.Request) {
+	defer debug.MeasureTime("> api [async save]")()
 
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -25,26 +23,14 @@ func Save(w http.ResponseWriter, r *http.Request) {
 	pathParts := ParseArgs(r.URL.Path, "save")
 	if pathParts == nil || len(pathParts) < 2 {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Print(w, "Invalid url args")
+		fmt.Fprint(w, "Invalid url args")
 		return
 	}
 
 	file := pathParts[2]
 	key := pathParts[3]
 
-	/*
-		this call dont allow to simuntoniusly exist 2 identical keys values.
-		eaven if keys are in difrent tables / files
-
-		if key is in file2 and save is executed to file1 with identical key
-		key in file2 will by free'd / deleted
-	*/
-	// free previous data for same key value if exist
-	prevMetaData, err := fileSystem_v1.GetElementByKey(key)
-	if err == nil {
-		defragmentationManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
-	}
-
+	// Odczyt ciała żądania
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -52,24 +38,40 @@ func Save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encoded, _ := encoder_v1.Encode(body)
-	// save to file
-	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, file)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "Error saving to file:", err)
-		return
-	}
+	// Kanał do przekazania wyniku zapisu
+	saveChan := make(chan error, 1)
 
-	// save to map
-	err = fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
-	if err != nil {
+	saveWG.Add(1)
+	go func() {
+		defer saveWG.Done()
+		// Usunięcie poprzednich danych
+		prevMetaData, err := fileSystem_v1.GetElementByKey(key)
+		if err == nil {
+			defragmentationManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
+		}
+
+		// Kodowanie i zapis asynchroniczny
+		encoded, _ := encoder_v1.Encode(body)
+		startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, file)
+		if err != nil {
+			saveChan <- err
+			return
+		}
+
+		// Mapowanie klucza
+		err = fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
+		saveChan <- err
+	}()
+
+	saveWG.Wait()
+	close(saveChan)
+
+	if err := <-saveChan; err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "Error saving to map:", err)
+		fmt.Fprint(w, "Error saving to file: ", err)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "save")
-	return
 }

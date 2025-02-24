@@ -25,10 +25,9 @@ var client = &http.Client{
 
 func RunPublicApi_v1(port int) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/save/", routes.Save)                    // save
-	mux.HandleFunc("/read/", routes.Read)                    // read
+	mux.HandleFunc("/save/", routes.AsyncSave)               // save
+	mux.HandleFunc("/read/", routes.AsyncRead)               // read
 	mux.HandleFunc("/free/", routes.Free)                    // delete
-	mux.HandleFunc("/stream/", routes.StreamMP4)             // stream read
 	mux.HandleFunc("/save_encrypted/", routes.SaveEncrypted) // save encrypted
 	mux.HandleFunc("/read_encrypted/", routes.ReadEncrypted) // read encrypted
 
