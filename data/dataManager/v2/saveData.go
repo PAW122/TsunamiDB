@@ -1,8 +1,8 @@
 package dataManager_v2
 
 import (
-	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -83,7 +83,7 @@ func saveData(data []byte, filePath string) (int64, int64, error) {
 	fileLock.Lock()
 	defer fileLock.Unlock()
 
-	file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return 0, 0, fmt.Errorf("błąd otwierania pliku: %w", err)
 	}
@@ -96,22 +96,27 @@ func saveData(data []byte, filePath string) (int64, int64, error) {
 	var startPtr, endPtr int64
 
 	if err != nil && err.Error() == "no suitable free blocks available for the specified file" {
-		startPtr, err = file.Seek(0, os.SEEK_END)
+		// fmt.Println("DEFRAG DEBUG: No suitable free blocks available, appending to the end of the file")
+		startPtr, err = file.Seek(0, io.SeekEnd)
 		if err != nil {
 			return 0, 0, fmt.Errorf("błąd ustawiania wskaźnika pliku: %w", err)
 		}
 	} else if err == nil {
+		// fmt.Println("DEFRAG DEBUG: Using free block", freeBlock)
 		startPtr = freeBlock.StartPtr
+		_, err := file.Seek(startPtr, io.SeekStart)
+		// fmt.Println("DEFRAG DEBUG: Seeked to", resPtr)
+		if err != nil {
+			return 0, 0, fmt.Errorf("błąd ustawiania wskaźnika pliku: %w", err)
+		}
 	} else {
 		return 0, 0, fmt.Errorf("błąd pobierania wolnego bloku: %w", err)
 	}
 
-	writer := bufio.NewWriter(file)
-	_, err = writer.Write(data)
+	_, err = file.Write(data)
 	if err != nil {
 		return 0, 0, fmt.Errorf("błąd zapisu do pliku: %w", err)
 	}
-	writer.Flush()
 
 	endPtr = startPtr + int64(len(data))
 	defragmentationManager.SaveBlockCheck(startPtr, endPtr)
