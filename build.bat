@@ -29,7 +29,7 @@ echo Linux build completed successfully!
 
 REM Ustawienie ikony dla pliku wykonywalnego Windows
 echo Setting icon for TsunamiDB.exe...
-"%cd%\assets\rcedit-x64.exe" "%cd%\TsunamiDB.exe" --set-icon "%cd%\assets\Tsus.ico"
+"%cd%\assets\rcedit-x64.exe" "%cd%\TsunamiDB.exe" --set-icon "%cd%\assets\Tsu.ico"
 
 REM Sprawdź, czy rcedit-x64.exe zakończył się sukcesem
 if errorlevel 1 (
