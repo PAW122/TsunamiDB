@@ -24,3 +24,17 @@ encoding:
 
 # do przemyslenia:
 czy chcemy w mapach zapisywac start pointery np do calego elementu zapisanego (versja, ptr, ptr, len, data)
+
+# sql:
+
+
+polecenie POST:
+body:
+{
+    query: insert,
+    tableName: userdata
+    data: {
+        id: 1
+        emapl: example@a.com
+    }
+}

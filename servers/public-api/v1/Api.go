@@ -30,6 +30,7 @@ func RunPublicApi_v1(port int) {
 	mux.HandleFunc("/free/", routes.Free)                    // delete
 	mux.HandleFunc("/save_encrypted/", routes.SaveEncrypted) // save encrypted
 	mux.HandleFunc("/read_encrypted/", routes.ReadEncrypted) // read encrypted
+	mux.HandleFunc("/sql", routes.SQL_api)                   // actions on sql tables
 
 	// Konfiguracja serwera z Connection Pool
 	server := &http.Server{
