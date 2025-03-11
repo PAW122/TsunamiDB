@@ -98,3 +98,17 @@ encode - avg: 19.797µs, total: 1.9797254s, count: 100000
 defragmentation [loadFreeBlocks] - avg: 69ns, total: 13.9983ms, count: 200000
 read-from-file - avg: 2.441859ms, total: 4m4.185911s, count: 100000
 decode - avg: 1.504µs, total: 150.4232ms, count: 100000
+
+
+===
+
+[DEBUG] Timing Stats:
+fileSystem [GetElementByKey] - avg: 17.138µs, total: 171.3848ms, count: 10000
+fileSystem [SaveElementByKey] - avg: 3.692µs, total: 36.9295ms, count: 10000
+defragmentation [GetBlock] - avg: 796ns, total: 7.9684ms, count: 10000
+defragmentation [loadFreeBlocks] - avg: 0s, total: 0s, count: 20000
+read-from-file - avg: 6.875055ms, total: 1m8.7505525s, count: 10000
+defragmentation [SaveBlockCheck] - avg: 398ns, total: 3.9897ms, count: 10000
+save-to-file - avg: 1.013458007s, total: 2h48m54.580079s, count: 10000
+decode - avg: 16.387µs, total: 163.8716ms, count: 10000
+encode - avg: 9.114µs, total: 91.141ms, count: 10000
