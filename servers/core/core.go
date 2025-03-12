@@ -25,12 +25,18 @@ import (
 	"os"
 	"strconv"
 
+	config "TsunamiDB/servers/config"
 	debug "TsunamiDB/servers/debug"
 	networkmanager "TsunamiDB/servers/network-manager"
 	public_api_v1 "TsunamiDB/servers/public-api/v1"
 )
 
+var defaultConfigDir = "./config.json"
+
 func RunCore() {
+	debug.Log("Load config")
+	config.LoadConfig(defaultConfigDir)
+
 	debug.Log("Run Core")
 	config := flag.Bool("config", false, "load config from config.json")
 	flag.Parse()
