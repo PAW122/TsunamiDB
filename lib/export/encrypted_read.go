@@ -13,7 +13,7 @@ func ReadEncrypted(key, table, encryption_key string) ([]byte, error) {
 
 	nm := networkmanager.GetNetworkManager()
 	if nm == nil {
-		return nil, fmt.Errorf("Error: NetworkManager is not initialized")
+		return nil, fmt.Errorf("error: NetworkManager is not initialized")
 	}
 
 	// Próba pobrania lokalnie
@@ -33,25 +33,25 @@ func ReadEncrypted(key, table, encryption_key string) ([]byte, error) {
 		if res.Finished {
 			decrypted_content, err := encoder_v1.Decrypt([]byte(res.Content), encryption_key)
 			if err != nil {
-				return nil, fmt.Errorf("Error decryping data")
+				return nil, fmt.Errorf("error decryping data")
 			}
 			return decrypted_content, nil
 		} else {
-			return nil, fmt.Errorf("Data not found on any server")
+			return nil, fmt.Errorf("data not found on any server")
 		}
 	}
 
 	// Jeśli znaleziono lokalnie -> odczytujemy dane
 	data, err := dataManager_v1.ReadDataFromFile(table, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 	if err != nil {
-		return nil, fmt.Errorf("Error reading from file:", err)
+		return nil, fmt.Errorf("error reading from file: ")
 	}
 
 	decoded_obj := encoder_v1.Decode(data)
 
 	decrypted_content, err := encoder_v1.Decrypt([]byte(decoded_obj.Data), encryption_key)
 	if err != nil {
-		return nil, fmt.Errorf("Error decryping data")
+		return nil, fmt.Errorf("error decryping data")
 	}
 
 	return decrypted_content, nil

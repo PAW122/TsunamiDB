@@ -1,7 +1,7 @@
 package export
 
 import (
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
+	dataManager_v2 "TsunamiDB/data/dataManager/v2"
 	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "TsunamiDB/encoding/v1"
 	networkmanager "TsunamiDB/servers/network-manager"
@@ -37,7 +37,7 @@ func Read(key, table string) ([]byte, error) {
 	}
 
 	// if found on local server -> return
-	data, err := dataManager_v1.ReadDataFromFile(table, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
+	data, err := dataManager_v2.ReadDataFromFileAsync(table, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 	if err != nil {
 		return nil, err
 	}
