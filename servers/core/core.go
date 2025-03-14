@@ -6,9 +6,9 @@ package core
 			hostowanie/uruchamianie serwera http
 				> lokalna obsługa db tak samo jak inne db
 			uruchamianie serwera do komunikacji z innymi serwerami db (ws / ptp)
-				> komunikacja pomidzy serwerami TsunamiDB
+				> komunikacja pomidzy serwerami github.com/PAW122/TsunamiDB
 			uruchamianie serwera do komunikacji z klientami (ws / ptp)
-				> komunikacja z klientami TsunamiDB
+				> komunikacja z klientami github.com/PAW122/TsunamiDB
 
 
 		moze w przyszłośco:
@@ -25,10 +25,10 @@ import (
 	"os"
 	"strconv"
 
-	config "TsunamiDB/servers/config"
-	debug "TsunamiDB/servers/debug"
-	networkmanager "TsunamiDB/servers/network-manager"
-	public_api_v1 "TsunamiDB/servers/public-api/v1"
+	config "github.com/PAW122/TsunamiDB/servers/config"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
+	public_api_v1 "github.com/PAW122/TsunamiDB/servers/public-api/v1"
 )
 
 var defaultConfigDir = "./config.json"

@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	types "TsunamiDB/types"
+	types "github.com/PAW122/TsunamiDB/types"
 
 	"github.com/gorilla/websocket"
 )

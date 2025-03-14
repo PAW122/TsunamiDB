@@ -5,11 +5,11 @@ import (
 	"io"
 	"net/http"
 
-	dataManager_v2 "TsunamiDB/data/dataManager/v2"
-	"TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	encoder_v1 "TsunamiDB/encoding/v1"
-	debug "TsunamiDB/servers/debug"
+	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
+	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 func AsyncSave(w http.ResponseWriter, r *http.Request) {

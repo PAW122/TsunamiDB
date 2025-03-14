@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"TsunamiDB/data/defragmentationManager"
-	debug "TsunamiDB/servers/debug"
+	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 // getDataFilePath - Tworzy pełną ścieżkę w `/db/data/{filePath}`

@@ -1,9 +1,10 @@
 package export
 
 import (
-	defragmentationManager "TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
 	"fmt"
+
+	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 )
 
 func Free(key, table string) error {

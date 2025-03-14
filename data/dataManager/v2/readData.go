@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	debug "TsunamiDB/servers/debug"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 func ReadDataFromFileAsync(filePath string, dataStartPtr int64, dataEndPtr int64) ([]byte, error) {

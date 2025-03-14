@@ -12,7 +12,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
-	types "TsunamiDB/types"
+	types "github.com/PAW122/TsunamiDB/types"
 )
 
 // Peer to pojedynczy serwer w sieci P2P

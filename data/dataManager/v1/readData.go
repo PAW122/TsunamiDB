@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	debug "TsunamiDB/servers/debug"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 var basePath = "./db/data"

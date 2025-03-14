@@ -1,12 +1,13 @@
 package encoding_v1
 
 import (
-	"TsunamiDB/types"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 
-	debug "TsunamiDB/servers/debug"
+	"github.com/PAW122/TsunamiDB/types"
+
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 func DecodeRawData(data []byte) string {

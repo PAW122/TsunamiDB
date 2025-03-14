@@ -1,12 +1,13 @@
 package export
 
 import (
-	dataManager_v2 "TsunamiDB/data/dataManager/v2"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	encoder_v1 "TsunamiDB/encoding/v1"
-	networkmanager "TsunamiDB/servers/network-manager"
-	types "TsunamiDB/types"
 	"fmt"
+
+	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
+	types "github.com/PAW122/TsunamiDB/types"
 )
 
 func Read(key, table string) ([]byte, error) {

@@ -1,7 +1,7 @@
 package tablesManager
 
 import (
-	types "TsunamiDB/types"
+	types "github.com/PAW122/TsunamiDB/types"
 )
 
 /*

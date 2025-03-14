@@ -2,10 +2,10 @@ package main
 
 import (
 
-	// dataManager_v2 "TsunamiDB/data/dataManager/v2"
+	// dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 
-	// tests "TsunamiDB/tests"
-	core "TsunamiDB/servers/core"
+	// tests "github.com/PAW122/TsunamiDB/tests"
+	core "github.com/PAW122/TsunamiDB/servers/core"
 )
 
 func main() {

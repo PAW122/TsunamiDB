@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	debug "TsunamiDB/servers/debug"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 const freeSpaceFilePath = "./db/maps/free_blocks.json"

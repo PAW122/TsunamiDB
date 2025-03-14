@@ -1,11 +1,12 @@
 package export
 
 import (
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
-	defragManager "TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	encoder_v1 "TsunamiDB/encoding/v1"
 	"fmt"
+
+	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
+	defragManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 )
 
 func Save(key, table string, data []byte) error {

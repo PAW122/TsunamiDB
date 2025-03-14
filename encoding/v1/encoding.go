@@ -1,11 +1,12 @@
 package encoding_v1
 
 import (
-	"TsunamiDB/types"
 	"bytes"
 	"encoding/binary"
 
-	debug "TsunamiDB/servers/debug"
+	"github.com/PAW122/TsunamiDB/types"
+
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 // Encode encodes a byte slice into a custom binary format

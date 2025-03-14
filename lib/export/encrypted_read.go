@@ -1,12 +1,13 @@
 package export
 
 import (
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	encoder_v1 "TsunamiDB/encoding/v1"
-	networkmanager "TsunamiDB/servers/network-manager"
-	types "TsunamiDB/types"
 	"fmt"
+
+	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
+	types "github.com/PAW122/TsunamiDB/types"
 )
 
 func ReadEncrypted(key, table, encryption_key string) ([]byte, error) {

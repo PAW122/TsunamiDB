@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net/http"
 
-	defragmentationManager "TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	debug "TsunamiDB/servers/debug"
+	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 func Free(w http.ResponseWriter, r *http.Request) {

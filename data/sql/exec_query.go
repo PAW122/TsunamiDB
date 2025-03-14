@@ -1,8 +1,8 @@
 package sql
 
 import (
-	sql_handlers "TsunamiDB/data/sql/handlers"
-	"TsunamiDB/types"
+	sql_handlers "github.com/PAW122/TsunamiDB/data/sql/handlers"
+	"github.com/PAW122/TsunamiDB/types"
 )
 
 // Status: 0 - ok

@@ -5,11 +5,11 @@ import (
 	"io"
 	"net/http"
 
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
-	"TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	encoder_v1 "TsunamiDB/encoding/v1"
-	debug "TsunamiDB/servers/debug"
+	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
+	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 /*

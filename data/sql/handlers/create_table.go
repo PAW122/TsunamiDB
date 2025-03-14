@@ -1,10 +1,11 @@
 package sql_handlers
 
 import (
-	"TsunamiDB/types"
 	"encoding/json"
 	"fmt"
 	"os"
+
+	"github.com/PAW122/TsunamiDB/types"
 )
 
 var Sql_table_map string = "./db/sql_map"

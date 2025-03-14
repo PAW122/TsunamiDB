@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"TsunamiDB/data/defragmentationManager"
-	debug "TsunamiDB/servers/debug"
+	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 var basePath = "./db/data"

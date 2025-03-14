@@ -1,4 +1,4 @@
-module TsunamiDB
+module github.com/PAW122/TsunamiDB
 
 go 1.23.2
 

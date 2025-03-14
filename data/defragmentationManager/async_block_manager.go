@@ -1,10 +1,11 @@
 package defragmentationManager
 
 import (
-	debug "TsunamiDB/servers/debug"
 	"fmt"
 	"io/fs"
 	"os"
+
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 /*

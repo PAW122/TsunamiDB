@@ -1,9 +1,9 @@
 package tasks
 
 import (
-	defragmentationManager "TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	types "TsunamiDB/types"
+	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	types "github.com/PAW122/TsunamiDB/types"
 )
 
 func Free(req types.NMmessage) types.NMmessage {

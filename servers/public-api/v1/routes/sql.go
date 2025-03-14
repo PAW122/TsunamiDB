@@ -6,9 +6,9 @@ import (
 	"io"
 	"net/http"
 
-	sql "TsunamiDB/data/sql"
-	debug "TsunamiDB/servers/debug"
-	"TsunamiDB/types"
+	sql "github.com/PAW122/TsunamiDB/data/sql"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	"github.com/PAW122/TsunamiDB/types"
 )
 
 func SQL_api(w http.ResponseWriter, r *http.Request) {

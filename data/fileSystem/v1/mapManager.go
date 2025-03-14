@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	debug "TsunamiDB/servers/debug"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
 const mapFilePath = "./db/maps/data_map.gob"

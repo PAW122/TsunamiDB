@@ -1,7 +1,7 @@
 package fileSystem_v1
 
 import (
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
+	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
 )
 
 /*

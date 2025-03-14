@@ -1,10 +1,10 @@
 package tasks
 
 import (
-	dataManager_v1 "TsunamiDB/data/dataManager/v1"
-	fileSystem_v1 "TsunamiDB/data/fileSystem/v1"
-	encoder_v1 "TsunamiDB/encoding/v1"
-	types "TsunamiDB/types"
+	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
+	types "github.com/PAW122/TsunamiDB/types"
 )
 
 func Save(req types.NMmessage) types.NMmessage {

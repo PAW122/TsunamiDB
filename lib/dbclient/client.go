@@ -1,32 +1,11 @@
 package TsuClient
 
 import (
-	export "TsunamiDB/lib/export"
-	debug "TsunamiDB/servers/debug"
-	networkmanager "TsunamiDB/servers/network-manager"
-	public_api_v1 "TsunamiDB/servers/public-api/v1"
+	export "github.com/PAW122/TsunamiDB/lib/export"
+	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
+	public_api_v1 "github.com/PAW122/TsunamiDB/servers/public-api/v1"
 )
-
-/*
-	przygotować funkcje wyższego poziomu
-	np save() tak aby nie trzeba było wykoywać wszystkich calli ręcznie.
-
-	init(port, data dir)
-
-	save()
-	read()
-	free()
-	save_encrypt()
-	read_encrypt()
-
-	startTsuNetwork(port, []knownPeers) // uruchomienie
-	getConectedServers() // zwraca liste serwerów z sieci Tsu
-	sendToServer() // pozwala na wysłanie req do serwera
-	// jakiś on.IncomingMsg()
-
-
-
-*/
 
 func Save(key, table string, data []byte) error {
 	defer debug.MeasureTime("[lib.dbclient] [save]")()

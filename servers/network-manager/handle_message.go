@@ -1,10 +1,11 @@
 package networkmanager
 
 import (
-	tasks "TsunamiDB/servers/network-manager/tasks"
-	types "TsunamiDB/types"
 	"encoding/json"
 	"log"
+
+	tasks "github.com/PAW122/TsunamiDB/servers/network-manager/tasks"
+	types "github.com/PAW122/TsunamiDB/types"
 
 	"github.com/gorilla/websocket"
 )

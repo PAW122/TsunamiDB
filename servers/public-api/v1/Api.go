@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	routes "TsunamiDB/servers/public-api/v1/routes"
+	routes "github.com/PAW122/TsunamiDB/servers/public-api/v1/routes"
 )
 
 // Konfiguracja connection pool
