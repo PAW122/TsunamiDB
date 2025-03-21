@@ -14,6 +14,10 @@ import (
 func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 	responseChannel := make(chan types.NMmessage, 1)
 
+	if nm.peers == nil {
+		return types.NMmessage{Finished: false}
+	}
+
 	// Tworzymy zapytanie `get_my_ip`
 	if nm.ServerIP == "" {
 		reqIP := types.NMmessage{
