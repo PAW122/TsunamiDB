@@ -14,7 +14,7 @@ import (
 func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
 	responseChannel := make(chan types.NMmessage, 1)
 
-	if nm.peers == nil {
+	if len(nm.peers) == 0 {
 		return types.NMmessage{Finished: false}
 	}
 
