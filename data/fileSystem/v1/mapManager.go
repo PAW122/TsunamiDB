@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"os"
+	"regexp"
 	"sync"
 	"time"
 
@@ -97,6 +98,31 @@ func GetElementByKey(key string) (*GetElement_output, error) {
 		return nil, errors.New("key not found")
 	}
 	return &element, nil
+}
+
+func GetKeysByRegex(regex string, max int) ([]string, error) {
+	defer debug.MeasureTime("fileSystem [GetKeysByRegex]")()
+
+	mutex.RLock()
+	defer mutex.RUnlock()
+
+	compiledRegex, err := regexp.Compile(regex)
+	if err != nil {
+		return nil, err
+	}
+
+	var matchingKeys []string
+
+	for key := range dataMap {
+		if compiledRegex.MatchString(key) {
+			matchingKeys = append(matchingKeys, key)
+			if max > 0 && len(matchingKeys) >= max {
+				break
+			}
+		}
+	}
+
+	return matchingKeys, nil
 }
 
 // Zapisuje nowy element w mapie i wyzwala zapis w tle

@@ -1,6 +1,7 @@
 package TsuClient
 
 import (
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	export "github.com/PAW122/TsunamiDB/lib/export"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
@@ -40,4 +41,9 @@ func InitNetworkManager(port int, knownPeers []string) {
 func InitPublicApi(port int) {
 	defer debug.Log("[lib.dbclient] [Init-Public-Api]")
 	go public_api_v1.RunPublicApi_v1(port)
+}
+
+func GetKeysByRegex(regex string, max int) ([]string, error) {
+	defer debug.MeasureTime("[lib.dbclient] [get keys by regex]")()
+	return fileSystem_v1.GetKeysByRegex(regex, max)
 }
