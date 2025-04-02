@@ -1,6 +1,6 @@
 # TsunamiDB
 
-![Version](https://img.shields.io/badge/version-0.6.6-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-0.7.0-brightgreen.svg)
 
 fast, simple non sql key-value db
 
