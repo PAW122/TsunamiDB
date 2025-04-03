@@ -1,5 +1,7 @@
 # todo list:
 
+6. rozrożnianie not found i error
+
 5. add "record_not_found" res in network manager
     > now db need to wait 5s (timeout) after asking
     for not existing data for no reason, eaven when all db's
