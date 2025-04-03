@@ -7,7 +7,7 @@ fast, simple non sql key-value db
 install
 ```
 go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.7.1
-```
+``` 
 
 + execute:
     go build -tags debug
