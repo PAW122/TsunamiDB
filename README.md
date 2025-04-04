@@ -1,12 +1,12 @@
 # TsunamiDB
 
-![Version](https://img.shields.io/badge/version-0.7.1-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-0.7.3-brightgreen.svg)
 
 fast, simple non sql key-value db
 
 install
 ```
-go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.7.2
+go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.7.3
 ``` 
 
 + execute:
