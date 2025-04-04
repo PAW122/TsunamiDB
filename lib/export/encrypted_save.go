@@ -27,13 +27,13 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 	// save to file
 	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, table)
 	if err != nil {
-		return fmt.Errorf("Error saving to file:", err)
+		return fmt.Errorf("error saving to file:", err)
 	}
 
 	// save to map
 	err = fileSystem_v1.SaveElementByKey(key, table, int(startPtr), int(endPtr))
 	if err != nil {
-		return fmt.Errorf("Error saving to map:", err)
+		return fmt.Errorf("error saving to map:", err)
 	}
 
 	return nil
