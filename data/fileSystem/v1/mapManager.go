@@ -30,6 +30,7 @@ type GetElement_output struct {
 }
 
 func init() {
+	loadMap()
 	go batchSaveWorker()
 }
 
