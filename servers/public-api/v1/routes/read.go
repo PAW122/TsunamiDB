@@ -80,6 +80,7 @@ func AsyncRead(w http.ResponseWriter, r *http.Request) {
 		}
 
 		decodedObj := encoder_v1.Decode(data)
+		debug.LogExtra("Decoded object:", decodedObj)
 		readChan <- struct {
 			data []byte
 			err  error
@@ -96,6 +97,7 @@ func AsyncRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	debug.LogExtra("Data read successfully:", string(res.data))
 	w.WriteHeader(http.StatusOK)
 	w.Write(res.data)
 }

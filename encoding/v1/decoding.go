@@ -61,6 +61,8 @@ func Decode(data []byte) types.Decoded {
 		binary.Read(buf, binary.LittleEndian, &endPos)
 	default:
 		fmt.Println("Invalid pointer size:", pointerSize)
+		debug.LogExtra("Pointer size: ", pointerSize)
+		debug.LogExtra("Data:", data)
 		return decoded
 	}
 

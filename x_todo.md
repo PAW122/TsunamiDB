@@ -1,5 +1,11 @@
 # todo list:
 
+!! zmienić kod tak aby można byłu używać 2 identyczych key w 2 różnych tabelach, w free() wymagać zarówno key jak i table
+> albo w map zamiast używać key i table
+to użyć key: "<table>@<key>"
+i w razie potrzeby parsować key do pierwszego @ w stringu,
+zakazać używania @ w nazwie tabeli 
+
 7. te same funkcji co obecnie są używane, ale "cache"
 czyli przechowywane tylko w ram
 

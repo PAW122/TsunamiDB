@@ -47,6 +47,8 @@ func AsyncSave(w http.ResponseWriter, r *http.Request) {
 		// Usunięcie poprzednich danych
 		prevMetaData, err := fileSystem_v1.GetElementByKey(key)
 		if err == nil {
+			debug.LogExtra("Freeing previous data")
+			debug.LogExtra(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
 			defragmentationManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
 		}
 
@@ -57,6 +59,9 @@ func AsyncSave(w http.ResponseWriter, r *http.Request) {
 			saveChan <- err
 			return
 		}
+
+		debug.LogExtra(startPtr, endPtr)
+		debug.LogExtra(int(startPtr), int(endPtr))
 
 		// Mapowanie klucza
 		err = fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))

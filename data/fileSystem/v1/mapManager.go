@@ -80,6 +80,13 @@ func batchSaveWorker() {
 		file, err := os.Create(mapFilePath)
 		if err == nil {
 			encoder := gob.NewEncoder(file)
+
+			debug.LogExtra("Saving map to file:", mapFilePath)
+			// for key, value := range dataMap {
+			// 	debug.LogExtra("Map Key: %s, Struct: {Key: %s, FileName: %s, StartPtr: %d, EndPtr: %d}\n",
+			// 		key, value.Key, value.FileName, value.StartPtr, value.EndPtr)
+			// }
+
 			encoder.Encode(dataMap)
 			file.Close()
 		}
@@ -138,6 +145,8 @@ func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
 		EndPtr:   endPtr,
 	}
 	mutex.Unlock()
+
+	debug.LogExtra("Saving element to map:", key, fileName, startPtr, endPtr)
 
 	saveMap()
 	return nil

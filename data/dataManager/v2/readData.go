@@ -13,6 +13,8 @@ func ReadDataFromFileAsync(filePath string, dataStartPtr int64, dataEndPtr int64
 
 	defer debug.MeasureTime("read-from-file")()
 
+	debug.LogExtra("Reading data from file:", filePath, "from", dataStartPtr, "to", dataEndPtr)
+
 	file, err := os.Open(filepath.Join(basePath, filePath))
 	if err != nil {
 		return nil, err
