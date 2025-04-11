@@ -30,16 +30,15 @@ func AsyncRead(w http.ResponseWriter, r *http.Request) {
 	file := pathParts[2]
 	key := pathParts[3]
 
+	// Kanał do odbioru wyniku asynchronicznego odczytu:
 	readChan := make(chan struct {
 		data []byte
 		err  error
 	}, 1)
 
-	readWG.Add(1)
+	// Uruchamiamy goroutine:
 	go func() {
-		defer readWG.Done()
-
-		fs_data, err := fileSystem_v1.GetElementByKey(key)
+		fsData, err := fileSystem_v1.GetElementByKey(key)
 		if err != nil {
 			nm := networkmanager.GetNetworkManager()
 			if nm == nil {
@@ -70,7 +69,12 @@ func AsyncRead(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		data, err := dataManager_v2.ReadDataFromFileAsync(file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
+		// Odczyt pliku
+		data, err := dataManager_v2.ReadDataFromFileAsync(
+			file,
+			int64(fsData.StartPtr),
+			int64(fsData.EndPtr),
+		)
 		if err != nil {
 			readChan <- struct {
 				data []byte
@@ -79,17 +83,18 @@ func AsyncRead(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Dekodowanie
 		decodedObj := encoder_v1.Decode(data)
 		debug.LogExtra("Decoded object:", decodedObj)
+
+		// Zwrócenie wyniku
 		readChan <- struct {
 			data []byte
 			err  error
 		}{[]byte(decodedObj.Data), nil}
 	}()
 
-	readWG.Wait()
-	close(readChan)
-
+	// Blokująco pobieramy wynik z kanału
 	res := <-readChan
 	if res.err != nil {
 		w.WriteHeader(http.StatusNotFound)
@@ -98,6 +103,7 @@ func AsyncRead(w http.ResponseWriter, r *http.Request) {
 	}
 
 	debug.LogExtra("Data read successfully:", string(res.data))
+
 	w.WriteHeader(http.StatusOK)
-	w.Write(res.data)
+	_, _ = w.Write(res.data)
 }

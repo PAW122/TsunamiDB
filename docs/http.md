@@ -129,3 +129,15 @@ key1 will be deleted from table_1
     - description:
         read data from database, decrypt using provided ecryption_key
         and return 
+
++ Key By Regex
+    - GET
+    - example url:
+        > 127.0.0.1:5844/key_by_regex?regex=<regex>
+        > 127.0.0.1:5844/key_by_regex?regex=test*
+    - example body response:
+        > array
+        > ["test_2","test_1"]
+
+    - description:
+        search for specific key value based on regex

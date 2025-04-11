@@ -30,7 +30,6 @@ func AsyncSave(w http.ResponseWriter, r *http.Request) {
 	file := pathParts[2]
 	key := pathParts[3]
 
-	// Odczyt ciała żądania
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -38,21 +37,26 @@ func AsyncSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Kanał do przekazania wyniku zapisu
+	// Kanał do przekazania ewentualnego błędu zapisu
 	saveChan := make(chan error, 1)
 
-	saveWG.Add(1)
+	// Uruchamiamy goroutine, by zachować asynchroniczność wewnątrz zapisu
 	go func() {
-		defer saveWG.Done()
-		// Usunięcie poprzednich danych
+		// Usuwamy poprzednie dane, jeśli istnieją
 		prevMetaData, err := fileSystem_v1.GetElementByKey(key)
 		if err == nil {
 			debug.LogExtra("Freeing previous data")
-			debug.LogExtra(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
-			defragmentationManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
+			debug.LogExtra(prevMetaData.Key, prevMetaData.FileName,
+				int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
+			defragmentationManager.MarkAsFree(
+				prevMetaData.Key,
+				prevMetaData.FileName,
+				int64(prevMetaData.StartPtr),
+				int64(prevMetaData.EndPtr),
+			)
 		}
 
-		// Kodowanie i zapis asynchroniczny
+		// Kodowanie i asynchroniczny zapis
 		encoded, _ := encoder_v1.Encode(body)
 		startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, file)
 		if err != nil {
@@ -60,17 +64,14 @@ func AsyncSave(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		debug.LogExtra(startPtr, endPtr)
-		debug.LogExtra(int(startPtr), int(endPtr))
+		debug.LogExtra("startPtr, endPtr:", startPtr, endPtr)
 
-		// Mapowanie klucza
+		// Zapamiętanie w mapowaniu kluczy
 		err = fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
 		saveChan <- err
 	}()
 
-	saveWG.Wait()
-	close(saveChan)
-
+	// Czekamy na wynik z kanału
 	if err := <-saveChan; err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, "Error saving to file: ", err)
