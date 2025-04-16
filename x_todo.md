@@ -6,6 +6,10 @@ to użyć key: "<table>@<key>"
 i w razie potrzeby parsować key do pierwszego @ w stringu,
 zakazać używania @ w nazwie tabeli 
 
+* poprawka - read (tabela, key)
+ma używać tabela jako nazwy mapy.
+w ten sposób rozłoży się "load" z mapy
+
 7. te same funkcji co obecnie są używane, ale "cache"
 czyli przechowywane tylko w ram
 
