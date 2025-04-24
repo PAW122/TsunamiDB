@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	logger "github.com/PAW122/TsunamiDB/servers/logger"
 	routes "github.com/PAW122/TsunamiDB/servers/public-api/v1/routes"
 )
 
@@ -24,6 +25,14 @@ var client = &http.Client{
 }
 
 func RunPublicApi_v1(port int) {
+
+	// Inicjalizacja loggera
+	err := logger.InitLogger("log_benchmark.log", true)
+	if err != nil {
+		log.Fatalf("Failed to initialize logger: %v", err)
+	}
+	defer logger.CloseLogger()
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/save/", routes.AsyncSave)               // save
 	mux.HandleFunc("/read/", routes.AsyncRead)               // read

@@ -3,23 +3,21 @@ package dataManager_v2
 import (
 	"errors"
 	"io"
-	"os"
-	"path/filepath"
 
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	logger "github.com/PAW122/TsunamiDB/servers/logger"
 )
 
 func ReadDataFromFileAsync(filePath string, dataStartPtr int64, dataEndPtr int64) ([]byte, error) {
-
 	defer debug.MeasureTime("read-from-file")()
+	defer logger.MeasureTime("[ReadDataFromFileAsync]")()
 
 	debug.LogExtra("Reading data from file:", filePath, "from", dataStartPtr, "to", dataEndPtr)
 
-	file, err := os.Open(filepath.Join(basePath, filePath))
+	file, err := getFileHandle(filePath)
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
 
 	fileInfo, err := file.Stat()
 	if err != nil {

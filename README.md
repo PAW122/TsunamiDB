@@ -11,6 +11,8 @@ go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.7.6
 
 + execute:
     go build -tags debug
+    or
+    go build -tags bentchmark
 
     - when starting 1'st server - ```./TsunamiDB.exe 5845```
         > ./TsunamiDB <port for node's comunication>

@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sync"
 	"time"
+
+	logger "github.com/PAW122/TsunamiDB/servers/logger"
 )
 
 const (
@@ -44,6 +46,7 @@ type GetElement_output struct {
 }
 
 func init() {
+	defer logger.MeasureTime("[mapManager init]")()
 	_ = loadMap()
 	lastDeltaFill = time.Now()
 	go deltaFlushWorker()
@@ -92,6 +95,7 @@ func currentDeltaPath() string {
 }
 
 func writeDeltaBatch(entries []GetElement_output) error {
+	defer logger.MeasureTime("[writeDeltaBatch]")()
 	path := currentDeltaPath()
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
@@ -108,6 +112,7 @@ func writeDeltaBatch(entries []GetElement_output) error {
 }
 
 func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
+	defer logger.MeasureTime("[SaveElementByKey]")()
 	entry := GetElement_output{
 		Key:      key,
 		FileName: fileName,
@@ -130,6 +135,7 @@ func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
 }
 
 func deltaFlushWorker() {
+	defer logger.MeasureTime("[deltaFlushWorker]")()
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
 
@@ -173,6 +179,7 @@ func deltaFlushWorker() {
 }
 
 func mergeToBase() {
+	defer logger.MeasureTime("[mergeToBase]")()
 	start := time.Now()
 
 	mutex.RLock()
@@ -209,6 +216,7 @@ func mergeToBase() {
 }
 
 func adjustMergeTriggerSize() {
+	defer logger.MeasureTime("[adjustMergeTriggerSize]")()
 	if len(mergeTimes) < 3 || len(deltaFillTimes) < 3 {
 		return
 	}
@@ -233,7 +241,9 @@ func adjustMergeTriggerSize() {
 	}
 }
 
+// TODO czy to nie ma zrobic call co free()?
 func RemoveElementByKey(key string) error {
+	defer logger.MeasureTime("[RemoveElementByKey]")()
 	mutex.Lock()
 	defer mutex.Unlock()
 	delete(dataMap, key)
@@ -241,6 +251,7 @@ func RemoveElementByKey(key string) error {
 }
 
 func GetElementByKey(key string) (*GetElement_output, error) {
+	defer logger.MeasureTime("[GetElementByKey]")()
 	mutex.RLock()
 	defer mutex.RUnlock()
 	entry, ok := dataMap[key]
@@ -251,6 +262,7 @@ func GetElementByKey(key string) (*GetElement_output, error) {
 }
 
 func GetKeysByRegex(regex string, max int) ([]string, error) {
+	defer logger.MeasureTime("[GetKeysByRegex]")()
 	mutex.RLock()
 	defer mutex.RUnlock()
 

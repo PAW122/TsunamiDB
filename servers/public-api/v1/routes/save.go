@@ -10,10 +10,12 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	logger "github.com/PAW122/TsunamiDB/servers/logger"
 )
 
 func AsyncSave(w http.ResponseWriter, r *http.Request) {
 	defer debug.MeasureTime("> api [async save]")()
+	defer logger.MeasureTime("[Api] [AsyncSave]")()
 
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)

@@ -8,12 +8,14 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	logger "github.com/PAW122/TsunamiDB/servers/logger"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	types "github.com/PAW122/TsunamiDB/types"
 )
 
 func AsyncRead(w http.ResponseWriter, r *http.Request) {
 	defer debug.MeasureTime("> api [async read]")()
+	defer logger.MeasureTime("[Api] [AsyncRead]")()
 
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)

@@ -9,6 +9,7 @@ import (
 
 	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	logger "github.com/PAW122/TsunamiDB/servers/logger"
 )
 
 var basePath = "./db/data"
@@ -59,6 +60,7 @@ func ensureDirExists(filePath string) error {
 
 func SaveDataToFileAsync(data []byte, filePath string) (int64, int64, error) {
 	defer debug.MeasureTime("save-to-file")()
+	defer logger.MeasureTime("[ReadDataFromFileAsync]")()
 
 	resultChan := make(chan saveResult)
 	saveQueue <- saveRequest{
@@ -72,6 +74,7 @@ func SaveDataToFileAsync(data []byte, filePath string) (int64, int64, error) {
 }
 
 func saveData(data []byte, filePath string) (int64, int64, error) {
+	defer logger.MeasureTime("[saveData]")()
 	fullPath := filepath.Join(basePath, filePath)
 	if err := ensureDirExists(fullPath); err != nil {
 		return 0, 0, fmt.Errorf("błąd tworzenia katalogu: %w", err)
@@ -83,11 +86,10 @@ func saveData(data []byte, filePath string) (int64, int64, error) {
 	fileLock.Lock()
 	defer fileLock.Unlock()
 
-	file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE, 0644)
+	file, err := getFileHandle(filePath)
 	if err != nil {
-		return 0, 0, fmt.Errorf("błąd otwierania pliku: %w", err)
+		return 0, 0, err
 	}
-	defer file.Close()
 
 	buffer := bufferPool.Get().([]byte)
 	defer bufferPool.Put(buffer)
@@ -96,16 +98,13 @@ func saveData(data []byte, filePath string) (int64, int64, error) {
 	var startPtr, endPtr int64
 
 	if err != nil && err.Error() == "no suitable free blocks available for the specified file" {
-		// fmt.Println("DEFRAG DEBUG: No suitable free blocks available, appending to the end of the file")
 		startPtr, err = file.Seek(0, io.SeekEnd)
 		if err != nil {
 			return 0, 0, fmt.Errorf("błąd ustawiania wskaźnika pliku: %w", err)
 		}
 	} else if err == nil {
-		// fmt.Println("DEFRAG DEBUG: Using free block", freeBlock)
 		startPtr = freeBlock.StartPtr
 		_, err := file.Seek(startPtr, io.SeekStart)
-		// fmt.Println("DEFRAG DEBUG: Seeked to", resPtr)
 		if err != nil {
 			return 0, 0, fmt.Errorf("błąd ustawiania wskaźnika pliku: %w", err)
 		}

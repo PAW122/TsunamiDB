@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	logger "github.com/PAW122/TsunamiDB/servers/logger"
 )
 
 const freeSpaceFilePath = "./db/maps/free_blocks.json"
@@ -25,8 +26,6 @@ type FreeBlock struct {
 	StartPtr int64  `json:"startPtr"`
 	EndPtr   int64  `json:"endPtr"`
 	Size     int64  `json:"size"`
-	Tag      string `json:"tag"` // sync / async
-	InUse    bool   // Czy blok jest aktualnie używany
 }
 
 // FileMemory - reprezentacja pamięci w pliku
@@ -67,6 +66,7 @@ func loadFreeBlocks() error {
 
 // **🔹 Zapis listy wolnych bloków**
 func saveFreeBlocks() error {
+	defer logger.MeasureTime("[defragmentation] [saveFreeBlocks]")()
 	defer debug.MeasureTime("defragmentation [saveFreeBlocks]")()
 
 	file, err := os.Create(freeSpaceFilePath)
@@ -89,6 +89,7 @@ func saveFreeBlocks() error {
 // **🔹 Dodaje nowy wolny blok**
 func MarkAsFree(key string, fileName string, startPtr, endPtr int64) error {
 	defer debug.MeasureTime("defragmentation [MarkAsFree]")()
+	defer logger.MeasureTime("[defragmentation] [MarkAsFree]")()
 
 	defrag_mutex.Lock()
 	defer defrag_mutex.Unlock()
@@ -114,6 +115,7 @@ func MarkAsFree(key string, fileName string, startPtr, endPtr int64) error {
 // **🔹 Pobiera najmniejszy wolny blok, który pasuje do podanego rozmiaru i nazwy pliku**
 func GetBlock(size int64, fileName string) (*FreeBlock, error) {
 	defer debug.MeasureTime("defragmentation [GetBlock]")()
+	defer logger.MeasureTime("[defragmentation] [GetBlock]")()
 
 	defrag_mutex.Lock()
 	defer defrag_mutex.Unlock()
@@ -147,6 +149,7 @@ func GetBlock(size int64, fileName string) (*FreeBlock, error) {
 // **🔹 Sprawdza i aktualizuje wolne bloki po zajęciu miejsca**
 func SaveBlockCheck(startPtr, endPtr int64) {
 	defer debug.MeasureTime("defragmentation [SaveBlockCheck]")()
+	defer logger.MeasureTime("[defragmentation] [SaveBlockCheck]")()
 
 	defrag_mutex.Lock()
 	defer defrag_mutex.Unlock()
