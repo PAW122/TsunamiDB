@@ -22,3 +22,10 @@ czyli przechowywane tylko w ram
 2. implement "sync-node" mode for server's
 3. add go-lang & js lib for http/client lib
 4. add auto-tests for local lib
+
+=======
+
+append only, freelist dla map
+
++ skalowanie ilosci shardow po ich rozmiarze (w configu dodwac max_shard_size)
+np 16MB
