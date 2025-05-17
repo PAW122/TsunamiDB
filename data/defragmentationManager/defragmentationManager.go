@@ -7,203 +7,154 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-
-	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
-
-const freeSpaceFilePath = "./db/maps/free_blocks.json"
 
 var (
-	defrag_mutex     sync.Mutex
-	freeBlocks       = make(map[string]FreeBlock)
-	defrag_mapLoaded = false
+	freeListMu sync.Mutex
 )
 
-// Struktura przechowująca wolne bloki
+// Struktura wolnego bloku
 type FreeBlock struct {
 	FileName string `json:"fileName"`
 	StartPtr int64  `json:"startPtr"`
 	EndPtr   int64  `json:"endPtr"`
 	Size     int64  `json:"size"`
-	Tag      string `json:"tag"` // sync / async
-	InUse    bool   // Czy blok jest aktualnie używany
 }
 
-// FileMemory - reprezentacja pamięci w pliku
-type FileMemory struct {
-	mu     sync.Mutex
-	Blocks []*FreeBlock
-}
-
-// **🔹 Ładowanie wolnych bloków z pliku JSON**
-func loadFreeBlocks() error {
-	defer debug.MeasureTime("defragmentation [loadFreeBlocks]")()
-
-	if defrag_mapLoaded {
-		return nil
+// --- Helper: wyznacz plik free-listy dla danego fileName (max 4 shardy) ---
+func freeBlocksFile(fileName string) string {
+	hash := 0
+	for _, c := range fileName {
+		hash += int(c)
 	}
+	shard := hash % 4
+	// Plik dla każdej z 4 grup
+	return fmt.Sprintf("./db/maps/free_blocks_%d.json", shard)
+}
 
-	os.MkdirAll(filepath.Dir(freeSpaceFilePath), os.ModePerm)
-
-	file, err := os.Open(freeSpaceFilePath)
+// --- Ładowanie free-listy dla danego fileName/sharda ---
+func loadFreeBlocks(fileName string) (map[string]FreeBlock, error) {
+	path := freeBlocksFile(fileName)
+	m := make(map[string]FreeBlock)
+	f, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			defrag_mapLoaded = true
-			return nil
+			return m, nil // pusta lista
 		}
-		return err
+		return nil, err
 	}
-	defer file.Close()
+	defer f.Close()
+	if err := json.NewDecoder(f).Decode(&m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
 
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&freeBlocks)
+// --- Zapis free-listy dla danego fileName/sharda ---
+func saveFreeBlocks(fileName string, m map[string]FreeBlock) error {
+	path := freeBlocksFile(fileName)
+	os.MkdirAll(filepath.Dir(path), os.ModePerm)
+	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-
-	defrag_mapLoaded = true
-	return nil
+	defer f.Close()
+	return json.NewEncoder(f).Encode(m)
 }
 
-// **🔹 Zapis listy wolnych bloków**
-func saveFreeBlocks() error {
-	defer debug.MeasureTime("defragmentation [saveFreeBlocks]")()
-
-	file, err := os.Create(freeSpaceFilePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	return encoder.Encode(freeBlocks)
-	/*
-		TODO rework
-
-		trzeba zamienić jsona na enkoder,
-		tak to zrobić aby można było asynchrnoiczne blokować dane pointery
-		i edytować dane bez potrzeby wczytywania i zapisywania całego pliku
-	*/
-}
-
-// **🔹 Dodaje nowy wolny blok**
+// --- Dodanie bloku jako wolnego ---
 func MarkAsFree(key string, fileName string, startPtr, endPtr int64) error {
-	defer debug.MeasureTime("defragmentation [MarkAsFree]")()
-
-	defrag_mutex.Lock()
-	defer defrag_mutex.Unlock()
-
-	err := loadFreeBlocks()
+	freeListMu.Lock()
+	defer freeListMu.Unlock()
+	m, err := loadFreeBlocks(fileName)
 	if err != nil {
 		return err
 	}
-
 	size := endPtr - startPtr
-	// fmt.Println("DEFRAG DEBUG: Marking block as free:", key, "Size:", size)
-
-	freeBlocks[key] = FreeBlock{
+	m[key] = FreeBlock{
 		FileName: fileName,
 		StartPtr: startPtr,
 		EndPtr:   endPtr,
 		Size:     size,
 	}
-
-	return saveFreeBlocks()
+	return saveFreeBlocks(fileName, m)
 }
 
-// **🔹 Pobiera najmniejszy wolny blok, który pasuje do podanego rozmiaru i nazwy pliku**
+// --- Pobranie najlepiej pasującego bloku (best-fit) ---
 func GetBlock(size int64, fileName string) (*FreeBlock, error) {
-	defer debug.MeasureTime("defragmentation [GetBlock]")()
-
-	defrag_mutex.Lock()
-	defer defrag_mutex.Unlock()
-
-	err := loadFreeBlocks()
+	freeListMu.Lock()
+	defer freeListMu.Unlock()
+	m, err := loadFreeBlocks(fileName)
 	if err != nil {
 		return nil, err
 	}
-
-	var bestFitBlock *FreeBlock
-	for _, block := range freeBlocks {
-		// Sprawdzamy tylko bloki pasujące do nazwy pliku i rozmiaru
+	var bestKey string
+	var bestBlock *FreeBlock
+	for key, block := range m {
 		if block.Size >= size && block.FileName == fileName {
-			if bestFitBlock == nil || block.Size < bestFitBlock.Size {
-				bestFitBlock = &block
+			if bestBlock == nil || block.Size < bestBlock.Size {
+				b := block // kopia (żeby wskaźnik był prawidłowy)
+				bestBlock = &b
+				bestKey = key
 			}
 		}
 	}
-
-	if bestFitBlock == nil {
+	if bestBlock == nil {
 		return nil, errors.New("no suitable free blocks available for the specified file")
 	}
-
-	// Usunięcie bloku po przydzieleniu
-	delete(freeBlocks, bestFitBlock.FileName)
-	saveFreeBlocks()
-
-	return bestFitBlock, nil
+	// Po pobraniu usuwamy blok
+	delete(m, bestKey)
+	saveFreeBlocks(fileName, m)
+	return bestBlock, nil
 }
 
-// **🔹 Sprawdza i aktualizuje wolne bloki po zajęciu miejsca**
-func SaveBlockCheck(startPtr, endPtr int64) {
-	defer debug.MeasureTime("defragmentation [SaveBlockCheck]")()
-
-	defrag_mutex.Lock()
-	defer defrag_mutex.Unlock()
-
-	err := loadFreeBlocks()
+// --- Aktualizacja wolnych bloków po zapisie (fragmentacja, podział) ---
+func SaveBlockCheck(startPtr, endPtr int64, fileName string) {
+	freeListMu.Lock()
+	defer freeListMu.Unlock()
+	m, err := loadFreeBlocks(fileName)
 	if err != nil {
 		fmt.Println("ERROR: Could not load free blocks:", err)
 		return
 	}
-
-	for key, block := range freeBlocks {
-		// **Sprawdzenie, czy nowy zapis pokrywa się z wolnym blokiem**
-		if startPtr >= block.StartPtr && endPtr <= block.EndPtr {
-			// fmt.Println("DEFRAG DEBUG: Save overlaps with free block", key)
-
-			// **Cały blok został zajęty - usuwamy go**
+	for key, block := range m {
+		if startPtr >= block.StartPtr && endPtr <= block.EndPtr && block.FileName == fileName {
+			// Cały blok zajęty
 			if startPtr == block.StartPtr && endPtr == block.EndPtr {
-				// fmt.Println("DEFRAG: Entire block occupied, removing", key)
-				delete(freeBlocks, key)
+				delete(m, key)
 			} else if startPtr == block.StartPtr {
-				// **Początek bloku jest zajęty - przesuwamy start**
-				// fmt.Println("DEFRAG: Adjusting start of block", key)
-				freeBlocks[key] = FreeBlock{
+				// Początek bloku zajęty — przesuwamy start
+				m[key] = FreeBlock{
 					FileName: block.FileName,
 					StartPtr: endPtr,
 					EndPtr:   block.EndPtr,
 					Size:     block.EndPtr - endPtr,
 				}
 			} else if endPtr == block.EndPtr {
-				// **Koniec bloku jest zajęty - przesuwamy koniec**
-				// fmt.Println("DEFRAG: Adjusting end of block", key)
-				freeBlocks[key] = FreeBlock{
+				// Koniec bloku zajęty — przesuwamy koniec
+				m[key] = FreeBlock{
 					FileName: block.FileName,
 					StartPtr: block.StartPtr,
 					EndPtr:   startPtr,
 					Size:     startPtr - block.StartPtr,
 				}
 			} else {
-				// **Blok został podzielony na dwa mniejsze**
-				// fmt.Println("DEFRAG: Splitting block", key)
-				freeBlocks[key] = FreeBlock{
+				// Podział na dwa bloki
+				m[key] = FreeBlock{
 					FileName: block.FileName,
 					StartPtr: block.StartPtr,
 					EndPtr:   startPtr,
 					Size:     startPtr - block.StartPtr,
 				}
 				newKey := fmt.Sprintf("%s_%d", key, endPtr)
-				freeBlocks[newKey] = FreeBlock{
+				m[newKey] = FreeBlock{
 					FileName: block.FileName,
 					StartPtr: endPtr,
 					EndPtr:   block.EndPtr,
 					Size:     block.EndPtr - endPtr,
 				}
 			}
-
-			// **Zapisujemy zaktualizowane wolne bloki**
-			saveFreeBlocks()
+			saveFreeBlocks(fileName, m)
 			return
 		}
 	}

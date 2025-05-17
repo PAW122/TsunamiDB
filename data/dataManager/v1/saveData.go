@@ -67,7 +67,7 @@ func SaveDataToFile(data []byte, filePath string) (int64, int64, error) {
 		}
 
 		// 🔹 Aktualizuj system defragmentacji
-		defragmentationManager.SaveBlockCheck(startPtr, endPtr)
+		defragmentationManager.SaveBlockCheck(startPtr, endPtr, filePath)
 
 	} else {
 		// 🔹 Jeśli nie znaleziono wolnego bloku, dopisujemy dane na końcu pliku

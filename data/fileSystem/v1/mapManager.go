@@ -1,39 +1,33 @@
 package fileSystem_v1
 
 import (
+	"crypto/sha1"
 	"encoding/gob"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sync"
-	"time"
+
+	lru "github.com/hashicorp/golang-lru"
 )
 
-const (
-	baseMapPath        = "./db/maps/data_map_base.gob"
-	deltaL1Path        = "./db/maps/data_map_delta_L1.gob"
-	deltaL2Path        = "./db/maps/data_map_delta_L2.gob"
-	initialTriggerSize = 64 * 1024 // 64KB
-	flushBatchSize     = 50
-	flushInterval      = 100 * time.Millisecond
-)
+type ShardConfig struct {
+	NumShards int `json:"num_shards"`
+	MinShards int `json:"min_shards"`
+	MaxShards int `json:"max_shards"`
+}
 
 var (
-	mutex        sync.RWMutex
-	dataMap      = make(map[string]GetElement_output)
-	mapLoaded    = false
-	usingDeltaL1 = true
-	merging      = false
-
-	deltaBuffer      []GetElement_output
-	deltaBufferMutex sync.Mutex
-	deltaFlushCond   = sync.NewCond(&sync.Mutex{})
-
-	mergeTriggerSize = int64(initialTriggerSize)
-	mergeTimes       []time.Duration
-	deltaFillTimes   []time.Duration
-	lastDeltaFill    time.Time
+	configPath   = "./db/maps/shard_config.json"
+	configMu     sync.RWMutex
+	shardConfig  *ShardConfig
+	shardCache   *lru.Cache // LRU cache na shardy
+	shardCacheMu sync.Mutex
+	cacheSize    = 32
 )
 
 type GetElement_output struct {
@@ -43,230 +37,285 @@ type GetElement_output struct {
 	EndPtr   int
 }
 
-func init() {
-	_ = loadMap()
-	lastDeltaFill = time.Now()
-	go deltaFlushWorker()
+// --- Config loader ---
+
+func loadShardConfig() (*ShardConfig, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
+	f, err := os.Open(configPath)
+	if err != nil {
+		// plik nie istnieje — utwórz defaultowy config!
+		fmt.Println("[MapManager] Brak shard_config.json — tworzę domyślny")
+		cfg := &ShardConfig{
+			NumShards: 8,
+			MinShards: 8,
+			MaxShards: 256,
+		}
+		if err := saveShardConfig(cfg); err != nil {
+			return nil, err
+		}
+		shardConfig = cfg
+		return cfg, nil
+	}
+	defer f.Close()
+	var cfg ShardConfig
+	if err := json.NewDecoder(f).Decode(&cfg); err != nil {
+		return nil, err
+	}
+	shardConfig = &cfg
+	return &cfg, nil
 }
 
-func loadMap() error {
-	mutex.Lock()
-	defer mutex.Unlock()
-
-	if mapLoaded {
-		return nil
+func saveShardConfig(cfg *ShardConfig) error {
+	configMu.Lock()
+	defer configMu.Unlock()
+	f, err := os.Create(configPath)
+	if err != nil {
+		return err
 	}
+	defer f.Close()
+	return json.NewEncoder(f).Encode(cfg)
+}
 
-	readGob := func(path string, target map[string]GetElement_output) {
-		f, err := os.Open(path)
-		if err != nil {
+func getNumShards() int {
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return shardConfig.NumShards
+}
+
+// --- Shard utils ---
+
+func shardIdForKeyWithN(key string, n int) string {
+	h := sha1.Sum([]byte(key))
+	idx := int(h[0]) % n
+	return fmt.Sprintf("%02x", idx)
+}
+func shardIdForKey(key string) string {
+	return shardIdForKeyWithN(key, getNumShards())
+}
+func allShardIds() []string {
+	n := getNumShards()
+	out := make([]string, n)
+	for i := 0; i < n; i++ {
+		out[i] = fmt.Sprintf("%02x", i)
+	}
+	return out
+}
+
+func shardBasePath(shardId string) string {
+	return fmt.Sprintf("./db/maps/data_map_%s_base.gob", shardId)
+}
+
+// --- Map loader/saver ---
+
+func loadShardMapFromDisk(shardId string) map[string]GetElement_output {
+	m := make(map[string]GetElement_output)
+	base := shardBasePath(shardId)
+	loadGob(base, m)
+	return m
+}
+
+func saveShardMapToDisk(shardId string, m map[string]GetElement_output) error {
+	base := shardBasePath(shardId)
+	return saveGob(base, m)
+}
+
+func loadGob(path string, m map[string]GetElement_output) {
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	dec := gob.NewDecoder(f)
+	for {
+		var entry GetElement_output
+		if err := dec.Decode(&entry); err != nil {
+			if err == io.EOF {
+				break
+			}
 			return
 		}
-		defer f.Close()
-		dec := gob.NewDecoder(f)
-		for {
-			var entry GetElement_output
-			if err := dec.Decode(&entry); err != nil {
-				if err == io.EOF {
-					break
-				}
-				return
-			}
-			target[entry.Key] = entry
-		}
+		m[entry.Key] = entry
 	}
-
-	readGob(baseMapPath, dataMap)
-	readGob(deltaL1Path, dataMap)
-	readGob(deltaL2Path, dataMap)
-
-	mapLoaded = true
-	return nil
 }
 
-func currentDeltaPath() string {
-	if usingDeltaL1 {
-		return deltaL1Path
-	}
-	return deltaL2Path
-}
-
-func writeDeltaBatch(entries []GetElement_output) error {
-	path := currentDeltaPath()
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+func saveGob(path string, m map[string]GetElement_output) error {
+	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	enc := gob.NewEncoder(f)
-	for _, e := range entries {
-		if err := enc.Encode(e); err != nil {
+	for _, v := range m {
+		if err := enc.Encode(v); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// --- LRU cache na shardy ---
+
+type shardEntry struct {
+	mu   sync.RWMutex
+	Data map[string]GetElement_output
+	// można rozbudować o dirty, deltaBuffer itd.
+}
+
+func loadShardToCache(shardId string) *shardEntry {
+	shardCacheMu.Lock()
+	defer shardCacheMu.Unlock()
+	if v, ok := shardCache.Get(shardId); ok {
+		return v.(*shardEntry)
+	}
+	m := &shardEntry{
+		Data: loadShardMapFromDisk(shardId),
+	}
+	shardCache.Add(shardId, m)
+	return m
+}
+
+// --- API ---
+
 func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
-	entry := GetElement_output{
+	shardId := shardIdForKey(key)
+	entry := loadShardToCache(shardId)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	elem := GetElement_output{
 		Key:      key,
 		FileName: fileName,
 		StartPtr: startPtr,
 		EndPtr:   endPtr,
 	}
-
-	mutex.Lock()
-	dataMap[key] = entry
-	mutex.Unlock()
-
-	deltaBufferMutex.Lock()
-	deltaBuffer = append(deltaBuffer, entry)
-	if len(deltaBuffer) >= flushBatchSize {
-		deltaFlushCond.Signal()
-	}
-	deltaBufferMutex.Unlock()
-
-	return nil
-}
-
-func deltaFlushWorker() {
-	ticker := time.NewTicker(flushInterval)
-	defer ticker.Stop()
-
-	var flushDurations []time.Duration
-
-	for {
-		deltaFlushCond.L.Lock()
-		for len(deltaBuffer) < flushBatchSize {
-			deltaFlushCond.L.Unlock()
-			<-ticker.C
-			deltaFlushCond.L.Lock()
-		}
-		bufferCopy := make([]GetElement_output, len(deltaBuffer))
-		copy(bufferCopy, deltaBuffer)
-		deltaBuffer = deltaBuffer[:0]
-		deltaFlushCond.L.Unlock()
-
-		start := time.Now()
-		_ = writeDeltaBatch(bufferCopy)
-		duration := time.Since(start)
-		_ = duration // you can log this or track flush performance later
-		flushDurations = append(flushDurations, duration)
-		if len(flushDurations) > 3 {
-			flushDurations = flushDurations[1:]
-		}
-
-		// Check merge condition
-		if !merging && usingDeltaL1 {
-			if info, err := os.Stat(deltaL1Path); err == nil && info.Size() > mergeTriggerSize {
-				merging = true
-				usingDeltaL1 = false
-				deltaFillTimes = append(deltaFillTimes, time.Since(lastDeltaFill))
-				if len(deltaFillTimes) > 3 {
-					deltaFillTimes = deltaFillTimes[1:]
-				}
-				lastDeltaFill = time.Now()
-				go mergeToBase()
-			}
-		}
-	}
-}
-
-func mergeToBase() {
-	start := time.Now()
-
-	mutex.RLock()
-	temp := make(map[string]GetElement_output, len(dataMap))
-	for k, v := range dataMap {
-		temp[k] = v
-	}
-	mutex.RUnlock()
-
-	f, err := os.Create(baseMapPath)
-	if err != nil {
-		merging = false
-		return
-	}
-	enc := gob.NewEncoder(f)
-	for _, v := range temp {
-		_ = enc.Encode(v)
-	}
-	f.Close()
-
-	_ = os.Remove(deltaL1Path)
-
-	mutex.Lock()
-	usingDeltaL1 = true
-	merging = false
-	mutex.Unlock()
-
-	duration := time.Since(start)
-	mergeTimes = append(mergeTimes, duration)
-	if len(mergeTimes) > 3 {
-		mergeTimes = mergeTimes[1:]
-	}
-	adjustMergeTriggerSize()
-}
-
-func adjustMergeTriggerSize() {
-	if len(mergeTimes) < 3 || len(deltaFillTimes) < 3 {
-		return
-	}
-
-	var mergeAvg, fillAvg time.Duration
-	for _, d := range mergeTimes {
-		mergeAvg += d
-	}
-	mergeAvg /= time.Duration(len(mergeTimes))
-
-	for _, d := range deltaFillTimes {
-		fillAvg += d
-	}
-	fillAvg /= time.Duration(len(deltaFillTimes))
-
-	ratio := float64(mergeAvg) / float64(fillAvg)
-
-	if ratio > 0.25 && mergeTriggerSize < 16*1024*1024 {
-		mergeTriggerSize = int64(float64(mergeTriggerSize) * 1.5)
-	} else if ratio < 0.05 && mergeTriggerSize > 64*1024 {
-		mergeTriggerSize = int64(float64(mergeTriggerSize) * 0.75)
-	}
+	entry.Data[key] = elem
+	// Save to disk (prosto, można zoptymalizować batch/flush L1-L2)
+	return saveShardMapToDisk(shardId, entry.Data)
 }
 
 func RemoveElementByKey(key string) error {
-	mutex.Lock()
-	defer mutex.Unlock()
-	delete(dataMap, key)
-	return nil
+	shardId := shardIdForKey(key)
+	entry := loadShardToCache(shardId)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	_, ok := entry.Data[key]
+	if !ok {
+		return errors.New("key not found")
+	}
+	// TODO: MarkFree logic here (for free-list)
+	delete(entry.Data, key)
+	return saveShardMapToDisk(shardId, entry.Data)
 }
 
 func GetElementByKey(key string) (*GetElement_output, error) {
-	mutex.RLock()
-	defer mutex.RUnlock()
-	entry, ok := dataMap[key]
+	shardId := shardIdForKey(key)
+	entry := loadShardToCache(shardId)
+	entry.mu.RLock()
+	defer entry.mu.RUnlock()
+	elem, ok := entry.Data[key]
 	if !ok {
 		return nil, errors.New("key not found")
 	}
-	return &entry, nil
+	return &elem, nil
 }
 
 func GetKeysByRegex(regex string, max int) ([]string, error) {
-	mutex.RLock()
-	defer mutex.RUnlock()
-
-	compiledRegex, err := regexp.Compile(regex)
+	result := []string{}
+	re, err := regexp.Compile(regex)
 	if err != nil {
 		return nil, err
 	}
-
-	var matchingKeys []string
-	for key := range dataMap {
-		if compiledRegex.MatchString(key) {
-			matchingKeys = append(matchingKeys, key)
-			if max > 0 && len(matchingKeys) >= max {
-				break
+	for _, shardId := range allShardIds() {
+		entry := loadShardToCache(shardId)
+		entry.mu.RLock()
+		for key := range entry.Data {
+			if re.MatchString(key) {
+				result = append(result, key)
+				if max > 0 && len(result) >= max {
+					entry.mu.RUnlock()
+					return result, nil
+				}
 			}
 		}
+		entry.mu.RUnlock()
 	}
-	return matchingKeys, nil
+	return result, nil
+}
+
+// --- Re-sharding (dynamiczne zwiększanie liczby shardów) ---
+
+func reshardDB(newNumShards int) error {
+	fmt.Println("==> ROZPOCZYNAM MIGRACJĘ SHARDÓW: nowa liczba =", newNumShards)
+	oldNum := getNumShards()
+	if newNumShards == oldNum {
+		return nil // nic nie zmieniamy
+	}
+	// 1. Wczytaj wszystkie stare shardy do pamięci
+	allData := map[string]GetElement_output{}
+	for _, oldShardId := range allShardIds() {
+		m := loadShardMapFromDisk(oldShardId)
+		for k, v := range m {
+			allData[k] = v
+		}
+	}
+	// 2. Przygotuj nowe mapy
+	newMaps := map[string]map[string]GetElement_output{}
+	for k, v := range allData {
+		sid := shardIdForKeyWithN(k, newNumShards)
+		if newMaps[sid] == nil {
+			newMaps[sid] = make(map[string]GetElement_output)
+		}
+		newMaps[sid][k] = v
+	}
+	// 3. Zapisz nowe mapy (base) na dysk
+	for sid, m := range newMaps {
+		if err := saveShardMapToDisk(sid, m); err != nil {
+			return err
+		}
+	}
+	// 4. Skasuj stare mapy (base)
+	oldFiles, _ := filepath.Glob("./db/maps/data_map_??_base.gob")
+	for _, file := range oldFiles {
+		os.Remove(file)
+	}
+	// 5. Zaktualizuj config
+	shardConfig.NumShards = newNumShards
+	if err := saveShardConfig(shardConfig); err != nil {
+		return err
+	}
+	fmt.Println("==> MIGRACJA SHARDÓW ZAKOŃCZONA")
+	return nil
+}
+
+func maybeReshard() error {
+	// policz sumarycznie ilość kluczy
+	total := 0
+	for _, sid := range allShardIds() {
+		m := loadShardMapFromDisk(sid)
+		total += len(m)
+	}
+	kluczeNaShard := total / getNumShards()
+	if kluczeNaShard > 10000 && getNumShards() < shardConfig.MaxShards {
+		newShards := getNumShards() * 2
+		if newShards > shardConfig.MaxShards {
+			newShards = shardConfig.MaxShards
+		}
+		return reshardDB(newShards)
+	}
+	return nil
+}
+
+// --- Inicjalizacja ---
+
+func InitMapManager() {
+	cfg, err := loadShardConfig()
+	if err != nil {
+		panic("Brak configa shardów: " + err.Error())
+	}
+	fmt.Println("[MapManager] Liczba shardów:", cfg.NumShards)
+	c, err := lru.New(cacheSize)
+	if err != nil {
+		panic("Nie można utworzyć LRU cache na shardy: " + err.Error())
+	}
+	shardCache = c
 }

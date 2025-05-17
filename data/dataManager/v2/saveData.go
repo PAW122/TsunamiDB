@@ -119,7 +119,7 @@ func saveData(data []byte, filePath string) (int64, int64, error) {
 	}
 
 	endPtr = startPtr + int64(len(data))
-	defragmentationManager.SaveBlockCheck(startPtr, endPtr)
+	defragmentationManager.SaveBlockCheck(startPtr, endPtr, filePath)
 
 	return startPtr, endPtr, nil
 }

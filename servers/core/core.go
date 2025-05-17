@@ -25,6 +25,7 @@ import (
 	"os"
 	"strconv"
 
+	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	config "github.com/PAW122/TsunamiDB/servers/config"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
@@ -36,6 +37,8 @@ var defaultConfigDir = "./config.json"
 func RunCore() {
 	debug.Log("Load config")
 	config.LoadConfig(defaultConfigDir)
+
+	fileSystem_v1.InitMapManager()
 
 	debug.Log("Run Core")
 	config := flag.Bool("config", false, "load config from config.json")
