@@ -40,8 +40,6 @@ type GetElement_output struct {
 // --- Config loader ---
 
 func loadShardConfig() (*ShardConfig, error) {
-	configMu.Lock()
-	defer configMu.Unlock()
 	f, err := os.Open(configPath)
 	if err != nil {
 		// plik nie istnieje — utwórz defaultowy config!
@@ -69,11 +67,20 @@ func loadShardConfig() (*ShardConfig, error) {
 func saveShardConfig(cfg *ShardConfig) error {
 	configMu.Lock()
 	defer configMu.Unlock()
+
+	// Upewnij się, że katalog istnieje
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return err
+	}
+
+	// Utwórz plik
 	f, err := os.Create(configPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+
+	// Zapisz JSON
 	return json.NewEncoder(f).Encode(cfg)
 }
 
