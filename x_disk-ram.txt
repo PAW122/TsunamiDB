@@ -1,0 +1,78 @@
+Tak – to, co opisujesz, to w istocie **indeks oparty na partycjonowanym haszowaniu kluczy**, bardzo zbliżony do:
+
+---
+
+## ✅ **Segmentowanego indeksu z filtrami (np. Bloom / HashSet) dla regionów danych**
+
+### 🔧 Jak działa taki algorytm:
+
+1. **Podczas zapisu** (np. w `mergeToBase()`):
+
+   * Dzielisz dane na `N` grup (np. co 10k wpisów),
+   * Dla każdej grupy:
+
+     * Zapisujesz `startOffset`, `endOffset` w pliku (lub `size`),
+     * Tworzysz filtr (`map[string]bool` lub `BloomFilter`) na `key` z tej grupy.
+
+2. **Zapisujesz do indeksu** np. `region_index.gob`:
+
+   ```json
+   {
+     hash: {
+       "group1": {from: 0, size: 48000, filter: [...hashes...]},
+       "group2": {from: 48001, size: 51000, filter: [...]},
+     }
+   }
+   ```
+
+3. **Podczas odczytu**:
+
+   * Haszujesz szukany `key`,
+   * Sprawdzasz, w których grupach na pewno nie ma (`!filter.Test(key)`),
+   * Wczytujesz tylko te grupy, które **mogą** zawierać `key`.
+
+---
+
+## 🎯 Zyski:
+
+* **Zamiast skanować 100k wpisów**, skanujesz np. tylko 1–2 grupy po 10k (albo jedną),
+* Bardzo dobrze się skaluje do plików >1M `key`,
+* Prosty fallback: jeśli filtr mówi „może jest”, po prostu wczytujesz tę część.
+
+---
+
+## 📦 Warianty filtrów do użycia:
+
+| Metoda            | RAM    | False Positives | Koszt Add/Test |
+| ----------------- | ------ | --------------- | -------------- |
+| `map[string]bool` | wysoki | 0%              | bardzo szybki  |
+| `BloomFilter`     | niski  | 1%–5%           | szybki         |
+| `CuckooFilter`    | średni | \<Bloom         | szybki         |
+
+---
+
+## 🛠️ Możliwa struktura w Go:
+
+```go
+type RegionIndex struct {
+    From   int64
+    Size   int64
+    Filter *bloom.BloomFilter // lub inna struktura
+}
+var baseMapRegions []RegionIndex
+```
+
+W `mergeToBase()`:
+
+* Zliczasz pozycje,
+* Grupujesz co `10k`,
+* Dla każdej tworzysz `RegionIndex`,
+* Zapisujesz metadane do `baseMapIndex.gob`.
+
+---
+
+Chcesz, żebym przygotował funkcję Go, która:
+
+* grupuje wpisy,
+* tworzy indeks regionalny z filtrami,
+* oraz funkcję `FindLikelyRegions(key string)`?

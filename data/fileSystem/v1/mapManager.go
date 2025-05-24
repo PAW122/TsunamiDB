@@ -34,6 +34,10 @@ var (
 	mergeTimes       []time.Duration
 	deltaFillTimes   []time.Duration
 	lastDeltaFill    time.Time
+
+	writeCounter     int
+	writesPerSecond  int
+	writeCounterLock sync.Mutex
 )
 
 type GetElement_output struct {
@@ -47,6 +51,20 @@ func init() {
 	_ = loadMap()
 	lastDeltaFill = time.Now()
 	go deltaFlushWorker()
+	go writeCounterResetWorker()
+}
+
+func writeCounterResetWorker() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		<-ticker.C
+		writeCounterLock.Lock()
+		writesPerSecond = writeCounter
+		writeCounter = 0
+		writeCounterLock.Unlock()
+	}
 }
 
 func loadMap() error {
@@ -115,10 +133,23 @@ func SaveElementByKey(key, fileName string, startPtr, endPtr int) error {
 		EndPtr:   endPtr,
 	}
 
+	// Update map in memory
 	mutex.Lock()
 	dataMap[key] = entry
 	mutex.Unlock()
 
+	// Count writes
+	writeCounterLock.Lock()
+	writeCounter++
+	currentRPS := writesPerSecond
+	writeCounterLock.Unlock()
+
+	if currentRPS < 100 {
+		// LOW LOAD → write directly to disk
+		return writeDeltaBatch([]GetElement_output{entry})
+	}
+
+	// HIGH LOAD → use buffer
 	deltaBufferMutex.Lock()
 	deltaBuffer = append(deltaBuffer, entry)
 	if len(deltaBuffer) >= flushBatchSize {
