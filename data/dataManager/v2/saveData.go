@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
@@ -13,16 +14,11 @@ import (
 
 var basePath = "./db/data"
 var fileLocks sync.Map
-var bufferPool = sync.Pool{
-	New: func() interface{} {
-		return make([]byte, 8192) // Bufor 8KB dla operacji zapisu
-	},
-}
 
-// Zestaw workerów do obsługi zapisów
-var saveQueue = make(chan saveRequest, 100)
+const batchSize = 32
+const batchTimeout = 1 * time.Millisecond
 
-// Struktura zapytania o zapis
+var batchQueue = make(chan saveRequest, 100000)
 
 type saveRequest struct {
 	data     []byte
@@ -37,44 +33,67 @@ type saveResult struct {
 }
 
 func init() {
-	for i := 0; i < 8; i++ { // 8 równoległych workerów
-		go saveWorker()
+	numWorkers := 8 // lub runtime.NumCPU() * 2
+	for i := 0; i < numWorkers; i++ {
+		go batchSaveWorker()
 	}
-}
-
-func saveWorker() {
-	for req := range saveQueue {
-		startPtr, endPtr, err := saveData(req.data, req.filePath)
-		req.result <- saveResult{startPtr, endPtr, err}
-	}
-}
-
-func ensureDirExists(filePath string) error {
-	dir := filepath.Dir(filePath)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return os.MkdirAll(dir, 0755)
-	}
-	return nil
 }
 
 func SaveDataToFileAsync(data []byte, filePath string) (int64, int64, error) {
 	defer debug.MeasureTime("save-to-file")()
-
-	resultChan := make(chan saveResult)
-	saveQueue <- saveRequest{
+	resChan := make(chan saveResult, 1)
+	batchQueue <- saveRequest{
 		data:     data,
 		filePath: filePath,
-		result:   resultChan,
+		result:   resChan,
 	}
-
-	res := <-resultChan
+	res := <-resChan
 	return res.startPtr, res.endPtr, res.err
 }
 
-func saveData(data []byte, filePath string) (int64, int64, error) {
+func batchSaveWorker() {
+	var pending []saveRequest
+	ticker := time.NewTicker(batchTimeout)
+	defer ticker.Stop()
+
+	flush := func() {
+		if len(pending) == 0 {
+			return
+		}
+
+		// Grupujemy zapisy po pliku
+		grouped := map[string][]saveRequest{}
+		for _, req := range pending {
+			grouped[req.filePath] = append(grouped[req.filePath], req)
+		}
+
+		for path, group := range grouped {
+			writeBatch(path, group)
+		}
+
+		pending = pending[:0]
+	}
+
+	for {
+		select {
+		case req := <-batchQueue:
+			pending = append(pending, req)
+			if len(pending) >= batchSize {
+				flush()
+			}
+		case <-ticker.C:
+			flush()
+		}
+	}
+}
+
+func writeBatch(filePath string, batch []saveRequest) {
 	fullPath := filepath.Join(basePath, filePath)
 	if err := ensureDirExists(fullPath); err != nil {
-		return 0, 0, fmt.Errorf("błąd tworzenia katalogu: %w", err)
+		for _, r := range batch {
+			r.result <- saveResult{err: fmt.Errorf("create dir err: %w", err)}
+		}
+		return
 	}
 
 	lock, _ := fileLocks.LoadOrStore(fullPath, &sync.Mutex{})
@@ -85,41 +104,46 @@ func saveData(data []byte, filePath string) (int64, int64, error) {
 
 	file, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
-		return 0, 0, fmt.Errorf("błąd otwierania pliku: %w", err)
+		for _, r := range batch {
+			r.result <- saveResult{err: fmt.Errorf("open file err: %w", err)}
+		}
+		return
 	}
 	defer file.Close()
 
-	buffer := bufferPool.Get().([]byte)
-	defer bufferPool.Put(buffer)
+	for _, req := range batch {
+		freeBlock, err := defragmentationManager.GetBlock(int64(len(req.data)), filePath)
+		var startPtr int64
 
-	freeBlock, err := defragmentationManager.GetBlock(int64(len(data)), filePath)
-	var startPtr, endPtr int64
-
-	if err != nil && err.Error() == "no suitable free blocks available for the specified file" {
-		// fmt.Println("DEFRAG DEBUG: No suitable free blocks available, appending to the end of the file")
-		startPtr, err = file.Seek(0, io.SeekEnd)
-		if err != nil {
-			return 0, 0, fmt.Errorf("błąd ustawiania wskaźnika pliku: %w", err)
+		if err != nil || freeBlock == nil {
+			startPtr, err = file.Seek(0, io.SeekEnd)
+			if err != nil {
+				req.result <- saveResult{err: fmt.Errorf("seek err: %w", err)}
+				continue
+			}
+		} else {
+			startPtr = freeBlock.StartPtr
+			if _, err := file.Seek(startPtr, io.SeekStart); err != nil {
+				req.result <- saveResult{err: fmt.Errorf("seek block err: %w", err)}
+				continue
+			}
 		}
-	} else if err == nil {
-		// fmt.Println("DEFRAG DEBUG: Using free block", freeBlock)
-		startPtr = freeBlock.StartPtr
-		_, err := file.Seek(startPtr, io.SeekStart)
-		// fmt.Println("DEFRAG DEBUG: Seeked to", resPtr)
-		if err != nil {
-			return 0, 0, fmt.Errorf("błąd ustawiania wskaźnika pliku: %w", err)
+
+		if _, err := file.Write(req.data); err != nil {
+			req.result <- saveResult{err: fmt.Errorf("write err: %w", err)}
+			continue
 		}
-	} else {
-		return 0, 0, fmt.Errorf("błąd pobierania wolnego bloku: %w", err)
+
+		endPtr := startPtr + int64(len(req.data))
+		defragmentationManager.SaveBlockCheck(startPtr, endPtr)
+		req.result <- saveResult{startPtr: startPtr, endPtr: endPtr}
 	}
+}
 
-	_, err = file.Write(data)
-	if err != nil {
-		return 0, 0, fmt.Errorf("błąd zapisu do pliku: %w", err)
+func ensureDirExists(filePath string) error {
+	dir := filepath.Dir(filePath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return os.MkdirAll(dir, 0755)
 	}
-
-	endPtr = startPtr + int64(len(data))
-	defragmentationManager.SaveBlockCheck(startPtr, endPtr)
-
-	return startPtr, endPtr, nil
+	return nil
 }

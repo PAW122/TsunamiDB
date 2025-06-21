@@ -10,48 +10,65 @@ import (
 	routes "github.com/PAW122/TsunamiDB/servers/public-api/v1/routes"
 )
 
-// Konfiguracja connection pool
+// ----------  PULA POŁĄCZEŃ DLA WYCHODZĄCYCH REQUESTÓW  ----------
+
+// Konfiguracja transportu (wspólna pula)
 var transport = &http.Transport{
-	MaxIdleConns:        10000,            // Maksymalna liczba połączeń w puli
-	MaxIdleConnsPerHost: 10000,            // Maksymalna liczba połączeń na hosta
-	IdleConnTimeout:     90 * time.Second, // Limit czasu połączenia w puli
+	MaxIdleConns:        10000,
+	MaxIdleConnsPerHost: 10000,
+	MaxConnsPerHost:     10000,
+	IdleConnTimeout:     90 * time.Second,
+	DisableKeepAlives:   false, // wymuś keep-alive
+	ForceAttemptHTTP2:   true,  // HTTP/2 = multiplexing
 }
 
-// Tworzymy klienta HTTP z connection pool
-var client = &http.Client{
+// Eksportujemy, gdyby ktoś chciał użyć bez wrappera
+var HTTPClient = &http.Client{
 	Transport: transport,
-	Timeout:   30 * time.Second, // Maksymalny czas requestu
+	Timeout:   30 * time.Second,
+}
+
+// ----------  HANDLERY Z WSTRZYKNIĘTYM KLIENTEM  ----------
+
+// Adapter: zamienia handler przyjmujący (*http.Client) na http.HandlerFunc
+func withClient(fn func(http.ResponseWriter, *http.Request, *http.Client)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fn(w, r, HTTPClient)
+	}
 }
 
 func RunPublicApi_v1(port int) {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/save/", routes.AsyncSave)               // save
-	mux.HandleFunc("/read/", routes.AsyncRead)               // read
-	mux.HandleFunc("/free/", routes.Free)                    // delete
-	mux.HandleFunc("/save_encrypted/", routes.SaveEncrypted) // save encrypted
-	mux.HandleFunc("/read_encrypted/", routes.ReadEncrypted) // read encrypted
-	mux.HandleFunc("/sql", routes.SQL_api)                   // actions on sql tables
-	mux.HandleFunc("/key_by_regex/", routes.GetKeysByRegex)
 
-	// Konfiguracja serwera z Connection Pool
+	// —— zapisy / odczyty ——
+	mux.HandleFunc("/save/", withClient(routes.AsyncSave))
+	mux.HandleFunc("/read/", withClient(routes.AsyncRead))
+	mux.HandleFunc("/free/", withClient(routes.Free))
+	mux.HandleFunc("/save_encrypted/", withClient(routes.SaveEncrypted))
+	mux.HandleFunc("/read_encrypted/", withClient(routes.ReadEncrypted))
+
+	// —— operacje meta ——
+	mux.HandleFunc("/sql", withClient(routes.SQL_api))
+	mux.HandleFunc("/key_by_regex/", withClient(routes.GetKeysByRegex))
+
+	// ------- serwer HTTP --------
 	server := &http.Server{
 		Addr:           fmt.Sprintf(":%d", port),
 		Handler:        mux,
-		ReadTimeout:    10 * time.Second,  // Limit czasu na odczyt requestu
-		WriteTimeout:   10 * time.Second,  // Limit czasu na odpowiedź
-		IdleTimeout:    120 * time.Second, // Limit czasu na utrzymywanie połączenia
-		MaxHeaderBytes: 1 << 20,           // 1MB nagłówków
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		IdleTimeout:    120 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
 
-	// Ustawienie limitu jednoczesnych połączeń (Linux, Windows)
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Nie można uruchomić listenera: %v", err)
 	}
 
-	fmt.Println("Public API running on port", port)
-	err = server.Serve(listener)
-	if err != nil {
-		log.Fatal(err)
+	fmt.Printf("Public API v1 nasłuchuje na :%d (keep-alive, HTTP/2 włączone jeśli TLS)\n", port)
+
+	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("Błąd serwera: %v", err)
 	}
 }

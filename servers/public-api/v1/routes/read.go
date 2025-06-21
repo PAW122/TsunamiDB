@@ -12,7 +12,7 @@ import (
 	types "github.com/PAW122/TsunamiDB/types"
 )
 
-func AsyncRead(w http.ResponseWriter, r *http.Request) {
+func AsyncRead(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [async read]")()
 
 	if r.Method != "GET" {

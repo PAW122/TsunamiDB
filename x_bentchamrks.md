@@ -1,3 +1,29 @@
+# 21.06.2025 - v0.7.6
+
+> test of write capacity per second.
+
+setup:
+i5-10400f
+300mb/s SSD
+
+results:
+stable 29_000 - 48_000 writes/s
+4-5ms / write
+
+DB:
+10 GB/data
+1.25 GB/map data
+in total 19M saved objects
+3.8GB RAM usage - idle
+6GB RAM usage - runing
+
+System usage:
++/- 20 mb/s avarage
+40% cpu usage avarage (db.exe)
+*with clients sending requests and other programs cpu usage = 100%
+
+
+# odl
 Total save time: 35.3311759s, Avg save time: 3.533117ms
 Total read time: 2.0534737s, Avg read time: 205.347µs
 Total execution time: 37.3851652s

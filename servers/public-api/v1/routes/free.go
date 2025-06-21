@@ -9,7 +9,7 @@ import (
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
-func Free(w http.ResponseWriter, r *http.Request) {
+func Free(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [free]")()
 	// /free/<file>/<key>
 

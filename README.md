@@ -36,3 +36,7 @@ get("key<id>") res -> "data-<id>"
 >    all tests are performed on local hardware (personal PC), data may not be accurate
 
 see test code [https://github.com/PAW122/TsunamiDB/blob/main/tests/test1.go]
+
+# commands:
+-tags debug
+go test -v ./lib/dbclient

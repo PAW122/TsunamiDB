@@ -12,7 +12,7 @@ import (
 	types "github.com/PAW122/TsunamiDB/types"
 )
 
-func ReadEncrypted(w http.ResponseWriter, r *http.Request) {
+func ReadEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [ReadEncrypted]")()
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)

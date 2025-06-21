@@ -29,7 +29,7 @@ func Encode(data []byte) ([]byte, types.Encoded) {
 		pointerSize = 1 // uint8
 	} else if endPtr < 65536 {
 		pointerSize = 2 // uint16
-	} else if endPtr < 4294967296 {
+	} else if int64(endPtr) < int64(4294967296) {
 		pointerSize = 4 // uint32
 	} else {
 		pointerSize = 8 // uint64

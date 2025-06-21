@@ -11,7 +11,7 @@ import (
 	"github.com/PAW122/TsunamiDB/types"
 )
 
-func SQL_api(w http.ResponseWriter, r *http.Request) {
+func SQL_api(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [async save]")()
 
 	if r.Method != "POST" {

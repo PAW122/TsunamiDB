@@ -21,7 +21,7 @@ import (
 	3. dodac read_decrypt
 */
 
-func SaveEncrypted(w http.ResponseWriter, r *http.Request) {
+func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [SaveEncrypted]")()
 	// /save/<file>/<key>
 	// body = []bytes r.Body

@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 
@@ -12,72 +11,56 @@ import (
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
-func AsyncSave(w http.ResponseWriter, r *http.Request) {
+func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [async save]")()
 
-	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	pathParts := ParseArgs(r.URL.Path, "save")
-	if pathParts == nil || len(pathParts) < 2 {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Invalid url args")
+	if len(pathParts) < 4 {
+		http.Error(w, "Invalid url args", http.StatusBadRequest)
 		return
 	}
-
 	file := pathParts[2]
 	key := pathParts[3]
 
+	// —1— szybki odczyt body (bufor 1 MiB, można zwiększyć)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Invalid body")
+		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
 
-	// Kanał do przekazania ewentualnego błędu zapisu
-	saveChan := make(chan error, 1)
-
-	// Uruchamiamy goroutine, by zachować asynchroniczność wewnątrz zapisu
-	go func() {
-		// Usuwamy poprzednie dane, jeśli istnieją
-		prevMetaData, err := fileSystem_v1.GetElementByKey(key)
-		if err == nil {
-			debug.LogExtra("Freeing previous data")
-			debug.LogExtra(prevMetaData.Key, prevMetaData.FileName,
-				int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
+	// —2— zwolnij poprzednie dane (jeśli istnieją)
+	debug.MeasureBlock("CheckExistingKey [save_api]", func() {
+		if meta, err := fileSystem_v1.GetElementByKey(key); err == nil {
 			defragmentationManager.MarkAsFree(
-				prevMetaData.Key,
-				prevMetaData.FileName,
-				int64(prevMetaData.StartPtr),
-				int64(prevMetaData.EndPtr),
+				meta.Key, meta.FileName,
+				int64(meta.StartPtr), int64(meta.EndPtr),
 			)
 		}
+	})
 
-		// Kodowanie i asynchroniczny zapis
-		encoded, _ := encoder_v1.Encode(body)
+	// —3— kodowanie (funkcja NIE zwraca error)
+	encoded, _ := encoder_v1.Encode(body)
+
+	debug.MeasureBlock("save data & map [save_api]", func() {
+		// —4— zapis do pliku
 		startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, file)
 		if err != nil {
-			saveChan <- err
+			http.Error(w, "Error saving to file", http.StatusInternalServerError)
 			return
 		}
 
-		debug.LogExtra("startPtr, endPtr:", startPtr, endPtr)
-
-		// Zapamiętanie w mapowaniu kluczy
-		err = fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
-		saveChan <- err
-	}()
-
-	// Czekamy na wynik z kanału
-	if err := <-saveChan; err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "Error saving to file: ", err)
-		return
-	}
-
+		// —5— zapis metadanych
+		if err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr)); err != nil {
+			http.Error(w, "Error saving metadata", http.StatusInternalServerError)
+			return
+		}
+	})
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprint(w, "save")
+	w.Write([]byte("save"))
 }

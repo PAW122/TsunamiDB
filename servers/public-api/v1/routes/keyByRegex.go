@@ -10,7 +10,7 @@ import (
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
-func GetKeysByRegex(w http.ResponseWriter, r *http.Request) {
+func GetKeysByRegex(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [async key by regex]")()
 
 	if r.Method != "GET" {
@@ -51,4 +51,5 @@ func GetKeysByRegex(w http.ResponseWriter, r *http.Request) {
 
 	// Zwróć wynik jako JSON
 	json.NewEncoder(w).Encode(keys)
+	keys = nil
 }
