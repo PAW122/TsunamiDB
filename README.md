@@ -1,12 +1,12 @@
 # TsunamiDB
 
-![Version](https://img.shields.io/badge/version-0.7.3-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-0.8.0-brightgreen.svg)
 
 fast, simple non sql key-value db
 
 install
 ```
-go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.7.3
+go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.8.0
 ``` 
 
 + execute:
@@ -14,28 +14,20 @@ go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.7.3
 
     - when starting 1'st server - ```./TsunamiDB.exe 5845```
         > ./TsunamiDB <port for node's comunication>
-    - when starting secound server - ```./TsunamiDB-linux 5845 192.168.55.110:5845```
+    - when starting secound server - ```./TsunamiDB-linux 5845 127.0.0.1:5845```
         > ./TsunamiDB-linux <same port> <ip and port of other server>
 
++ performance:
++ on my local pc Iam geting consistant 40K writes/s & hiting 100%cpu usage.
++ & around 22-23mb/s disk usaga
++ read / free shouldn't change significantly from previous version
 
-# bentchmarks data:
-* Avg save time: 215µs
-* Avg read time: 43µs
-```
-save obj:
-{
-    key: "key<id>"
-    data: "data-<id>"
-}
-
-read obj:
-get("key<id>") res -> "data-<id>"
-```
->    benchmarks results are an average values ​​from data field records with sizes ranging from 10_000 to 100_000 entries.
-
->    all tests are performed on local hardware (personal PC), data may not be accurate
-
-see test code [https://github.com/PAW122/TsunamiDB/blob/main/tests/test1.go]
+### changeLog for v0.8.0
++ added subscription system
++ improved saving data speed
++ better stability in long run
+  > tested stable with sizes around 12GB
+  > maps system rework
 
 # commands:
 -tags debug
