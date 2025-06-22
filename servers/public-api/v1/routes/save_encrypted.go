@@ -10,6 +10,7 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 /*
@@ -84,6 +85,9 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		fmt.Fprint(w, "Error saving to map:", err)
 		return
 	}
+
+	// sends "plain text data" (not encrypted)
+	go subServer.NotifySubscribers(key, body)
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "save")

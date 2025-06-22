@@ -7,6 +7,7 @@ import (
 	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 func Free(w http.ResponseWriter, r *http.Request, c *http.Client) {
@@ -37,5 +38,6 @@ func Free(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	fileSystem_v1.RemoveElementByKey(key)
 	defragmentationManager.MarkAsFree(key, file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 
+	go subServer.NotifyDeleteAndRemove(key)
 	fmt.Fprint(w, "free")
 }

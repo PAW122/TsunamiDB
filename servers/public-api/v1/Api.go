@@ -8,6 +8,7 @@ import (
 	"time"
 
 	routes "github.com/PAW122/TsunamiDB/servers/public-api/v1/routes"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 // ----------  PULA POŁĄCZEŃ DLA WYCHODZĄCYCH REQUESTÓW  ----------
@@ -46,6 +47,8 @@ func RunPublicApi_v1(port int) {
 	mux.HandleFunc("/free/", withClient(routes.Free))
 	mux.HandleFunc("/save_encrypted/", withClient(routes.SaveEncrypted))
 	mux.HandleFunc("/read_encrypted/", withClient(routes.ReadEncrypted))
+	mux.HandleFunc("/subscriptions/enable", withClient(subServer.HandleEnableSubscription))
+	mux.HandleFunc("/subscriptions/disable", withClient(subServer.HandleDisableSubscription))
 
 	// —— operacje meta ——
 	mux.HandleFunc("/sql", withClient(routes.SQL_api))

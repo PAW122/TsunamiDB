@@ -29,6 +29,7 @@ import (
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	public_api_v1 "github.com/PAW122/TsunamiDB/servers/public-api/v1"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 var defaultConfigDir = "./config.json"
@@ -62,6 +63,9 @@ func RunCore() {
 	}
 
 	networkmanager.StartNetworkManager(port, knownPeers)
+
+	fmt.Println("Starting sub Sever on port:", 5845)
+	go subServer.StartWSServer("5845")
 
 	fmt.Println("Starting server on port: ", 5844)
 	public_api_v1.RunPublicApi_v1(5844)

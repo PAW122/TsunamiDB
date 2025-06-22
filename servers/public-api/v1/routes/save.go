@@ -9,6 +9,7 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
@@ -61,6 +62,9 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 			return
 		}
 	})
+
+	go subServer.NotifySubscribers(key, body)
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("save"))
 }

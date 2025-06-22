@@ -6,6 +6,7 @@ import (
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	public_api_v1 "github.com/PAW122/TsunamiDB/servers/public-api/v1"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 func Save(key, table string, data []byte) error {
@@ -46,4 +47,8 @@ func InitPublicApi(port int) {
 func GetKeysByRegex(regex string, max int) ([]string, error) {
 	defer debug.MeasureTime("[lib.dbclient] [get keys by regex]")()
 	return fileSystem_v1.GetKeysByRegex(regex, max)
+}
+
+func InitSubscriptionServer(port string) error {
+	return subServer.StartWSServer(port)
 }

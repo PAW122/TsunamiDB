@@ -1,0 +1,252 @@
+type: collection.insomnia.rest/5.0
+name: TsunamiDB
+meta:
+  id: wrk_b4bf93ac8b874b97a42b93f1e5561d91
+  created: 1741510027077
+  modified: 1750538655444
+  description: ""
+collection:
+  - name: subscriptions
+    meta:
+      id: fld_3d1b30f5fa594280b85a2ffea8927deb
+      created: 1750562441258
+      modified: 1750562441258
+      sortKey: -1750562441258
+      description: ""
+    children:
+      - url: 127.0.0.1:5844/subscriptions/enable
+        name: enable_sub
+        meta:
+          id: req_ce555af226234388854155fb65633a5e
+          created: 1750562500540
+          modified: 1750562834762
+          isPrivate: false
+          description: ""
+          sortKey: -1750562454177
+        method: GET
+        body:
+          mimeType: application/json
+          text: |-
+            {
+            	"keys": ["test"]
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+          - name: User-Agent
+            value: insomnia/11.2.0
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: 127.0.0.1:5844/subscriptions/disable
+        name: disable_sub
+        meta:
+          id: req_c75d2a922e0846ddb3aa33fe82f5de31
+          created: 1750562577002
+          modified: 1750564681167
+          isPrivate: false
+          description: ""
+          sortKey: -1744726834801
+        method: GET
+        body:
+          mimeType: application/json
+          text: |-
+            {
+            	"key": "test"
+            }
+        headers:
+          - name: Content-Type
+            value: application/json
+          - name: User-Agent
+            value: insomnia/11.2.0
+        settings:
+          renderRequestBody: true
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+          rebuildPath: true
+      - url: ws://127.0.0.1:5845/sub
+        name: subscribe
+        meta:
+          id: ws-req_0d4afdbf5bef43108e6d35f7ef7e03ae
+          created: 1750562447216
+          modified: 1750562518590
+          description: ""
+          sortKey: -1750562454077
+        settings:
+          encodeUrl: true
+          followRedirects: global
+          cookies:
+            send: true
+            store: true
+        headers:
+          - name: User-Agent
+            value: insomnia/11.2.0
+  - url: 127.0.0.1:5844/save/data.bin/test
+    name: Save
+    meta:
+      id: req_9a170b2581c64a1d9115cf37eea8de9f
+      created: 1738889718721
+      modified: 1750563050082
+      isPrivate: false
+      description: ""
+      sortKey: -1738889718721
+    method: POST
+    body:
+      mimeType: text/plain
+      text: Hello World1
+    headers:
+      - name: Content-Type
+        value: text/plain
+      - name: User-Agent
+        value: insomnia/10.3.0
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: 127.0.0.1:5844/read/data.bin/test
+    name: Read
+    meta:
+      id: req_05b54d52414044488f1a59b7f41fe3ab
+      created: 1738889838022
+      modified: 1750562555714
+      isPrivate: false
+      description: ""
+      sortKey: -1738889838022
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/10.3.0
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: 127.0.0.1:5844/free/data/test
+    name: Free
+    meta:
+      id: req_e9ea750ffb0b49ad92f65b2a33c1b804
+      created: 1738891215425
+      modified: 1739862927965
+      isPrivate: false
+      description: ""
+      sortKey: -1738891215425
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/10.3.0
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: 127.0.0.1:5844/save_encrypted/ecn/test
+    name: Save-Encrypted
+    meta:
+      id: req_07a54ea246914faf97eed3131e5a6411
+      created: 1739831369290
+      modified: 1740359250809
+      isPrivate: false
+      description: ""
+      sortKey: -1738014246053
+    method: POST
+    body:
+      mimeType: text/plain
+      text: Helloo world2
+    headers:
+      - name: Content-Type
+        value: text/plain
+      - name: User-Agent
+        value: insomnia/10.3.0
+        id: pair_a9c0b56aafad4aec8e23c681f6019e35
+      - id: pair_d2f8081137334a75ac949753ddb7a2d2
+        name: encryption_key
+        value: test_key
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: 127.0.0.1:5844/read_encrypted/ecn/test
+    name: read encrypted
+    meta:
+      id: req_632421d91a7e4699aae9e9bd7cab94e3
+      created: 1739832575605
+      modified: 1740359269337
+      isPrivate: false
+      description: ""
+      sortKey: -1738889808196.75
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/10.3.0
+        id: pair_6b7b40bde2ab4a6d83f6ea04f86da726
+      - id: pair_6fdf70210d2a45ff882e7d4a04737946
+        name: encryption_key
+        value: test_key
+        description: ""
+        disabled: false
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+  - url: 127.0.0.1:5844/key_by_regex?regex=key_*
+    name: Read Regex
+    meta:
+      id: req_77ec27d3c44d4a7798fc051f05dc1764
+      created: 1750538733634
+      modified: 1750538766481
+      isPrivate: false
+      description: ""
+      sortKey: -1738889823109.375
+    method: GET
+    headers:
+      - name: User-Agent
+        value: insomnia/10.3.0
+    settings:
+      renderRequestBody: true
+      encodeUrl: true
+      followRedirects: global
+      cookies:
+        send: true
+        store: true
+      rebuildPath: true
+cookieJar:
+  name: Default Jar
+  meta:
+    id: jar_9f609d92d1567870622292eda0d40c706ef0b9c3
+    created: 1750538655604
+    modified: 1750538655604
+environments:
+  name: Base Environment
+  meta:
+    id: env_9f609d92d1567870622292eda0d40c706ef0b9c3
+    created: 1741510027080
+    modified: 1750538655444
+    isPrivate: false

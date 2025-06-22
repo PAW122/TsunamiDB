@@ -22,6 +22,7 @@ System usage:
 40% cpu usage avarage (db.exe)
 *with clients sending requests and other programs cpu usage = 100%
 
+450_000 keys = +/- 20MB of data in ./db/maps & +/- 100Mb of RAM
 
 # odl
 Total save time: 35.3311759s, Avg save time: 3.533117ms

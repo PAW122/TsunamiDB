@@ -12,6 +12,9 @@ import (
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
+//	go subServer.NotifySubscribers()
+//
+// NotifySubscribers
 var basePath = "./db/data"
 var fileLocks sync.Map
 

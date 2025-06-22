@@ -3,10 +3,11 @@ package export
 import (
 	"fmt"
 
-	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
+	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	defragmanager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 func SaveEncrypted(key, table, encryption_key string, data []byte) error {
@@ -25,7 +26,7 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 	encoded, _ := encoder_v1.Encode(encrypted_data)
 
 	// save to file
-	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, table)
+	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, table)
 	if err != nil {
 		return fmt.Errorf("error saving to file:", err)
 	}
@@ -36,5 +37,6 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 		return fmt.Errorf("error saving to map:", err)
 	}
 
+	go subServer.NotifySubscribers(key, data)
 	return nil
 }
