@@ -1,0 +1,261 @@
+[
+  {
+    "method": "POST",
+    "endpoint": "127.0.0.1:5844/save/table/key",
+    "description": "save data to db",
+    "permissions": "",
+    "body": "{data}",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "400",
+        "message": "Invalid url args",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Invalid body",
+        "description": ""
+      },
+      {
+        "code": "405",
+        "message": "Method not allowed",
+        "description": ""
+      },
+      {
+        "code": "500",
+        "message": "Error saving to file",
+        "description": "db error when saving data to file"
+      },
+      {
+        "code": "500",
+        "message": "Error saving metadata",
+        "description": "db error when saving key do file"
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "method": "POST",
+    "endpoint": "127.0.0.1:5844/save_encrypted/table/key",
+    "description": "encrypt & save data to db",
+    "permissions": "",
+    "body": "{data}",
+    "headers": "{\"Content-Type\":\"text/plain\", \"encryption_key\": \"KEY\"}",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "400",
+        "message": "Invalid url args",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Invalid body",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "db error when encrypting data",
+        "description": ""
+      },
+      {
+        "code": "405",
+        "message": "Method not allowed",
+        "description": ""
+      },
+      {
+        "code": "500",
+        "message": "Error saving to file",
+        "description": "db error when saving data to file"
+      },
+      {
+        "code": "500",
+        "message": "Error saving to map",
+        "description": "db error when saving key do file"
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "method": "GET",
+    "endpoint": "127.0.0.1:5844/read/table/key",
+    "description": "read data from db",
+    "permissions": "",
+    "body": "",
+    "headers": "",
+    "res": "{data}",
+    "errors": [
+      {
+        "code": "400",
+        "message": "Invalid url args",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "network manager not initialized",
+        "description": "InitNetworkManager() not executed or port was arleady used"
+      },
+      {
+        "code": "400",
+        "message": "data not found on any server",
+        "description": "data not found"
+      },
+      {
+        "code": "404",
+        "message": "Error reading from file",
+        "description": "invalid data formating"
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "method": "GET",
+    "endpoint": "127.0.0.1:5844/read_encrypted/table/key",
+    "description": "read data from db",
+    "permissions": "",
+    "body": "",
+    "headers": "{\"Content-Type\":\"text/plain\", \"encryption_key\": \"KEY\"}",
+    "res": "{data}",
+    "errors": [
+      {
+        "code": "400",
+        "message": "Invalid url args",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "network manager not initialized",
+        "description": "InitNetworkManager() not executed or port was arleady used"
+      },
+      {
+        "code": "400",
+        "message": "data not found on any server",
+        "description": "data not found"
+      },
+      {
+        "code": "400",
+        "message": "Missing encryption_key header",
+        "description": ""
+      },
+      {
+        "code": "404",
+        "message": "Error reading from file",
+        "description": "invalid data formating"
+      },
+      {
+        "code": "500",
+        "message": "Error decryping data",
+        "description": "invalid decryption key"
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "method": "GET",
+    "endpoint": "127.0.0.1:5844/free/table/key",
+    "description": "free data",
+    "permissions": "",
+    "body": "",
+    "headers": "",
+    "res": "{data}",
+    "errors": [
+      {
+        "code": "400",
+        "message": "Invalid url args",
+        "description": ""
+      },
+      {
+        "code": "404",
+        "message": "Error retrieving element from map",
+        "description": "key not found"
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "method": "GET",
+    "endpoint": "127.0.0.1:5844/key_by_regex?regex=*",
+    "description": "get list of keys using regex rule",
+    "permissions": "",
+    "body": "",
+    "headers": "",
+    "res": "[\"key1\", \"key2\"...]",
+    "errors": [
+      {
+        "code": "405",
+        "message": "Method Not Allowed",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Missing 'regex' parameter",
+        "description": "?regex={regex_rule} not found"
+      },
+      {
+        "code": "400",
+        "message": "Invalid 'max' parameter",
+        "description": "?max=0 parameter not found, default - 0 = get all"
+      },
+      {
+        "code": "500",
+        "message": "Error from GetKeysByRegex",
+        "description": "error with regex rule"
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "method": "GET",
+    "endpoint": "127.0.0.1:5844/subscriptions/enable",
+    "description": "allow user to subscribe to key for 60s after creating auth_key",
+    "permissions": "",
+    "body": "{\"keys\":\"[\"key\", \"key2\"...]\"}",
+    "headers": "",
+    "res": "{'auth_key': 'some_uuid_key'}",
+    "errors": [
+      {
+        "code": "400",
+        "message": "invalid request",
+        "description": "error decoding body or invalid key"
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "method": "GET",
+    "endpoint": "127.0.0.1:5844/subscriptions/disable",
+    "description": "unsubscribe all users subscribed to specific key",
+    "permissions": "",
+    "body": "{\"key\":\"some_key\"}",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+    ],
+    "category": "API"
+  },
+  {
+    "markdown": ["api/_subscriptions.md"],
+    "method": "WS",
+    "endpoint": "ws://127.0.0.1:5845/sub",
+    "description": "subscribe by user to key to track live changes",
+    "permissions": "everyone",
+    "body": "{\"auth_key\": \"some_uuid_key\"}",
+    "headers": "",
+    "res": "ws conn",
+    "errors": [
+      {
+        "code": "",
+        "message": "Upgrade error: {err}",
+        "description": ""
+      },
+      {
+        "code": "",
+        "message": "Disconnected: {err}",
+        "description": ""
+      }
+    ],
+    "category": "API"
+  }
+]

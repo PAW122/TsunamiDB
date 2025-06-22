@@ -1,0 +1,1058 @@
+[
+  {
+    "method": "",
+    "endpoint": "",
+    "description": "",
+    "permissions": "",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "other"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/books/get/\u003cid\u003e",
+    "description": "Pobierz książkę o podanym id",
+    "permissions": "user",
+    "body": "{inventoryNumber: 200}",
+    "headers": "{\"Content-Type\":\"application/json\", \"auth_token\": \"user_token\"}",
+    "query_params": [{"name": "test", "value": "value"}],
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "-"
+      },
+      {
+        "code": "400",
+        "message": "message: Brak poprawnego numeru inwentarzowego w ścieżce",
+        "description": "niepoprawne id"
+      },
+      {
+        "code": "404",
+        "message": "message: Książka o takim numerze nie istnieje",
+        "description": "brak id książki w db"
+      },
+      {
+        "code": "500",
+        "message": "Wystąpił błąd podczas sprawdzania książki",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi",
+    "luaFunc": "api_books_get",
+    "defaultDB": [
+      {
+        "inventoryNumber": 200,
+        "status": "available"
+      },
+      {
+        "inventoryNumber": 101,
+        "status": "available"
+      },
+      {
+        "inventoryNumber": 100,
+        "status": "available_date: 1.2.2025"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/books/full/\u003cid\u003e",
+    "description": "zwraca całego jsona z danymi o konkretnej książce",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK | body: (dane książki)",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "400",
+        "message": "Nieprawidłowy numer inwentarzowy",
+        "description": "-"
+      },
+      {
+        "code": "404",
+        "message": "Nie znaleziono książki",
+        "description": "-"
+      },
+      {
+        "code": "404",
+        "message": "Brak danych książki",
+        "description": "-"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "markdown": ["api/_api_books_add.md"],
+    "method": "POST",
+    "endpoint": "/api/book/add",
+    "description": "dodaj nową książkę do db",
+    "permissions": "admin",
+    "body": "{\"title\": \"example_title\", \"author\": \"ex_author\", \"publisher\": \"ex_publisher\", \"year\": \"2025\", \"isbn\": \"ex_isbn\", \"pages\": \"100\", \"description\": \"ex_description\", \"tags\": \"ex_tags\", \"shelf\": \"4C\", \"copies\": \"{copies json}\"}",
+    "headers": "{\"Content-Type\":\"application/json\", \"auth_token\": \"user_token\", \"username\": \"example_username\"}",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi",
+    "luaFunc": "api_books_add",
+    "defaultDB": [
+      {
+        "title": "example_title",
+        "author": "author",
+        "publisher": "publisher",
+        "year": "year",
+        "isbn": "isbn",
+        "pages": "pages",
+        "description": "description",
+        "tags": "tags",
+        "shelf": "shelf",
+        "copies": "copies_data {json} ..."
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/borrow",
+    "description": "wypożyczenie książki przez czytalnika w bibliotece",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/book/list",
+    "description": "Lista wszystkich książek w bazie danych / bibliotece",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/update",
+    "description": "aktualizacja danych książki - np poprzez edytowanie w formularzu",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/delete",
+    "description": "usunięcie książki z db",
+    "permissions": "",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/save_rules/borrow_time",
+    "description": "zapisanie zasady maxymalnego czasu wypożyczenia książki",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/read_rules/borrow_time",
+    "description": "odczytanie zasady maxymalnego czasu wypożyczenia książki",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/save_rules/overdue",
+    "description": "zapisanie zasad dotyczących przetrzymania książki / opłat",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/load_rules/overdue",
+    "description": "odczytanie zasad dotyczących przetrzymania książki / opłat",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/return",
+    "description": "zwrócenie książki przez czytelnika",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/reserve",
+    "description": "rezerwacja książki przez czytelnika",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/confirm_pickup",
+    "description": "potwierdzenie odbioru wcześniej zarezerwowanej książki",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/save_cover",
+    "description": "zapisanie okładki książki",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/get_cover",
+    "description": "pobranie okładki książki",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/delete_cover",
+    "description": "usunięcie okładki książki",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/upload_pdf_book",
+    "description": "przesłąnie pliku pdf książki",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/delete_pdf_book",
+    "description": "usunięcie pliku pdf książki",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/book/read_page",
+    "description": "odczytanie konkretnej strony książki",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/stats/user",
+    "description": "pobranie preferencji kategori książek czytanych przez użytkownika do rekomendacji",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/stats/time_piriod",
+    "description": "odczytanie przeferencji w okresie czasu od month1 - month2",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/stats/reservations",
+    "description": "statystyki rezerwacji książek w okresie czasu od month1 - month2\n informuje które książki najczęściej brakuje na pułkach",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/payments/read",
+    "description": "odczytanie statysytk płatności",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryManagerApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/user/get_acc_info",
+    "description": "pobranie podstawowych informacji o użytkowniku",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryUserApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/user/get_borrowed_books",
+    "description": "pobranie listy książek wypożyczonych przez użytkownika",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryUserApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/user/get_borrow_history",
+    "description": "pobranie historii wypożyczeń książek przez użytkownika",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryUserApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/user/get_notifications",
+    "description": "pobranie powiadomień dla użytkownika",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryUserApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/user/mark_notification_read",
+    "description": "oznaczenie powiadomienia jako przeczytane",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryUserApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/user/reserve",
+    "description": "rezerwacja książki na stronie(zdalnie) przez użytkownika",
+    "permissions": "user",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryUserApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/accounts/update/",
+    "description": "aktualizacja danych konta użytkownika",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/accounts/register",
+    "description": "rejestracja nowego konta użytkownika",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/accounts/getList",
+    "description": "pobranie listy kont użytkowników",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/accounts/read",
+    "description": "pobieranie danych konta użytkownika na podstawie username",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/accounts/details",
+    "description": "pobieranie szczegółowych danych konta użytkownika",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/accounts/borrowed",
+    "description": "Pobiera listę wypożyczonych książek przez użytkownika na podstawie indeksu",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/accounts/notifications",
+    "description": "Pobiera listę powiadomień użytkownika na podstawie indeksu",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/accounts/preferences",
+    "description": "Pobiera preferencje użytkownika na podstawie indeksu",
+    "permissions": "admin",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "LiblaryAccountsApi"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/",
+    "description": "wczytywanie stron / StaticFileHandler",
+    "permissions": "brak",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "other"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/hello",
+    "description": "testowy endpoint",
+    "permissions": "brak",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "other"
+  },
+  {
+    "method": "POST?",
+    "endpoint": "/api/login",
+    "description": "logowanie użytkownika",
+    "permissions": "brak",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "other"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/register",
+    "description": "rejestracja użytkonika poprzez stronę testową - każdy może tworzyc konto admina\n call CreateAccountHandler()",
+    "permissions": "brak",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "other"
+  },
+  {
+    "method": "",
+    "endpoint": "/",
+    "description": "strona testowa do tworzenia kont usera i admina",
+    "permissions": "",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "401",
+        "message": "Brak autoryzacji",
+        "description": "użytkownik nie jest zalogowany lub nie ma uprawnień"
+      },
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "pages"
+  },
+  {
+    "method": "",
+    "endpoint": "/manager",
+    "description": "strona admina do zarządzania książkami i użytkownikami",
+    "permissions": "",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "pages"
+  },
+  {
+    "method": "",
+    "endpoint": "/liblary",
+    "description": "strona gł dla użytkownika do przeglądania książek i innych akcji",
+    "permissions": "",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "pages"
+  },
+  {
+    "method": "",
+    "endpoint": "/favicon.ico",
+    "description": "favicon",
+    "permissions": "",
+    "body": "-",
+    "headers": "",
+    "res": "200 OK",
+    "errors": [
+      {
+        "code": "500",
+        "message": "Internal Server Error",
+        "description": "błąd serwera"
+      }
+    ],
+    "category": "pages"
+  }
+]

@@ -40,7 +40,7 @@ func ReadEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	nm := networkmanager.GetNetworkManager()
 	if nm == nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprint(w, "Błąd: NetworkManager nie został poprawnie zainicjalizowany")
+		fmt.Fprint(w, "network manager not initialized")
 		return
 	}
 	// Próba pobrania lokalnie

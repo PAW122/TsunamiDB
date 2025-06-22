@@ -52,3 +52,5 @@ func GetKeysByRegex(regex string, max int) ([]string, error) {
 func InitSubscriptionServer(port string) error {
 	return subServer.StartWSServer(port)
 }
+
+// funkcje do zezwalania i blokowania dostępu ws
