@@ -1,3 +1,78 @@
+# 26.06.2025
+
+> new fileManager.go in data/dataManager
+> rn limited by cpu
+
+> read & write went up from +/- 20-25K/s -> 40-45K/s
+> write only stays on arount same lvl of 40-45K/s
+> read only went up from ~40K/s to ~100K/s
+
+> I/O opt
+> amount of data saved to disk /s is reduced from ~22Mb/s to ~2.6Mb/s = ~10x lower
+
+> speads achived on db with: 7_088_061 entries ~ 7GB total size
+
+* read & write at the same time
+PS D:\projects\DB-tests> go run main.go --workers=1000 --url=http://127.0.0.1:5844 --test_type=readwrite
+[STATS] RPS: 21118 | AVG SAVE: 24.37ms | GPS: 20522 | AVG GET: 21.11ms
+[STATS] RPS: 19398 | AVG SAVE: 27.33ms | GPS: 19267 | AVG GET: 24.49ms
+[STATS] RPS: 24090 | AVG SAVE: 22.52ms | GPS: 24376 | AVG GET: 18.67ms
+[STATS] RPS: 24579 | AVG SAVE: 21.89ms | GPS: 24586 | AVG GET: 19.06ms
+[STATS] RPS: 22079 | AVG SAVE: 23.40ms | GPS: 22353 | AVG GET: 21.29ms
+[STATS] RPS: 24193 | AVG SAVE: 21.91ms | GPS: 24124 | AVG GET: 19.13ms
+[STATS] RPS: 24443 | AVG SAVE: 22.30ms | GPS: 24029 | AVG GET: 19.09ms
+[STATS] RPS: 24150 | AVG SAVE: 22.02ms | GPS: 24602 | AVG GET: 18.88ms
+[STATS] RPS: 22489 | AVG SAVE: 23.61ms | GPS: 22188 | AVG GET: 21.14ms
+[STATS] RPS: 24677 | AVG SAVE: 21.66ms | GPS: 24737 | AVG GET: 18.90ms
+[STATS] RPS: 23717 | AVG SAVE: 22.47ms | GPS: 23820 | AVG GET: 19.35ms
+[STATS] RPS: 21026 | AVG SAVE: 25.31ms | GPS: 20948 | AVG GET: 22.31ms
+[STATS] RPS: 23847 | AVG SAVE: 22.41ms | GPS: 23895 | AVG GET: 19.31ms
+[STATS] RPS: 24097 | AVG SAVE: 22.41ms | GPS: 24035 | AVG GET: 19.23ms
+[STATS] RPS: 24449 | AVG SAVE: 22.05ms | GPS: 24187 | AVG GET: 18.95ms
+[STATS] RPS: 21852 | AVG SAVE: 23.85ms | GPS: 21887 | AVG GET: 21.74ms
+[STATS] RPS: 24297 | AVG SAVE: 22.24ms | GPS: 24302 | AVG GET: 19.00ms
+[STATS] RPS: 24094 | AVG SAVE: 22.54ms | GPS: 24108 | AVG GET: 18.86ms
+[STATS] RPS: 24674 | AVG SAVE: 21.84ms | GPS: 24553 | AVG GET: 18.67ms
+[STATS] RPS: 21888 | AVG SAVE: 24.33ms | GPS: 22344 | AVG GET: 20.87ms
+[STATS] RPS: 24270 | AVG SAVE: 22.41ms | GPS: 23968 | AVG GET: 18.97ms
+[STATS] RPS: 23785 | AVG SAVE: 22.50ms | GPS: 23854 | AVG GET: 19.57ms
+[STATS] RPS: 23442 | AVG SAVE: 22.29ms | GPS: 23452 | AVG GET: 19.18ms
+[STATS] RPS: 22546 | AVG SAVE: 23.68ms | GPS: 22625 | AVG GET: 21.41ms
+[STATS] RPS: 24237 | AVG SAVE: 22.42ms | GPS: 24310 | AVG GET: 18.66ms
+[STATS] RPS: 23282 | AVG SAVE: 22.89ms | GPS: 23013 | AVG GET: 20.17ms
+[STATS] RPS: 22455 | AVG SAVE: 23.27ms | GPS: 22281 | AVG GET: 20.61ms
+
+* first wire 400_000 elements then read 400_000 elements
+PS D:\projects\DB-tests> go run main.go -test_type=write>read -requests=400000 -workers=500
+[STATS] RPS: 25874 | AVG SAVE: 19.02ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 31446 | AVG SAVE: 15.84ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 31027 | AVG SAVE: 15.95ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 31100 | AVG SAVE: 16.12ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 30687 | AVG SAVE: 16.19ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 29903 | AVG SAVE: 16.74ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 32415 | AVG SAVE: 15.31ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 31681 | AVG SAVE: 15.75ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 31575 | AVG SAVE: 15.82ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 32397 | AVG SAVE: 15.28ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 32363 | AVG SAVE: 15.44ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 27387 | AVG SAVE: 16.46ms | GPS: 9351 | AVG GET: 5.33ms
+[STATS] RPS: 0 | AVG SAVE: 0.00ms | GPS: 97146 | AVG GET: 5.15ms
+[STATS] RPS: 0 | AVG SAVE: 0.00ms | GPS: 83697 | AVG GET: 5.89ms
+[STATS] RPS: 0 | AVG SAVE: 0.00ms | GPS: 100268 | AVG GET: 4.95ms
+[STATS] RPS: 0 | AVG SAVE: 0.00ms | GPS: 91403 | AVG GET: 5.43ms
+
+* other write only test:
+PS D:\projects\DB-tests> go run main.go --workers=1000 --url=http://127.0.0.1:5844 --test_type=write
+[STATS] RPS: 41529 | AVG SAVE: 23.13ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 38839 | AVG SAVE: 25.47ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 44535 | AVG SAVE: 22.60ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 44876 | AVG SAVE: 22.11ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 39788 | AVG SAVE: 25.26ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 36917 | AVG SAVE: 26.72ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 39488 | AVG SAVE: 25.48ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 45383 | AVG SAVE: 22.00ms | GPS: 0 | AVG GET: 0.00ms
+[STATS] RPS: 44718 | AVG SAVE: 22.21ms | GPS: 0 | AVG GET: 0.00ms
+
 # 21.06.2025 - v0.7.6
 
 > test of write capacity per second.

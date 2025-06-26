@@ -135,6 +135,10 @@ key1 will be deleted from table_1
     - example url:
         > 127.0.0.1:5844/key_by_regex?regex=<regex>
         > 127.0.0.1:5844/key_by_regex?regex=test*
+    - additional queryparam:
+        max: <int>
+        0 - all records
+        0 > x = return max x records 
     - example body response:
         > array
         > ["test_2","test_1"]
