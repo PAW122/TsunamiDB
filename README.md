@@ -18,9 +18,9 @@ go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.8.0
         > ./TsunamiDB-linux <same port> <ip and port of other server>
 
 + performance:
-+ on my local pc Iam geting consistant 40K writes/s & hiting 100%cpu usage.
-+ & around 22-23mb/s disk usaga
-+ read / free shouldn't change significantly from previous version
++ I5-10400f
++ on my local pc Iam geting consistant 45K writes/s
++ and ~100K reads/s
 
 ### changeLog for v0.8.0
 + added subscription system
