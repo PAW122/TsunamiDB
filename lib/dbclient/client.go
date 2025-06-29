@@ -49,6 +49,18 @@ func GetKeysByRegex(regex string, max int) ([]string, error) {
 	return fileSystem_v1.GetKeysByRegex(regex, max)
 }
 
+// Sub System
 func InitSubscriptionServer(port string) error {
 	return subServer.StartWSServer(port)
+}
+
+// TODO test
+func EnableSubscription(keys []string) (string, error) {
+	defer debug.MeasureTime("[lib.dbclient] [EnableSubscription]")()
+	return subServer.EnableSubscription(keys)
+}
+
+func DisableSubscription(key string) error {
+	defer debug.MeasureTime("[lib.dbclient] [DisableSubscription]")()
+	return subServer.DisableSubscription(key)
 }

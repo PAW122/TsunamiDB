@@ -2,6 +2,7 @@ package subscriptions
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -215,4 +216,64 @@ func NotifyDeleteAndRemove(key string) {
 			}
 		}
 	}
+}
+
+func EnableSubscription(keys []string) (string, error) {
+	if len(keys) == 0 {
+		return "", errors.New("no keys provided")
+	}
+
+	authKey := uuid.NewString()
+
+	mu.Lock()
+	pendingAuthKeys[authKey] = &Pending{
+		Keys:      keys,
+		ExpiresAt: time.Now().Add(60 * time.Second),
+	}
+	mu.Unlock()
+
+	// kasowanie po TTL
+	go func(k string) {
+		time.Sleep(60 * time.Second)
+		mu.Lock()
+		if p, ok := pendingAuthKeys[k]; ok && time.Now().After(p.ExpiresAt) {
+			delete(pendingAuthKeys, k)
+		}
+		mu.Unlock()
+	}(authKey)
+
+	return authKey, nil
+}
+
+func DisableSubscription(key string) error {
+	if key == "" {
+		return errors.New("key is empty")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	subs, ok := activeSubs[key]
+	if !ok {
+		return nil // nic nie było aktywne
+	}
+
+	for _, sub := range subs {
+		if sub.WSConn != nil {
+			_ = sub.WSConn.WriteJSON(map[string]string{
+				"event": "unsubscribed",
+				"key":   key,
+			})
+			// usuń z odwrotnej mapy
+			if m, exists := connToKeys[sub.WSConn]; exists {
+				delete(m, key)
+				if len(m) == 0 {
+					delete(connToKeys, sub.WSConn)
+				}
+			}
+		}
+	}
+	delete(activeSubs, key)
+
+	return nil
 }
