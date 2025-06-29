@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 
@@ -13,6 +14,9 @@ import (
 )
 
 func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
+	var startPtr, endPtr int64
+	var saveErr error
+
 	defer debug.MeasureTime("> api [async save]")()
 
 	if r.Method != http.MethodPost {
@@ -49,19 +53,19 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	encoded, _ := encoder_v1.Encode(body)
 
 	debug.MeasureBlock("save data & map [save_api]", func() {
-		// —4— zapis do pliku
-		startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, file)
-		if err != nil {
-			http.Error(w, "Error saving to file", http.StatusInternalServerError)
-			return
-		}
-
-		// —5— zapis metadanych
-		if err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr)); err != nil {
-			http.Error(w, "Error saving metadata", http.StatusInternalServerError)
-			return
-		}
+		startPtr, endPtr, saveErr = dataManager_v2.SaveDataToFileAsync(encoded, file)
 	})
+	if saveErr != nil {
+		fmt.Println(saveErr)
+		http.Error(w, "Error saving to file", http.StatusInternalServerError)
+		return
+	}
+
+	if err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr)); err != nil {
+		fmt.Println(err)
+		http.Error(w, "Error saving metadata", http.StatusInternalServerError)
+		return
+	}
 
 	go subServer.NotifySubscribers(key, body)
 

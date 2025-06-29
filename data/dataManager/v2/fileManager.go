@@ -32,6 +32,13 @@ var (
 	batchInterval = 5 * time.Millisecond
 )
 
+func init() {
+	err := os.MkdirAll(basePath, 0755)
+	if err != nil {
+		panic("Cannot create base directory: " + err.Error())
+	}
+}
+
 func sendToFileWorker(filePath string, req fileRequest) fileResponse {
 	fullPath := filepath.Join(basePath, filePath)
 
