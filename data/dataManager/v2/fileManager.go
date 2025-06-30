@@ -53,18 +53,44 @@ func sendToFileWorker(filePath string, req fileRequest) fileResponse {
 	}
 
 	workerChan := chAny.(chan fileRequest)
-	workerChan <- req
-	return <-req.resp
+
+	// Wysyłka do workera
+	select {
+	case workerChan <- req:
+		// OK
+	case <-time.After(1 * time.Second):
+		return fileResponse{err: errors.New("worker is unresponsive (send timeout)")}
+	}
+
+	// Odbiór odpowiedzi
+	resp, ok := <-req.resp
+	if !ok {
+		return fileResponse{err: errors.New("worker crashed")}
+	}
+	return resp
+
 }
 
 func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
+	defer func() {
+		if r := recover(); r != nil {
+			// log.Printf("fileWorkerLoop panic: %v", r)
+			close(ch)
+		}
+	}()
+
 	var (
 		pending []fileRequest
 		ticker  = time.NewTicker(batchInterval)
-		file    *os.File
-		err     error
 	)
 	defer ticker.Stop()
+
+	// Otwórz plik raz przed pętlą
+	file, err := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		panic("Cannot open file: " + err.Error())
+	}
+	defer file.Close()
 
 	for {
 		select {
@@ -80,30 +106,12 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 				}
 			}
 
-			file, err = os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
-			if err != nil {
-				for _, req := range pending {
-					req.resp <- fileResponse{err: err}
-				}
-				pending = pending[:0]
-				continue
-			}
 			executeBatch(file, logicalPath, pending)
-			file.Close()
 			pending = pending[:0]
 
 		case <-ticker.C:
 			if len(pending) > 0 {
-				file, err = os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
-				if err != nil {
-					for _, req := range pending {
-						req.resp <- fileResponse{err: err}
-					}
-					pending = pending[:0]
-					continue
-				}
 				executeBatch(file, logicalPath, pending)
-				file.Close()
 				pending = pending[:0]
 			}
 		}

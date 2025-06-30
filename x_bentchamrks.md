@@ -1,3 +1,13 @@
+# 30.06.2025
+
+> opt amount of system call's
+> in fileManager
+
+> same setup
+> UP write & read ~ 42K/s & 42K/s = combain ~84K/s
+> UP write only went up from 40-45K/s -> ~70K/s
+> read only same ~ 100K/s
+
 # 26.06.2025
 
 > new fileManager.go in data/dataManager

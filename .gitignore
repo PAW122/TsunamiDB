@@ -9,3 +9,4 @@ TsunamiDB.exe
 TsunamiDB-linux
 config.json
 /_build
+/lib/dbclient/db
