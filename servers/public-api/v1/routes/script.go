@@ -29,6 +29,17 @@ import "net/http"
 	CanDisableScriptOverHttp(false)
 	OnRead[ErraseData(self.key)]
 	]
+
+	można dodać "specjalne-wartości" do używania np:
+	getRandomUuid()
+	getDate()
+
+	kolejnność działania:
+	najpier wykonaj oryginalne polecenie np read/save
+	potem wykonaj skrypt
+
+	!zasada
+	skrypt nie może dodać wpisu który posiada inny skrypt
 	
 	można tego użyć też np do tworzenie kodów promocyjnych i tym podobnych.
 	klucze mogą się same usuwać z bazy danych po wykorzystaniu / odczytanie / redeme
@@ -68,7 +79,23 @@ import "net/http"
 		"LogOn: [delete/edit, <key>]"
 		"onAccessLog": ["logAccess('userID')"]
 		"onTimeTrigger": ["executeAt('2025-02-10T12:00:00Z', 'someAction')"]
-		"onChildCountLimit": ["maxChildren('parentKey', 5)"]
+
+	onTimeTrigger
+		implementacja:
+		schedule_list - lista która będzie posiadała wszystkie TimeTrigery w postaci:
+		[time] [execute(pointerToScript)]
+
+		lista będzie posiadała na końcu najszybsze do wyoknania i na początku najbardziej oddalone.
+		minimalny czas wykonania to 1min w przyszłość.
+
+		do ramu będą zapisywane wszystkie wpisy który odbędą się w przeciągu najbliższych 5min.
+		co x min worker będzie przechodził po liście aż natrafi na wpis który jest za więcej niż 5min.
+
+		w ten sposó powinno być to dość wydajne
+
+		*robić oddzielne pliki dla oddzielnych dat
+		np /planer/<data>
+		tak aby w 1 pliku nie było za dużo wpisów
 */
 
 func Script(w http.ResponseWriter, r *http.Request) {
