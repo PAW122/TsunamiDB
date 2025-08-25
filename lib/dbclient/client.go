@@ -57,10 +57,11 @@ func InitSubscriptionServer(port string) error {
 // TODO test
 func EnableSubscription(keys []string) (string, error) {
 	defer debug.MeasureTime("[lib.dbclient] [EnableSubscription]")()
-	return subServer.EnableSubscription(keys)
+	return subServer.EnableSubscriptionInternal(keys)
 }
 
 func DisableSubscription(key string) error {
 	defer debug.MeasureTime("[lib.dbclient] [DisableSubscription]")()
-	return subServer.DisableSubscription(key)
+	_, error := subServer.DisableSubscriptionInternal(key)
+	return error
 }
