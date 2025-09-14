@@ -257,5 +257,156 @@
       }
     ],
     "category": "API"
+  },
+  {
+    "markdown": ["api/_incTables.md", "api/incTablesSave.md"],
+    "method": "POST",
+    "endpoint": "127.0.0.1:5844/save_inc/{table}/{key}",
+    "description": "save incremental data to db",
+    "permissions": "",
+    "body": "entry data {any type}",
+    "headers": "{\"max_entry_size\": \"size_in_bits\", \"id\": \"id_number\", \"mode\": \"overwrite / append\", \"count_from\": \"top / bottom\" }",
+    "res": "{\"id\": \"{int}\"}",
+    "errors": [
+      {
+        "code": "405",
+        "message": "-",
+        "description": "Method Not Allowed - when req is not POST"
+      },
+      {
+        "code": "400",
+        "message": "Invalid url args",
+        "description": "table or key param missing"
+      },
+      {
+        "code": "400",
+        "message": "Missing size header",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Invalid body",
+        "description": "when io reader fails to read req body"
+      },
+      {
+        "code": "500",
+        "message": "Cannot serialize inc table data: {err}",
+        "description": ""
+      },
+      {
+        "code": "500",
+        "message": "Cannot read inc table data: {err}",
+        "description": "error when reading table data from KV db"
+      },
+      {
+        "code": "500",
+        "message": "Cannot deserialize inc table data: {err}",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Entry size does not match existing table",
+        "description": "when EntrySize from header does not match existing table entry size"
+      },
+      {
+        "code": "400",
+        "message": "Body size exceeds entry size",
+        "description": ""
+      },
+      {
+        "code": "500",
+        "message": "Error saving inc entry: {err}",
+        "description": ""
+      }
+    ],
+    "category": "API"
+  },
+  {
+    "markdown": ["api/_subscriptions.md", "api/incTablesRead.md"],
+    "method": "GET",
+    "endpoint": "127.0.0.1:5844/read_inc/{table}/{key}",
+    "description": "read entries from IncTable",
+    "permissions": "",
+    "body": "",
+    "headers": "{\"read_type\": \"by_id / last_entries / first_entries\", \"amount_to_read\": \"{number}\"}",
+    "res": "\"[\n {\n \"id\": 0,\n \"data\": \"test entry5\"\n },\n {\n \"id\": 1,\n \"data\": \"test entry10\"\n }\n ]\"",
+    "errors": [
+      {
+        "code": "405",
+        "message": "StatusMethodNotAllowed",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Invalid URL args",
+        "description": "table or key param missing"
+      },
+      {
+        "code": "400",
+        "message": "Missing read_type header",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Missing id header",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Invalid header value",
+        "description": "db failed to process {id} into uint64"
+      },
+      {
+        "code": "400",
+        "message": "Missing amount_to_read header",
+        "description": ""
+      },
+      {
+        "code": "400",
+        "message": "Invalid header value",
+        "description": "db failed to process {amount} into uint64"
+      },
+      {
+        "code": "400",
+        "message": "Error: {err}",
+        "description": "fail to read incTable entry data under specified key"
+      },
+      {
+        "code": "500",
+        "message": "Cannot deserialize inc table data: {err}",
+        "description": ""
+      },
+      {
+        "code": "404",
+        "message": "Entry not found",
+        "description": "entry with specified {id} not found"
+      },
+      {
+        "code": "404",
+        "message": "Entry not found",
+        "description": "entry data size is 0"
+      },
+      {
+        "code": "500",
+        "message": "Error decoding entry: {err}",
+        "description": ""
+      },
+      {
+        "code": "500",
+        "message": "Invalid entry size",
+        "description": "specified entry size in header dosn't match entry size saved in db"
+      },
+      {
+        "code": "500",
+        "message": "Corrupted read: data len=%d not divisible by recordSize=%d",
+        "description": "entry data is corupted or missing"
+      },
+      {
+        "code": "500",
+        "message": "JSON encode error: {err}",
+        "description": ""
+      }
+    ],
+    "category": "API"
   }
 ]

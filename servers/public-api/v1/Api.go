@@ -49,6 +49,8 @@ func RunPublicApi_v1(port int) {
 	mux.HandleFunc("/read_encrypted/", withClient(routes.ReadEncrypted))
 	mux.HandleFunc("/subscriptions/enable", withClient(subServer.HandleEnableSubscription))
 	mux.HandleFunc("/subscriptions/disable", withClient(subServer.HandleDisableSubscription))
+	mux.HandleFunc("/save_inc/", withClient(routes.SaveIncremental))
+	mux.HandleFunc("/read_inc/", withClient(routes.ReadIncremental))
 
 	// —— operacje meta ——
 	mux.HandleFunc("/sql", withClient(routes.SQL_api))
