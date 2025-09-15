@@ -16,19 +16,22 @@ func Save(key, table string, data []byte) error {
 		return fmt.Errorf("Invalid key or table value")
 	}
 
-	// free previous data for same key value if exist
-	prevMetaData, err := fileSystem_v1.GetElementByKey(key)
-	if err == nil {
-		defragManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
-	}
 	encoded, _ := encoder_v1.Encode(data)
 	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, table)
 	if err != nil {
 		return err
 	}
-	err = fileSystem_v1.SaveElementByKey(key, table, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, table, int(startPtr), int(endPtr))
 	if err != nil {
 		return err
+	}
+	if existed {
+		if prevMeta.FileName != table || prevMeta.StartPtr != int(startPtr) || prevMeta.EndPtr != int(endPtr) {
+			defragManager.MarkAsFree(prevMeta.Key, prevMeta.FileName, int64(prevMeta.StartPtr), int64(prevMeta.EndPtr))
+			fileSystem_v1.RecordDefragFree()
+		} else {
+			fileSystem_v1.RecordDefragSkip()
+		}
 	}
 	go subServer.NotifySubscribers(key, data)
 	return nil

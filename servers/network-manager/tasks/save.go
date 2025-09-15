@@ -2,6 +2,7 @@ package tasks
 
 import (
 	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
+	defragManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	types "github.com/PAW122/TsunamiDB/types"
@@ -26,12 +27,20 @@ func Save(req types.NMmessage) types.NMmessage {
 			Finished: false,
 		}
 	}
-	err = fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
 	if err != nil {
 		// w.WriteHeader(http.StatusInternalServerError)
 		// fmt.Fprint(w, "Error saving to map:", err)
 		return types.NMmessage{
 			Finished: false,
+		}
+	}
+	if existed {
+		if prevMeta.FileName != file || prevMeta.StartPtr != int(startPtr) || prevMeta.EndPtr != int(endPtr) {
+			defragManager.MarkAsFree(prevMeta.Key, prevMeta.FileName, int64(prevMeta.StartPtr), int64(prevMeta.EndPtr))
+			fileSystem_v1.RecordDefragFree()
+		} else {
+			fileSystem_v1.RecordDefragSkip()
 		}
 	}
 

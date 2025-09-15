@@ -27,6 +27,12 @@ type GetElement_output struct {
 	EndPtr   int
 }
 
+type entry struct {
+	file  string
+	start int
+	end   int
+}
+
 type walOp struct {
 	op       byte
 	key      string
@@ -44,7 +50,7 @@ const numShards = 256
 
 type shard struct {
 	mu sync.RWMutex
-	m  map[string]GetElement_output
+	m  map[string]entry
 }
 
 var shardedData [numShards]*shard
@@ -61,11 +67,16 @@ var (
 	walFile    *os.File
 	walBuf     *bufio.Writer
 	walMu      sync.Mutex
+
+	walSyncMu        sync.Mutex
+	walSyncCond      = sync.NewCond(&walSyncMu)
+	walSyncRequested int64
+	walSyncCompleted int64
 )
 
 func init() {
 	for i := 0; i < numShards; i++ {
-		shardedData[i] = &shard{m: make(map[string]GetElement_output)}
+		shardedData[i] = &shard{m: make(map[string]entry)}
 	}
 	ensureDir()
 	if err := loadIndex(); err != nil {
@@ -73,6 +84,7 @@ func init() {
 	}
 	setupWalWriter()
 	go snapshotWorker()
+	go debugCountersWorker()
 }
 
 func ensureDir() {
@@ -93,7 +105,7 @@ func loadIndex() error {
 			}
 			start, _ := strconv.Atoi(parts[2])
 			end, _ := strconv.Atoi(parts[3])
-			storeKey(parts[0], GetElement_output{parts[0], parts[1], start, end})
+			storeKey(parts[0], entry{file: parts[1], start: start, end: end})
 		}
 		f.Close()
 	}
@@ -109,7 +121,7 @@ func loadIndex() error {
 			if parts[0] == "S" && len(parts) == 5 {
 				start, _ := strconv.Atoi(parts[3])
 				end, _ := strconv.Atoi(parts[4])
-				storeKey(parts[1], GetElement_output{parts[1], parts[2], start, end})
+				storeKey(parts[1], entry{file: parts[2], start: start, end: end})
 			} else if parts[0] == "D" {
 				deleteKey(parts[1])
 			}
@@ -121,6 +133,14 @@ func loadIndex() error {
 }
 
 var walOpsProcessed int64
+
+const lockWarnThreshold = 100 * time.Microsecond
+
+var (
+	storeLockSlowCount int64
+	defragFreedCount   int64
+	defragSkipCount    int64
+)
 
 func setupWalWriter() {
 	var err error
@@ -186,12 +206,76 @@ func writeWalLine(op walOp) error {
 	return err
 }
 
-func flushWal() {
+func flushWal() int64 {
 	defer dbg.MeasureTime("flushWal [mapManager]")()
 	walMu.Lock()
 	walBuf.Flush()
-	walFile.Sync()
 	walMu.Unlock()
+
+	seq := atomic.AddInt64(&walSyncRequested, 1)
+	walSyncMu.Lock()
+	walSyncCond.Signal()
+	walSyncMu.Unlock()
+	return seq
+}
+
+func walSyncLoop() {
+	var lastSynced int64
+	for {
+		walSyncMu.Lock()
+		for lastSynced == atomic.LoadInt64(&walSyncRequested) {
+			walSyncCond.Wait()
+		}
+		walSyncMu.Unlock()
+
+		if err := walFile.Sync(); err != nil {
+			dbg.LogExtra("wal sync error: " + err.Error())
+		}
+
+		lastSynced = atomic.LoadInt64(&walSyncRequested)
+		atomic.StoreInt64(&walSyncCompleted, lastSynced)
+
+		walSyncMu.Lock()
+		walSyncCond.Broadcast()
+		walSyncMu.Unlock()
+	}
+}
+
+func waitForWalSync(seq int64) {
+	for {
+		if atomic.LoadInt64(&walSyncCompleted) >= seq {
+			return
+		}
+		walSyncMu.Lock()
+		for atomic.LoadInt64(&walSyncCompleted) < seq {
+			walSyncCond.Wait()
+		}
+		walSyncMu.Unlock()
+	}
+}
+
+func debugCountersWorker() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	for range ticker.C {
+		if v := atomic.SwapInt64(&storeLockSlowCount, 0); v > 0 {
+			dbg.LogExtra(fmt.Sprintf("[mapManager] store lock slow waits: %d", v))
+		}
+		if v := atomic.SwapInt64(&defragFreedCount, 0); v > 0 {
+			dbg.LogExtra(fmt.Sprintf("[mapManager] defrag frees: %d", v))
+		}
+		if v := atomic.SwapInt64(&defragSkipCount, 0); v > 0 {
+			dbg.LogExtra(fmt.Sprintf("[mapManager] defrag skips (same span): %d", v))
+		}
+	}
+}
+
+func RecordDefragFree() {
+	atomic.AddInt64(&defragFreedCount, 1)
+}
+
+func RecordDefragSkip() {
+	atomic.AddInt64(&defragSkipCount, 1)
 }
 
 func snapshotWorker() {
@@ -204,9 +288,9 @@ func snapshotWorker() {
 		bw := bufio.NewWriter(tmp)
 		for _, s := range shardedData {
 			s.mu.RLock()
-			for _, val := range s.m {
+			for key, val := range s.m {
 				fmt.Fprintf(bw, "%s|%s|%d|%d\n",
-					val.Key, val.FileName, val.StartPtr, val.EndPtr)
+					key, val.file, val.start, val.end)
 			}
 			s.mu.RUnlock()
 		}
@@ -215,7 +299,8 @@ func snapshotWorker() {
 		tmp.Close()
 		os.Rename(tmp.Name(), snapPath)
 
-		flushWal()
+		seq := flushWal()
+		waitForWalSync(seq)
 
 		walMu.Lock()
 		walFile.Close()
@@ -228,23 +313,35 @@ func snapshotWorker() {
 	}
 }
 
-func storeKey(k string, v GetElement_output) {
+func storeKey(k string, v entry) (entry, bool) {
 	defer dbg.MeasureTime("storeKey [mapManager]")()
 	s := getShard(k)
+	start := time.Now()
 	s.mu.Lock()
+	if wait := time.Since(start); wait > lockWarnThreshold {
+		atomic.AddInt64(&storeLockSlowCount, 1)
+	}
+	prev, existed := s.m[k]
 	s.m[k] = v
 	s.mu.Unlock()
+	return prev, existed
 }
 
-func deleteKey(k string) {
+func deleteKey(k string) (entry, bool) {
 	defer dbg.MeasureTime("deleteKey [mapManager]")()
 	s := getShard(k)
+	start := time.Now()
 	s.mu.Lock()
+	if wait := time.Since(start); wait > lockWarnThreshold {
+		atomic.AddInt64(&storeLockSlowCount, 1)
+	}
+	prev, existed := s.m[k]
 	delete(s.m, k)
 	s.mu.Unlock()
+	return prev, existed
 }
 
-func loadKey(k string) (GetElement_output, bool) {
+func loadEntry(k string) (entry, bool) {
 	defer dbg.MeasureTime("loadKey [mapManager]")()
 	s := getShard(k)
 	s.mu.RLock()
@@ -253,19 +350,22 @@ func loadKey(k string) (GetElement_output, bool) {
 	return val, ok
 }
 
-func SaveElementByKey(key, file string, start, end int) error {
+func SaveElementByKey(key, file string, start, end int) (GetElement_output, bool, error) {
 	defer dbg.MeasureTime("SaveElementByKey [mapManager]")()
-	storeKey(key, GetElement_output{key, file, start, end})
+	prevEntry, existed := storeKey(key, entry{file: file, start: start, end: end})
 	select {
 	case walChan <- walOp{'S', key, file, start, end}:
 	case <-time.After(5 * time.Second):
 		dbg.LogExtra("WAL blocked for 5s on key:", key)
-		return errors.New("WAL timeout")
+		return GetElement_output{}, existed, errors.New("WAL timeout")
 	default:
-		flushWal()
+		_ = flushWal()
 		walChan <- walOp{'S', key, file, start, end}
 	}
-	return nil
+	if existed {
+		return entryToOutput(key, prevEntry), true, nil
+	}
+	return GetElement_output{}, false, nil
 }
 
 func RemoveElementByKey(key string) error {
@@ -274,7 +374,7 @@ func RemoveElementByKey(key string) error {
 	select {
 	case walChan <- walOp{'D', key, "", 0, 0}:
 	default:
-		flushWal()
+		_ = flushWal()
 		walChan <- walOp{'D', key, "", 0, 0}
 	}
 	return nil
@@ -282,8 +382,9 @@ func RemoveElementByKey(key string) error {
 
 func GetElementByKey(key string) (*GetElement_output, error) {
 	defer dbg.MeasureTime("GetElementByKey [mapManager]")()
-	if val, ok := loadKey(key); ok {
-		return &val, nil
+	if val, ok := loadEntry(key); ok {
+		out := entryToOutput(key, val)
+		return &out, nil
 	}
 	return nil, errors.New("key not found")
 }
@@ -317,4 +418,23 @@ func GetKeysByRegex(pattern string, max int) ([]string, error) {
 		s.mu.RUnlock()
 	}
 	return out, nil
+}
+
+func entryToOutput(key string, e entry) GetElement_output {
+	return GetElement_output{
+		Key:      key,
+		FileName: e.file,
+		StartPtr: e.start,
+		EndPtr:   e.end,
+	}
+}
+
+// ResetForTests clears in-memory metadata caches between test runs.
+func ResetForTests() {
+	for _, s := range shardedData {
+		s.mu.Lock()
+		s.m = make(map[string]entry)
+		s.mu.Unlock()
+	}
+	regexCache = sync.Map{}
 }

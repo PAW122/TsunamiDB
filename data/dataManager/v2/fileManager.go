@@ -133,6 +133,12 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 	for {
 		select {
 		case req := <-ch:
+			if req.op == "close" {
+				if req.resp != nil {
+					req.resp <- fileResponse{}
+				}
+				return
+			}
 			if req.op == "delete_inc" {
 				if len(pending) > 0 {
 					executeBatch(file, logicalPath, pending)
@@ -175,6 +181,30 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 			}
 		}
 	}
+}
+
+func shutdownFileWorkersForTests() {
+	fileWorkers.Range(func(key, value any) bool {
+		ch := value.(chan fileRequest)
+		resp := make(chan fileResponse, 1)
+		ch <- fileRequest{op: "close", resp: resp}
+		<-resp
+		fileWorkers.Delete(key)
+		return true
+	})
+	fileWorkers = sync.Map{}
+	time.Sleep(20 * time.Millisecond)
+}
+
+// ShutdownWorkersForTests exposes worker cleanup for external tests.
+func ShutdownWorkersForTests() {
+	shutdownFileWorkersForTests()
+}
+
+// EnsureDirsForTests recreates base directories used by file workers.
+func EnsureDirsForTests() {
+	_ = os.MkdirAll(basePath, 0755)
+	_ = os.MkdirAll(baseIncTablesPath, 0755)
 }
 
 // todo - potencjalna optymalizacja - tylko 1 przejście for po batchu

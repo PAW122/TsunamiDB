@@ -208,3 +208,12 @@ func SaveBlockCheck(startPtr, endPtr int64) {
 		}
 	}
 }
+
+// ResetForTests clears internal state and removes on-disk metadata.
+func ResetForTests() {
+	defrag_mutex.Lock()
+	defer defrag_mutex.Unlock()
+	freeBlocks = make(map[string]FreeBlock)
+	defrag_mapLoaded = false
+	_ = os.Remove(freeSpaceFilePath)
+}

@@ -40,16 +40,7 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	// —2— zwolnij poprzednie dane (jeśli istnieją)
-	debug.MeasureBlock("CheckExistingKey [save_api]", func() {
-		if meta, err := fileSystem_v1.GetElementByKey(key); err == nil {
-			defragmentationManager.MarkAsFree(
-				meta.Key, meta.FileName,
-				int64(meta.StartPtr), int64(meta.EndPtr),
-			)
-		}
-	})
-
-	// —3— kodowanie (funkcja NIE zwraca error)
+	// -2- kodowanie (funkcja NIE zwraca error)
 	encoded, _ := encoder_v1.Encode(body)
 
 	debug.MeasureBlock("save data & map [save_api]", func() {
@@ -61,10 +52,22 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 
-	if err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr)); err != nil {
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
+	if err != nil {
 		fmt.Println(err)
 		http.Error(w, "Error saving metadata", http.StatusInternalServerError)
 		return
+	}
+	if existed {
+		if prevMeta.FileName != file || prevMeta.StartPtr != int(startPtr) || prevMeta.EndPtr != int(endPtr) {
+			defragmentationManager.MarkAsFree(
+				prevMeta.Key, prevMeta.FileName,
+				int64(prevMeta.StartPtr), int64(prevMeta.EndPtr),
+			)
+			fileSystem_v1.RecordDefragFree()
+		} else {
+			fileSystem_v1.RecordDefragSkip()
+		}
 	}
 
 	go subServer.NotifySubscribers(key, body)

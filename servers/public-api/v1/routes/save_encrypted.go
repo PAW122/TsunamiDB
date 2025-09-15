@@ -49,12 +49,6 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 
-	// free previous data for same key value if exist
-	prevMetaData, err := fileSystem_v1.GetElementByKey(key)
-	if err == nil {
-		defragmentationManager.MarkAsFree(prevMetaData.Key, prevMetaData.FileName, int64(prevMetaData.StartPtr), int64(prevMetaData.EndPtr))
-	}
-
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -79,11 +73,19 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	// save to map
-	err = fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, "Error saving to map:", err)
 		return
+	}
+	if existed {
+		if prevMeta.FileName != file || prevMeta.StartPtr != int(startPtr) || prevMeta.EndPtr != int(endPtr) {
+			defragmentationManager.MarkAsFree(prevMeta.Key, prevMeta.FileName, int64(prevMeta.StartPtr), int64(prevMeta.EndPtr))
+			fileSystem_v1.RecordDefragFree()
+		} else {
+			fileSystem_v1.RecordDefragSkip()
+		}
 	}
 
 	// sends "plain text data" (not encrypted)

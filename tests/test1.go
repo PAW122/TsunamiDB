@@ -37,7 +37,7 @@ func TestAsyncSaveAndRead(amount int) {
 			fmt.Printf("❌ Error saving %s: %v\n", key, err)
 			return
 		}
-		err = fileSystem_v1.SaveElementByKey(key, "data.bin", int(startPtr), int(endPtr))
+		_, _, err = fileSystem_v1.SaveElementByKey(key, "data.bin", int(startPtr), int(endPtr))
 		if err != nil {
 			fmt.Printf("❌ Error mapping key %s: %v\n", key, err)
 			return

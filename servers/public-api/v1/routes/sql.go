@@ -33,7 +33,7 @@ func SQL_api(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	// Parsowanie JSON
 	err = json.Unmarshal([]byte(body), &request)
 	if err != nil {
-		fmt.Println("Błąd parsowania JSON: %v", err)
+		fmt.Printf("JSON parse error: %v\n", err)
 		return
 	}
 

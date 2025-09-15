@@ -115,6 +115,10 @@ func GetNetworkManager() *NetworkManager {
 	return nmInstance
 }
 
+func SetInstanceForTests(nm *NetworkManager) {
+	nmInstance = nm
+}
+
 // startServer uruchamia lokalny serwer WebSocket
 func (nm *NetworkManager) startServer() {
 	http.HandleFunc("/ws", nm.handleConnection)

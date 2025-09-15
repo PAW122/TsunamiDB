@@ -6,19 +6,17 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// Struktura przechowująca statystyki czasu wykonania
-
-type TimingStats struct {
-	TotalTime time.Duration
-	Count     int64
+type timingEntry struct {
+	totalNs int64
+	count   int64
 }
 
 var (
-	logMutex   sync.Mutex
-	timingData sync.Map // Mapa dla statystyk czasu
+	timingData sync.Map
 	once       sync.Once
 )
 
@@ -31,14 +29,11 @@ func MeasureTime(name string) func() {
 	start := time.Now()
 	once.Do(StartStatsLogger)
 
+	entry := getOrCreateEntry(name)
 	return func() {
 		duration := time.Since(start)
-		logMutex.Lock()
-		val, _ := timingData.LoadOrStore(name, &TimingStats{})
-		stats := val.(*TimingStats)
-		stats.TotalTime += duration
-		stats.Count++
-		logMutex.Unlock()
+		atomic.AddInt64(&entry.totalNs, duration.Nanoseconds())
+		atomic.AddInt64(&entry.count, 1)
 	}
 }
 
@@ -47,20 +42,14 @@ func MeasureBlock(name string, fn func()) {
 	start := time.Now()
 	fn()
 	duration := time.Since(start)
+	entry := getOrCreateEntry(name)
+	atomic.AddInt64(&entry.totalNs, duration.Nanoseconds())
+	atomic.AddInt64(&entry.count, 1)
+}
 
-	logMutex.Lock()
-	defer logMutex.Unlock()
-
-	if val, ok := timingData.Load(name); ok {
-		stats := val.(*TimingStats)
-		stats.TotalTime += duration
-		stats.Count++
-	} else {
-		timingData.Store(name, &TimingStats{
-			TotalTime: duration,
-			Count:     1,
-		})
-	}
+func getOrCreateEntry(name string) *timingEntry {
+	val, _ := timingData.LoadOrStore(name, &timingEntry{})
+	return val.(*timingEntry)
 }
 
 // Startuje cykliczny logger co 5s
@@ -73,16 +62,14 @@ func StartStatsLogger() {
 			log.Println("---------- [DEBUG] Function Timing Stats ----------")
 			timingData.Range(func(key, val any) bool {
 				name := key.(string)
-				stats := val.(*TimingStats)
-
+				entry := val.(*timingEntry)
+				total := time.Duration(atomic.LoadInt64(&entry.totalNs))
+				count := atomic.LoadInt64(&entry.count)
 				var avg time.Duration
-				if stats.Count > 0 {
-					avg = stats.TotalTime / time.Duration(stats.Count)
+				if count > 0 {
+					avg = total / time.Duration(count)
 				}
-
-				log.Printf("%-30s | calls: %6d | avg: %8s | total: %s\n",
-					name, stats.Count, avg, stats.TotalTime)
-
+				log.Printf("%-30s | calls: %6d | avg: %8s | total: %s\n", name, count, avg, total)
 				return true
 			})
 			log.Println("---------------------------------------------------")
@@ -94,9 +81,14 @@ func StartStatsLogger() {
 func PrintTimingStats() {
 	fmt.Println("\n[DEBUG] Timing Stats:")
 	timingData.Range(func(key, value interface{}) bool {
-		stats := value.(*TimingStats)
-		avgTime := stats.TotalTime / time.Duration(stats.Count)
-		fmt.Printf("%s - avg: %v, total: %v, count: %d\n", key, avgTime, stats.TotalTime, stats.Count)
+		entry := value.(*timingEntry)
+		total := time.Duration(atomic.LoadInt64(&entry.totalNs))
+		count := atomic.LoadInt64(&entry.count)
+		var avg time.Duration
+		if count > 0 {
+			avg = total / time.Duration(count)
+		}
+		fmt.Printf("%s - avg: %v, total: %v, count: %d\n", key, avg, total, count)
 		return true
 	})
 }

@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
+	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
@@ -195,10 +196,19 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 			return
 		}
 
-		if err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr)); err != nil {
+		prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
+		if err != nil {
 			fmt.Println(err)
 			http.Error(w, "Error saving metadata", http.StatusInternalServerError)
 			return
+		}
+		if existed {
+			if prevMeta.FileName != file || prevMeta.StartPtr != int(startPtr) || prevMeta.EndPtr != int(endPtr) {
+				defragmentationManager.MarkAsFree(prevMeta.Key, prevMeta.FileName, int64(prevMeta.StartPtr), int64(prevMeta.EndPtr))
+				fileSystem_v1.RecordDefragFree()
+			} else {
+				fileSystem_v1.RecordDefragSkip()
+			}
 		}
 
 		// dade zapisane, nie robie subServer.NotifySubscribers
@@ -238,7 +248,6 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 	// req o zapisanie danych w inc_table_data
 	// jeżeli istnieje to czy rozmiar się zgadza?
 
-
 	if len(body) > int(entry_size) {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "Body size exceeds entry size")
@@ -277,7 +286,6 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 			// zwrócenie id
 			respondWithIncID(w, id, warningMsg)
 
-
 		} else { // append mode [0]
 			id, err := dataManager_v2.SaveIncDataToFileAsync_Put(encoded_inc_body, inc_table_data.TableFileName, entry_size, entry_id, count_from_header)
 			if err != nil {
@@ -296,14 +304,6 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 
 }
 
-
-
-
-
-
-
-
-
 func respondWithIncID(w http.ResponseWriter, id uint64, warning string) {
 	w.Header().Set("Content-Type", "application/json")
 	resp := map[string]string{
@@ -314,11 +314,3 @@ func respondWithIncID(w http.ResponseWriter, id uint64, warning string) {
 	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
-
-
-
-
-
-
-
-
