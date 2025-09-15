@@ -50,3 +50,14 @@ func SaveIncDataToFileAsync_OverWrite(data []byte, filePath string, entry_size u
 	id := binary.LittleEndian.Uint64(resp.data)
 	return id, resp.err
 }
+
+// DeleteIncTableFile removes the file backing an incremental table via the file worker.
+func DeleteIncTableFile(filePath string) error {
+	respChan := make(chan fileResponse, 1)
+	req := fileRequest{
+		op:   "delete_inc",
+		resp: respChan,
+	}
+	resp := sendToFileWorker(filePath, req)
+	return resp.err
+}

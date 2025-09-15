@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -390,31 +391,51 @@ func StartWSServer(port string) error {
 // ---------------------------
 
 func NotifySubscribers(key string, data []byte) {
-	// Snapshot połączeń
+	notifySubscribersWithPayload(key, map[string]any{
+		"event": "updated",
+		"key":   key,
+		"data":  string(data),
+	})
+}
+
+func NotifyIncTableSubscribers(key string, changeType string, entryID uint64, entryData []byte) {
+	notifySubscribersWithPayload(key, map[string]any{
+		"event": "inc_table_update",
+		"key":   key,
+		"data": map[string]any{
+			"type": changeType,
+			"new_data": map[string]string{
+				"id":   strconv.FormatUint(entryID, 10),
+				"data": string(entryData),
+			},
+		},
+	})
+}
+
+func notifySubscribersWithPayload(key string, payload any) {
+	conns := snapshotSubscribers(key)
+	if len(conns) == 0 {
+		return
+	}
+
+	for _, c := range conns {
+		if err := writeJSON(c, payload); err != nil {
+			log.Println("notify write failed -> cleanup:", err)
+			cleanupConn(c)
+		}
+	}
+}
+
+func snapshotSubscribers(key string) []*websocket.Conn {
 	mu.Lock()
+	defer mu.Unlock()
+
 	set := activeSubs[key]
 	conns := make([]*websocket.Conn, 0, len(set))
 	for c := range set {
 		conns = append(conns, c)
 	}
-	mu.Unlock()
-
-	if len(conns) == 0 {
-		return
-	}
-
-	payload, _ := json.Marshal(map[string]string{
-		"event": "updated",
-		"key":   key,
-		"data":  string(data),
-	})
-
-	for _, c := range conns {
-		if err := writeMessage(c, websocket.TextMessage, payload); err != nil {
-			log.Println("notify write failed -> cleanup:", err)
-			cleanupConn(c)
-		}
-	}
+	return conns
 }
 
 func NotifyDeleteAndRemove(key string) {

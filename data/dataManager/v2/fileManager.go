@@ -14,7 +14,7 @@ import (
 )
 
 type fileRequest struct {
-	op         string // "read" | "write" | "write_inc" | "read_inc"
+	op         string // "read" | "write" | "write_inc" | "write_inc_ow" | "read_inc" | "delete_inc"
 	data       []byte
 	startPtr   int64
 	endPtr     int64
@@ -54,7 +54,7 @@ func init() {
 func sendToFileWorker(filePath string, req fileRequest) fileResponse {
 	// Dla write_inc i read_inc korzystamy z osobnego katalogu inc_tables
 	var fullPath string
-	if req.op == "write_inc" || req.op == "write_inc_ow" || req.op == "read_inc" {
+	if req.op == "write_inc" || req.op == "write_inc_ow" || req.op == "read_inc" || req.op == "delete_inc" {
 		fullPath = filepath.Join(baseIncTablesPath, filePath)
 	} else {
 		fullPath = filepath.Join(basePath, filePath)
@@ -85,6 +85,31 @@ func sendToFileWorker(filePath string, req fileRequest) fileResponse {
 	return resp
 }
 
+func handleDeleteIncFile(file **os.File, fullPath string) error {
+	if *file != nil {
+		if err := (*file).Close(); err != nil {
+			return err
+		}
+	}
+
+	if err := os.Remove(fullPath); err != nil {
+		if !os.IsNotExist(err) {
+			reopen, reopenErr := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
+			if reopenErr == nil {
+				*file = reopen
+			}
+			return err
+		}
+	}
+
+	reopen, err := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	*file = reopen
+	return nil
+}
+
 func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -108,19 +133,40 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 	for {
 		select {
 		case req := <-ch:
+			if req.op == "delete_inc" {
+				if len(pending) > 0 {
+					executeBatch(file, logicalPath, pending)
+					pending = pending[:0]
+				}
+				err := handleDeleteIncFile(&file, fullPath)
+				req.resp <- fileResponse{err: err}
+				continue
+			}
+
 			pending = append(pending, req)
 		collectLoop:
 			for {
 				select {
 				case req := <-ch:
+					if req.op == "delete_inc" {
+						if len(pending) > 0 {
+							executeBatch(file, logicalPath, pending)
+							pending = pending[:0]
+						}
+						err := handleDeleteIncFile(&file, fullPath)
+						req.resp <- fileResponse{err: err}
+						continue collectLoop
+					}
 					pending = append(pending, req)
 				default:
 					break collectLoop
 				}
 			}
 
-			executeBatch(file, logicalPath, pending)
-			pending = pending[:0]
+			if len(pending) > 0 {
+				executeBatch(file, logicalPath, pending)
+				pending = pending[:0]
+			}
 
 		case <-ticker.C:
 			if len(pending) > 0 {

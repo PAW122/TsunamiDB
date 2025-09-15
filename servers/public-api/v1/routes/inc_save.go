@@ -3,6 +3,7 @@ package routes
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 	types "github.com/PAW122/TsunamiDB/types"
 )
 
@@ -100,6 +102,7 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 
 	var inc_table_exists bool = false
 	var inc_table_data types.IncTableEntryData
+	var warningMsg string
 
 	defer debug.MeasureTime("> api [SaveInc]")()
 
@@ -119,26 +122,31 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 	key := pathParts[3]
 
 	size_header := r.Header.Get("max_entry_size")
-	if size_header == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Missing size header")
-		return
-	}
-
-	entry_size, err := strconv.ParseUint(size_header, 10, 64)
-	if err != nil {
-		http.Error(w, "Invalid header value", http.StatusBadRequest)
-		return
+	var (
+		headerProvided     bool
+		requestedEntrySize uint64
+		entry_size         uint64
+	)
+	if size_header != "" {
+		headerProvided = true
+		size, err := strconv.ParseUint(size_header, 10, 64)
+		if err != nil {
+			http.Error(w, "Invalid header value", http.StatusBadRequest)
+			return
+		}
+		reqSize := size
+		requestedEntrySize = reqSize
+		entry_size = reqSize
 	}
 
 	id_header := r.Header.Get("id")
-	if size_header != "" && len(size_header) > 0 {
-		user_custom_id = true
-	}
-
-	entry_id, err := strconv.ParseUint(id_header, 10, 64)
-	if err != nil {
-		user_custom_id = false
+	var entry_id uint64
+	if id_header != "" {
+		parsedID, err := strconv.ParseUint(id_header, 10, 64)
+		if err == nil {
+			user_custom_id = true
+			entry_id = parsedID
+		}
 	}
 
 	mode_header := r.Header.Get("mode")
@@ -169,6 +177,7 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 		}
 		inc_table_data = new_inc_table_data
 		inc_table_exists = true
+		entry_size = inc_table_data.EntrySize
 
 		// struktura do byte
 		byte_body, err := StructToBytesBinary(new_inc_table_data)
@@ -219,19 +228,18 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 		}
 
 		inc_table_data = raw_table_data
+		entry_size = inc_table_data.EntrySize
+		if headerProvided && requestedEntrySize != inc_table_data.EntrySize {
+			warningMsg = fmt.Sprintf("max_entry_size header (%d) does not match existing table (%d); header ignored", requestedEntrySize, inc_table_data.EntrySize)
+		}
 	}
 
 	// mamy już dane o inc_table
 	// req o zapisanie danych w inc_table_data
 	// jeżeli istnieje to czy rozmiar się zgadza?
 
-	if inc_table_data.EntrySize != entry_size {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, "Entry size does not match existing table")
-		return
-	}
 
-	if len(body) > int(inc_table_data.EntrySize) {
+	if len(body) > int(entry_size) {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "Body size exceeds entry size")
 		return
@@ -248,9 +256,11 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 			return
 		}
 
+		go subServer.NotifyIncTableSubscribers(key, "add", id, body)
+
 		// zwrócenie id
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"id":"%d"}`, id)
+		respondWithIncID(w, id, warningMsg)
+
 	} else {
 
 		// mode 1
@@ -262,9 +272,11 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 				return
 			}
 
+			go subServer.NotifyIncTableSubscribers(key, "overwrite", id, body)
+
 			// zwrócenie id
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"id":"%d"}`, id)
+			respondWithIncID(w, id, warningMsg)
+
 
 		} else { // append mode [0]
 			id, err := dataManager_v2.SaveIncDataToFileAsync_Put(encoded_inc_body, inc_table_data.TableFileName, entry_size, entry_id, count_from_header)
@@ -274,10 +286,39 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 				return
 			}
 
+			go subServer.NotifyIncTableSubscribers(key, "insert", id, body)
+
 			// zwrócenie id
-			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, `{"id":"%d"}`, id)
+			respondWithIncID(w, id, warningMsg)
+
 		}
 	}
 
 }
+
+
+
+
+
+
+
+
+
+func respondWithIncID(w http.ResponseWriter, id uint64, warning string) {
+	w.Header().Set("Content-Type", "application/json")
+	resp := map[string]string{
+		"id": fmt.Sprintf("%d", id),
+	}
+	if warning != "" {
+		resp["warning"] = warning
+	}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+
+
+
+
+
+
+
