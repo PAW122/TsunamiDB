@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	metrics "github.com/PAW122/TsunamiDB/servers/public-api/v1/metrics"
 	routes "github.com/PAW122/TsunamiDB/servers/public-api/v1/routes"
 	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
@@ -34,6 +35,10 @@ var HTTPClient = &http.Client{
 // Adapter: zamienia handler przyjmujący (*http.Client) na http.HandlerFunc
 func withClient(fn func(http.ResponseWriter, *http.Request, *http.Client)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		defer func() {
+			metrics.RecordRequest(time.Since(start))
+		}()
 		fn(w, r, HTTPClient)
 	}
 }
@@ -56,6 +61,7 @@ func RunPublicApi_v1(port int) {
 	// —— operacje meta ——
 	mux.HandleFunc("/sql", withClient(routes.SQL_api))
 	mux.HandleFunc("/key_by_regex/", withClient(routes.GetKeysByRegex))
+	mux.HandleFunc("/health", withClient(routes.Health))
 
 	// ------- serwer HTTP --------
 	server := &http.Server{

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"sort"
 	"sync"
 	"time"
 
@@ -30,6 +31,14 @@ type NetworkManager struct {
 	ServerIP         string
 	upgrader         websocket.Upgrader
 	responseChannels map[string]chan types.NMmessage
+}
+
+type Stats struct {
+	ServerIP         string   `json:"server_ip"`
+	Port             int      `json:"port"`
+	ConnectedPeers   int      `json:"connected_peers"`
+	PeerAddresses    []string `json:"peer_addresses"`
+	PendingResponses int      `json:"pending_responses"`
 }
 
 var nmInstance *NetworkManager
@@ -223,7 +232,31 @@ func (nm *NetworkManager) listenForMessages(peerAddr string, conn *websocket.Con
 	}
 }
 
-// BroadcastMessage rozsyła wiadomość do wszystkich innych serwerów
+// Snapshot returns a thread-safe view of the network manager state
+func (nm *NetworkManager) Snapshot() Stats {
+	if nm == nil {
+		return Stats{}
+	}
+
+	nm.Lock()
+	defer nm.Unlock()
+
+	peers := make([]string, 0, len(nm.peers))
+	for addr := range nm.peers {
+		peers = append(peers, addr)
+	}
+	sort.Strings(peers)
+
+	return Stats{
+		ServerIP:         nm.ServerIP,
+		Port:             nm.port,
+		ConnectedPeers:   len(peers),
+		PeerAddresses:    peers,
+		PendingResponses: len(nm.responseChannels),
+	}
+}
+
+// BroadcastMessage relays messages to all connected peers
 func (nm *NetworkManager) BroadcastMessage(sender string, message []byte) {
 	nm.Lock()
 	defer nm.Unlock()

@@ -7,6 +7,7 @@ import (
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
@@ -61,6 +62,10 @@ func DeleteIncremental(w http.ResponseWriter, r *http.Request, client *http.Clie
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, "Cannot delete inc table file: "+err.Error())
 		return
+	}
+
+	if err := incindex.DropTable(incInfo.TableFileName); err != nil {
+		// index cleanup failure should not block delete, log later if needed
 	}
 
 	fileSystem_v1.RemoveElementByKey(key)

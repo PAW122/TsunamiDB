@@ -6,8 +6,22 @@ Endpoints:
 - GET `/delete_inc/<table>/<key>` - delete the incremental table file and free the KV metadata entry
 
 Headers:
-- Save: `max_entry_size` (required for the first write; optional afterwards), optional: `id`, `mode` (`append`|`overwrite`), `count_from` (`top`|`bottom`)
-- Read: `read_type` (`by_id`|`first_entries`|`last_entries`) plus `id` or `amount_to_read`
+- Save: `max_entry_size` (required for the first write; optional afterwards), optional: `id`, `mode` (`append`|`overwrite`), `count_from` (`top`|`bottom`), `entry_key` (stable identifier for fast lookup)
+- Read: `read_type` (`by_id`|`first_entries`|`last_entries`|`by_key`) plus `id`, `amount_to_read`, or `entry_key` depending on the mode
+
+### Header reference
+
+| Request | Header | Required | Values | Notes |
+| --- | --- | --- | --- | --- |
+| save | `max_entry_size` | first write | integer (bytes) | must match the size declared when the table was created |
+| save | `entry_key` | optional | string | stable logical key; must be unique per table, otherwise request fails with 409 |
+| save | `id` | optional | integer | together with `mode` controls overwrite/insert; omit to append sequentially |
+| save | `mode` | optional | `append` (default) or `overwrite` | with `id` indicates whether to insert/overwrite |
+| save | `count_from` | optional | `top` or `bottom` (default) | influences how `id` is resolved (`top` counts from newest) |
+| read | `read_type` | yes | `by_id` (default), `last_entries`, `first_entries`, `by_key` | selects which companion headers to provide |
+| read | `id` | when `read_type=by_id` | integer | zero-based index counted from oldest entry |
+| read | `amount_to_read` | when `read_type` is `last_entries` or `first_entries` | integer | number of rows to fetch |
+| read | `entry_key` | when `read_type=by_key` | string | must match value provided during save |
 
 Base URL: `http://localhost:5844`
 
@@ -48,6 +62,8 @@ func SaveIncAppend(table, key string, maxEntry uint64, payload []byte) (string, 
 ```
 
 ## Save: insert/overwrite at position
+Use `id` together with `mode` for deterministic placement. Set `mode=overwrite` to replace an existing record, or `mode=append` with a custom `id` to insert relative to the `count_from` side (`top` counts from the newest entries). You can still supply `entry_key` to update or insert specific logical rows.
+
 ```go
 func SaveIncAt(table, key string, maxEntry uint64, payload []byte, id uint64, mode, countFrom string) (string, error) {
     url := fmt.Sprintf("http://localhost:5844/save_inc/%s/%s", table, key)
@@ -91,6 +107,31 @@ func ReadIncByID(table, key string, id uint64) (string, error) {
     return body.Data, nil
 }
 ```
+
+## Read: by key
+Missing or unknown keys respond with HTTP 404.
+
+```go
+func ReadIncByKey(table, key string, entryKey string) (string, error) {
+    url := fmt.Sprintf("http://localhost:5844/read_inc/%s/%s", table, key)
+    req, _ := http.NewRequest("GET", url, nil)
+    req.Header.Set("read_type", "by_key")
+    req.Header.Set("entry_key", entryKey)
+
+    resp, err := http.DefaultClient.Do(req)
+    if err != nil { return "", err }
+    defer resp.Body.Close()
+    if resp.StatusCode != http.StatusOK {
+        b, _ := io.ReadAll(resp.Body)
+        return "", fmt.Errorf("read_inc by_key failed: %s: %s", resp.Status, string(b))
+    }
+    var body struct{ Data string `json:"data"` }
+    _ = json.NewDecoder(resp.Body).Decode(&body)
+    return body.Data, nil
+}
+```
+
+entry_key stays bound to a logical row even if you insert new entries at arbitrary positions, so lookups remain O(1) across very large tables.
 
 ## Read: newest N (last_entries)
 ```go
@@ -165,3 +206,5 @@ If you enable the WebSocket subscription server, every successful `/save_inc` em
 - `GET /delete_inc/<table>/<key>` removes the backing inc-table file (resetting the worker state) and behaves like `/free` for the KV metadata; subscribers receive the usual `deleted` event for that key.
 - Payloads are treated as strings in responses; for arbitrary binary, base64-encode before saving and decode after reading.
 - Skipped entries (logical deletes) are filtered out by the readers.
+- Entry-key collisions result in HTTP 409; use `read_type=by_key` to detect duplicates before writing, or handle the error response.
+- Numeric `id` values are positional; inserts or overwrites can shift later rows, so treat `entry_key` as the stable lookup identifier.

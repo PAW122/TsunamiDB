@@ -12,7 +12,9 @@ import (
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	defrag "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
+	metrics "github.com/PAW122/TsunamiDB/servers/public-api/v1/metrics"
 )
 
 func setupRoutesTest(t *testing.T) {
@@ -24,11 +26,15 @@ func setupRoutesTest(t *testing.T) {
 	_ = os.RemoveAll("./db/inc_tables")
 	dataManager_v2.EnsureDirsForTests()
 	networkmanager.SetInstanceForTests(&networkmanager.NetworkManager{ServerIP: "127.0.0.1"})
+	metrics.ResetForTests()
+	incindex.ResetForTests()
 	t.Cleanup(func() {
 		dataManager_v2.ShutdownWorkersForTests()
 		fileSystem_v1.ResetForTests()
 		defrag.ResetForTests()
 		networkmanager.SetInstanceForTests(nil)
+		metrics.ResetForTests()
+		incindex.ResetForTests()
 		_ = os.RemoveAll("./db/data")
 		_ = os.RemoveAll("./db/inc_tables")
 	})
@@ -161,5 +167,109 @@ func TestReadMissingKey(t *testing.T) {
 	resp := perform(AsyncRead, http.MethodGet, "/read/table/missing", nil, nil)
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", resp.Code)
+	}
+}
+
+func TestHealthEndpoint(t *testing.T) {
+	setupRoutesTest(t)
+
+	resp := perform(Health, http.MethodGet, "/health", nil, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("health status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	var body struct {
+		Status string `json:"status"`
+		API    struct {
+			UptimeSeconds     float64 `json:"uptime_seconds"`
+			TotalRequests     uint64  `json:"total_requests"`
+			AverageResponseMS float64 `json:"average_response_ms"`
+			LastRequestAt     string  `json:"last_request_at"`
+		} `json:"api"`
+		Subscriptions struct {
+			ActiveClients int `json:"active_clients"`
+		} `json:"subscriptions"`
+		Network *struct {
+			ServerIP string `json:"server_ip"`
+		} `json:"network"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode health: %v", err)
+	}
+
+	if body.Status != "ok" {
+		t.Fatalf("unexpected health status: %s", body.Status)
+	}
+	if body.API.TotalRequests != 0 {
+		t.Fatalf("expected zero recorded requests, got %d", body.API.TotalRequests)
+	}
+	if body.API.AverageResponseMS < 0 {
+		t.Fatalf("average response negative: %f", body.API.AverageResponseMS)
+	}
+	if body.Subscriptions.ActiveClients != 0 {
+		t.Fatalf("expected zero active clients, got %d", body.Subscriptions.ActiveClients)
+	}
+	if body.Network == nil {
+		t.Fatalf("expected network stats in response")
+	}
+
+	method := perform(Health, http.MethodPost, "/health", nil, nil)
+	if method.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for POST, got %d", method.Code)
+	}
+}
+
+func TestIncrementalReadByKey(t *testing.T) {
+	setupRoutesTest(t)
+
+	basePath := "/save_inc/table/key"
+	headers := map[string]string{"max_entry_size": "16", "entry_key": "alpha"}
+	if resp := perform(SaveIncremental, http.MethodPost, basePath, bytes.NewBufferString("first"), headers); resp.Code != http.StatusOK {
+		t.Fatalf("save alpha status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	headers2 := map[string]string{"entry_key": "beta"}
+	if resp := perform(SaveIncremental, http.MethodPost, basePath, bytes.NewBufferString("second"), headers2); resp.Code != http.StatusOK {
+		t.Fatalf("save beta status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	headers3 := map[string]string{"entry_key": "gamma", "id": "1", "mode": "append", "count_from": "bottom"}
+	if resp := perform(SaveIncremental, http.MethodPost, basePath, bytes.NewBufferString("middle"), headers3); resp.Code != http.StatusOK {
+		t.Fatalf("insert gamma status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	readPath := "/read_inc/table/key"
+	readHeaders := map[string]string{"read_type": "by_key", "entry_key": "gamma"}
+	resp := perform(ReadIncremental, http.MethodGet, readPath, nil, readHeaders)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("read gamma status: %d body=%s", resp.Code, resp.Body.String())
+	}
+	var body struct{ Data string }
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode gamma: %v", err)
+	}
+	if body.Data != "middle" {
+		t.Fatalf("gamma unexpected data: %s", body.Data)
+	}
+
+	for key, want := range map[string]string{"alpha": "first", "beta": "second"} {
+		head := map[string]string{"read_type": "by_key", "entry_key": key}
+		resp := perform(ReadIncremental, http.MethodGet, readPath, nil, head)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("read %s status: %d body=%s", key, resp.Code, resp.Body.String())
+		}
+		var out struct{ Data string }
+		if err := json.Unmarshal(resp.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode %s: %v", key, err)
+		}
+		if out.Data != want {
+			t.Fatalf("%s unexpected data: %s", key, out.Data)
+		}
+	}
+
+	missingHeaders := map[string]string{"read_type": "by_key", "entry_key": "missing"}
+	notFound := perform(ReadIncremental, http.MethodGet, readPath, nil, missingHeaders)
+	if notFound.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for missing key, got %d", notFound.Code)
 	}
 }

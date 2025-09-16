@@ -30,5 +30,10 @@ go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.8.0
   > maps system rework
 
 # commands:
+```bash
 -tags debug
 go test -v ./lib/dbclient
+
+go test -run . -v ./data/dataManager/v2
+go test -run . -v ./servers/public-api/v1/routes
+```

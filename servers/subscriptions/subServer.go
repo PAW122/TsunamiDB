@@ -27,8 +27,35 @@ var (
 	ErrNoKeyArg = errors.New("disable subscription: empty key")
 )
 
+type Stats struct {
+	ActiveClients       int `json:"active_clients"`
+	KeysWithSubscribers int `json:"keys_with_subscribers"`
+	ActiveSubscriptions int `json:"active_subscriptions"`
+	PendingAuthKeys     int `json:"pending_auth_keys"`
+}
+
+func StatsSnapshot() Stats {
+	mu.Lock()
+	defer mu.Unlock()
+
+	stats := Stats{
+		ActiveClients:       len(connToKeys),
+		KeysWithSubscribers: len(activeSubs),
+		PendingAuthKeys:     len(pendingAuthKeys),
+	}
+
+	totalSubs := 0
+	for _, keys := range connToKeys {
+		totalSubs += len(keys)
+	}
+	stats.ActiveSubscriptions = totalSubs
+
+	return stats
+}
+
 var (
 	// key -> set(conn)
+
 	activeSubs = make(map[string]map[*websocket.Conn]struct{})
 	// conn -> set(key)
 	connToKeys = make(map[*websocket.Conn]map[string]struct{})

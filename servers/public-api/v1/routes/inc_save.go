@@ -13,6 +13,7 @@ import (
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
@@ -80,6 +81,7 @@ headers:
 	*mode = append | overwrite
 	*count_from = top | bottom [default = top]
 		> switching to "bottom" allows you to use for example id 1 instead of some high number
+	*entry_key = <string> (stable identifier stored in an auxiliary index for fast lookups)
 
 response:
 
@@ -159,6 +161,8 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 	if count_from_header != "top" && count_from_header != "bottom" {
 		count_from_header = "top"
 	}
+
+	entryKey := r.Header.Get("entry_key")
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -244,6 +248,20 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 		}
 	}
 
+	needIndexInsert := entryKey != "" && (!user_custom_id || mode_header != "overwrite")
+	if needIndexInsert {
+		if _, exists, err := incindex.Lookup(inc_table_data.TableFileName, entryKey); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, "Index lookup error: "+err.Error())
+			return
+		} else if exists {
+			w.WriteHeader(http.StatusConflict)
+			fmt.Fprint(w, "entry_key already exists")
+			return
+		}
+	}
+	needIndexOverwrite := entryKey != "" && user_custom_id && mode_header == "overwrite"
+
 	// mamy już dane o inc_table
 	// req o zapisanie danych w inc_table_data
 	// jeżeli istnieje to czy rozmiar się zgadza?
@@ -267,6 +285,19 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 
 		go subServer.NotifyIncTableSubscribers(key, "add", id, body)
 
+		if entryKey != "" {
+			if err := incindex.Insert(inc_table_data.TableFileName, id, entryKey); err != nil {
+				if errors.Is(err, incindex.ErrDuplicateKey) {
+					w.WriteHeader(http.StatusConflict)
+					fmt.Fprint(w, "entry_key already exists")
+				} else {
+					w.WriteHeader(http.StatusInternalServerError)
+					fmt.Fprint(w, "Index update error: "+err.Error())
+				}
+				return
+			}
+		}
+
 		// zwrócenie id
 		respondWithIncID(w, id, warningMsg)
 
@@ -283,6 +314,19 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 
 			go subServer.NotifyIncTableSubscribers(key, "overwrite", id, body)
 
+			if needIndexOverwrite {
+				if err := incindex.Set(inc_table_data.TableFileName, id, entryKey); err != nil {
+					if errors.Is(err, incindex.ErrDuplicateKey) {
+						w.WriteHeader(http.StatusConflict)
+						fmt.Fprint(w, "entry_key already exists")
+					} else {
+						w.WriteHeader(http.StatusInternalServerError)
+						fmt.Fprint(w, "Index update error: "+err.Error())
+					}
+					return
+				}
+			}
+
 			// zwrócenie id
 			respondWithIncID(w, id, warningMsg)
 
@@ -295,6 +339,19 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 			}
 
 			go subServer.NotifyIncTableSubscribers(key, "insert", id, body)
+
+			if entryKey != "" {
+				if err := incindex.Insert(inc_table_data.TableFileName, id, entryKey); err != nil {
+					if errors.Is(err, incindex.ErrDuplicateKey) {
+						w.WriteHeader(http.StatusConflict)
+						fmt.Fprint(w, "entry_key already exists")
+					} else {
+						w.WriteHeader(http.StatusInternalServerError)
+						fmt.Fprint(w, "Index update error: "+err.Error())
+					}
+					return
+				}
+			}
 
 			// zwrócenie id
 			respondWithIncID(w, id, warningMsg)

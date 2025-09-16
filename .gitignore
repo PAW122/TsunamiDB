@@ -10,3 +10,4 @@ TsunamiDB-linux
 config.json
 /_build
 /lib/dbclient/db
+/servers/public-api/v1/routes/db

@@ -8,6 +8,7 @@ import (
 
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	encoding_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 )
@@ -16,10 +17,11 @@ import (
 
 GET /read_inc/{file}/{key}
 Params:
-- read_type: "by_id" | "last_entries" | "first_entries" (default: by_id)
+- read_type: "by_id" | "last_entries" | "first_entries" | "by_key" (default: by_id)
 	- by_id: {id}
 	- last_entries: {amount_to_read}
 	- first_entries: {amount_to_read}
+	- by_key: {entry_key}
 
 Response:
 - 200 OK + JsonList:{decoded entries}
@@ -29,6 +31,7 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	var read_id uint64
 	var read_type_int uint8 // 0 = by id, 1 = last N entries, 2 = first N entries
 	var amount_to_read uint64
+	var requestedKey string
 
 	if r.Method != "GET" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -52,7 +55,8 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 
-	if read_type == "by_id" {
+	switch read_type {
+	case "by_id":
 		raw_id := r.Header.Get("id")
 		if raw_id == "" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -68,7 +72,7 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 
 		read_id = id
 		read_type_int = 0
-	} else if read_type == "last_entries" || read_type == "first_entries" {
+	case "last_entries", "first_entries":
 		raw_amount := r.Header.Get("amount_to_read")
 		if raw_amount == "" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -87,6 +91,18 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		} else {
 			read_type_int = 1
 		}
+	case "by_key":
+		requestedKey = r.Header.Get("entry_key")
+		if requestedKey == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprint(w, "Missing entry_key header")
+			return
+		}
+		read_type_int = 3
+	default:
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprintf(w, "Unsupported read_type: %s", read_type)
+		return
 	}
 
 	fsData, err := fileSystem_v1.GetElementByKey(key)
@@ -109,6 +125,22 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, "Cannot deserialize inc table data: "+err.Error())
 		return
+	}
+
+	if read_type_int == 3 {
+		pos, ok, err := incindex.Lookup(raw_table_data.TableFileName, requestedKey)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprint(w, "Index lookup error: "+err.Error())
+			return
+		}
+		if !ok {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, "Entry not found")
+			return
+		}
+		read_id = pos
+		read_type_int = 0
 	}
 
 	// req odczytania danych z inc_table
