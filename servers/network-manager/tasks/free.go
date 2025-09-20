@@ -15,7 +15,7 @@ func Free(req types.NMmessage) types.NMmessage {
 		}
 	}
 
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	fs_data, err := fileSystem_v1.GetElementByKey(file, key)
 	if err != nil {
 		// w.WriteHeader(http.StatusNotFound)
 		// fmt.Fprintln(w, "Error retrieving element from map:", err)
@@ -23,7 +23,7 @@ func Free(req types.NMmessage) types.NMmessage {
 			Finished: false,
 		}
 	}
-	fileSystem_v1.RemoveElementByKey(key)
+	fileSystem_v1.RemoveElementByKey(file, key)
 	defragmentationManager.MarkAsFree(key, file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 
 	req.Finished = true

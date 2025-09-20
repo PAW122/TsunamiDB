@@ -21,7 +21,7 @@ func Save(key, table string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, table, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(table, key, int(startPtr), int(endPtr))
 	if err != nil {
 		return err
 	}

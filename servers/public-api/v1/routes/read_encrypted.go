@@ -44,7 +44,7 @@ func ReadEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 	// Próba pobrania lokalnie
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	fs_data, err := fileSystem_v1.GetElementByKey(file, key)
 	if err != nil {
 		// 🔹 Jeśli nie znaleziono -> wysyłamy zapytanie do innych serwerów
 		req := types.NMmessage{

@@ -44,9 +44,9 @@ func InitPublicApi(port int) {
 	go public_api_v1.RunPublicApi_v1(port)
 }
 
-func GetKeysByRegex(regex string, max int) ([]string, error) {
+func GetKeysByRegex(table, regex string, max int) ([]string, error) {
 	defer debug.MeasureTime("[lib.dbclient] [get keys by regex]")()
-	return fileSystem_v1.GetKeysByRegex(regex, max)
+	return fileSystem_v1.GetKeysByRegex(table, regex, max)
 }
 
 // Sub System

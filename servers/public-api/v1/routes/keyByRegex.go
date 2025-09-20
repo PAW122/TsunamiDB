@@ -13,23 +13,27 @@ import (
 func GetKeysByRegex(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defer debug.MeasureTime("> api [async key by regex]")()
 
-	if r.Method != "GET" {
+	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Pobierz regex z parametru query "regex"
+	pathParts := ParseArgs(r.URL.Path, "key_by_regex")
+	if len(pathParts) < 3 || pathParts[2] == "" {
+		http.Error(w, "Missing table segment", http.StatusBadRequest)
+		return
+	}
+	table := pathParts[2]
+
 	regex := r.URL.Query().Get("regex")
 	if regex == "" {
 		http.Error(w, "Missing 'regex' parameter", http.StatusBadRequest)
 		return
 	}
 
-	// Pobierz max z parametru query "max", domyślnie 0 (wszystkie)
 	maxStr := r.URL.Query().Get("max")
-	max := 0 // Domyślnie: pobierz wszystkie
-
+	max := 0
 	if maxStr != "" {
 		var err error
 		max, err = strconv.Atoi(maxStr)
@@ -39,17 +43,12 @@ func GetKeysByRegex(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		}
 	}
 
-	// Wywołaj funkcję GetKeysByRegex z fileSystem_v1
-	keys, err := fileSystem_v1.GetKeysByRegex(regex, max)
+	keys, err := fileSystem_v1.GetKeysByRegex(table, regex, max)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error from GetKeysByRegex: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	// Ustaw Content-Type na application/json
 	w.Header().Set("Content-Type", "application/json")
-
-	// Zwróć wynik jako JSON
 	json.NewEncoder(w).Encode(keys)
-	keys = nil
 }

@@ -38,7 +38,7 @@ func AsyncRead(w http.ResponseWriter, r *http.Request, c *http.Client) {
 
 	// Uruchamiamy goroutine:
 	go func() {
-		fsData, err := fileSystem_v1.GetElementByKey(key)
+		fsData, err := fileSystem_v1.GetElementByKey(file, key)
 		if err != nil {
 			nm := networkmanager.GetNetworkManager()
 			if nm == nil {

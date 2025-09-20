@@ -18,7 +18,7 @@ func Read(key, table string) ([]byte, error) {
 	}
 
 	// Try local read
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	fs_data, err := fileSystem_v1.GetElementByKey(table, key)
 	if err != nil { // if not found locally, send network request
 		req := types.NMmessage{
 			Task:      "read",

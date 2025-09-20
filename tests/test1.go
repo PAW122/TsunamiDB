@@ -37,7 +37,7 @@ func TestAsyncSaveAndRead(amount int) {
 			fmt.Printf("❌ Error saving %s: %v\n", key, err)
 			return
 		}
-		_, _, err = fileSystem_v1.SaveElementByKey(key, "data.bin", int(startPtr), int(endPtr))
+		_, _, err = fileSystem_v1.SaveElementByKey("data.bin", key, int(startPtr), int(endPtr))
 		if err != nil {
 			fmt.Printf("❌ Error mapping key %s: %v\n", key, err)
 			return
@@ -50,7 +50,7 @@ func TestAsyncSaveAndRead(amount int) {
 	asyncRead := func(key string) {
 		defer wg.Done()
 		localStart := time.Now()
-		elem, err := fileSystem_v1.GetElementByKey(key)
+		elem, err := fileSystem_v1.GetElementByKey("data.bin", key)
 		if err != nil {
 			readChan <- struct {
 				key  string

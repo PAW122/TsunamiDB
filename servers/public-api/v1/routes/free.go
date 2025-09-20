@@ -29,13 +29,13 @@ func Free(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	file := pathParts[2]
 	key := pathParts[3]
 
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	fs_data, err := fileSystem_v1.GetElementByKey(file, key)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprintln(w, "Error retrieving element from map:", err)
 		return
 	}
-	fileSystem_v1.RemoveElementByKey(key)
+	fileSystem_v1.RemoveElementByKey(file, key)
 	defragmentationManager.MarkAsFree(key, file, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 
 	go subServer.NotifyDeleteAndRemove(key)

@@ -32,7 +32,7 @@ func DeleteIncremental(w http.ResponseWriter, r *http.Request, client *http.Clie
 	file := pathParts[2]
 	key := pathParts[3]
 
-	fsData, err := fileSystem_v1.GetElementByKey(key)
+	fsData, err := fileSystem_v1.GetElementByKey(file, key)
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		fmt.Fprint(w, "Key not found")
@@ -68,7 +68,7 @@ func DeleteIncremental(w http.ResponseWriter, r *http.Request, client *http.Clie
 		// index cleanup failure should not block delete, log later if needed
 	}
 
-	fileSystem_v1.RemoveElementByKey(key)
+	fileSystem_v1.RemoveElementByKey(file, key)
 	defragmentationManager.MarkAsFree(key, file, int64(fsData.StartPtr), int64(fsData.EndPtr))
 	go subServer.NotifyDeleteAndRemove(key)
 

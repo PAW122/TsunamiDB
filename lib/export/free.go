@@ -9,11 +9,11 @@ import (
 )
 
 func Free(key, table string) error {
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	fs_data, err := fileSystem_v1.GetElementByKey(table, key)
 	if err != nil {
-		return fmt.Errorf("error retrieving element from map:", err)
+		return fmt.Errorf("error retrieving element from map: %w", err)
 	}
-	fileSystem_v1.RemoveElementByKey(key)
+	fileSystem_v1.RemoveElementByKey(table, key)
 	defragmentationManager.MarkAsFree(key, table, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 	go subServer.NotifyDeleteAndRemove(key)
 	return nil

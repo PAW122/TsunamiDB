@@ -17,9 +17,6 @@ import (
 	dbg "github.com/PAW122/TsunamiDB/servers/debug"
 )
 
-// ---------------------------------------------------
-// Typ trzymany w RAM
-// ---------------------------------------------------
 type GetElement_output struct {
 	Key      string
 	FileName string
@@ -41,160 +38,415 @@ type walOp struct {
 	end      int
 }
 
-var (
-	snapPath = "./db/maps/data_map.snap"
-	walPath  = "./db/maps/data_map.wal"
+const (
+	numShards         = 256
+	lockWarnThreshold = 100 * time.Microsecond
 )
 
-const numShards = 256
+var (
+	baseMapsDir    = filepath.Join(".", "db", "maps")
+	legacySnapPath = filepath.Join(baseMapsDir, "data_map.snap")
+	legacyWalPath  = filepath.Join(baseMapsDir, "data_map.wal")
+
+	indexRegistry  = make(map[string]*tableIndex)
+	registryMu     sync.RWMutex
+	lastIndexCache atomic.Value // *cachedIndex
+
+	walOpsProcessed    int64
+	storeLockSlowCount int64
+	defragFreedCount   int64
+	defragSkipCount    int64
+	debugOnce          sync.Once
+)
 
 type shard struct {
 	mu sync.RWMutex
 	m  map[string]entry
 }
 
-var shardedData [numShards]*shard
+type tableIndex struct {
+	name     string
+	safeName string
 
-func getShard(key string) *shard {
-	h := fnv.New32a()
-	h.Write([]byte(key))
-	return shardedData[uint(h.Sum32())%numShards]
-}
+	shards [numShards]*shard
 
-var (
 	regexCache sync.Map
-	walChan    = make(chan walOp, 100_000)
-	walFile    *os.File
-	walBuf     *bufio.Writer
-	walMu      sync.Mutex
+
+	walChan chan walOp
+	walFile *os.File
+	walBuf  *bufio.Writer
+	walMu   sync.Mutex
 
 	walSyncMu        sync.Mutex
-	walSyncCond      = sync.NewCond(&walSyncMu)
+	walSyncCond      *sync.Cond
 	walSyncRequested int64
 	walSyncCompleted int64
-)
+}
+
+type cachedIndex struct {
+	table string
+	idx   *tableIndex
+}
 
 func init() {
-	for i := 0; i < numShards; i++ {
-		shardedData[i] = &shard{m: make(map[string]entry)}
-	}
-	ensureDir()
-	if err := loadIndex(); err != nil {
-		dbg.LogExtra("fileSystem [init] loadIndex error:", err)
-	}
-	setupWalWriter()
-	go snapshotWorker()
-	go debugCountersWorker()
-}
-
-func ensureDir() {
-	dir := filepath.Dir(walPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(baseMapsDir, 0755); err != nil {
 		panic(err)
 	}
+	lastIndexCache.Store((*cachedIndex)(nil))
+	debugOnce.Do(func() {
+		go debugCountersWorker()
+	})
 }
 
-func loadIndex() error {
-	if f, err := os.Open(snapPath); err == nil {
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			line := sc.Text()
-			parts := strings.Split(line, "|")
-			if len(parts) != 4 {
-				continue
-			}
-			start, _ := strconv.Atoi(parts[2])
-			end, _ := strconv.Atoi(parts[3])
-			storeKey(parts[0], entry{file: parts[1], start: start, end: end})
-		}
-		f.Close()
+var tableSanitizer = strings.NewReplacer(
+	"/", "_",
+	"\\", "_",
+	":", "_",
+	"*", "_",
+	"?", "_",
+	"\"", "_",
+	"<", "_",
+	">", "_",
+	"|", "_",
+	"..", "__",
+)
+
+func sanitizeTableName(name string) string {
+	s := strings.TrimSpace(name)
+	if s == "" {
+		return "default"
+	}
+	return tableSanitizer.Replace(s)
+}
+
+func normalizeTableName(table string) (string, error) {
+	if strings.TrimSpace(table) == "" {
+		return "", errors.New("table name cannot be empty")
+	}
+	return table, nil
+}
+
+func (ti *tableIndex) tableDir() string {
+	return filepath.Join(baseMapsDir, ti.safeName)
+}
+
+func (ti *tableIndex) snapPath() string {
+	return filepath.Join(ti.tableDir(), "index.snap")
+}
+
+func (ti *tableIndex) walPath() string {
+	return filepath.Join(ti.tableDir(), "index.wal")
+}
+
+func (ti *tableIndex) ensureDir() error {
+	return os.MkdirAll(ti.tableDir(), 0755)
+}
+
+func newTableIndex(table string) (*tableIndex, error) {
+	idx := &tableIndex{
+		name:     table,
+		safeName: sanitizeTableName(table),
+		walChan:  make(chan walOp, 100_000),
+	}
+	idx.walSyncCond = sync.NewCond(&idx.walSyncMu)
+	for i := 0; i < numShards; i++ {
+		idx.shards[i] = &shard{m: make(map[string]entry)}
 	}
 
-	if f, err := os.Open(walPath); err == nil {
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			line := sc.Text()
-			parts := strings.Split(line, "|")
-			if len(parts) < 2 {
-				continue
-			}
-			if parts[0] == "S" && len(parts) == 5 {
-				start, _ := strconv.Atoi(parts[3])
-				end, _ := strconv.Atoi(parts[4])
-				storeKey(parts[1], entry{file: parts[2], start: start, end: end})
-			} else if parts[0] == "D" {
-				deleteKey(parts[1])
-			}
-		}
-		f.Close()
+	if err := idx.ensureDir(); err != nil {
+		return nil, err
+	}
+	if err := idx.loadIndex(); err != nil {
+		return nil, err
+	}
+	if err := idx.setupWalWriter(); err != nil {
+		return nil, err
 	}
 
+	go idx.runWalWriter()
+	go idx.walSyncLoop()
+	go idx.snapshotWorker()
+
+	return idx, nil
+}
+
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
+}
+
+func isPointerRangeValid(start, end int) bool {
+	return start >= 0 && end > start
+}
+
+func (ti *tableIndex) loadIndex() error {
+	snapExists := fileExists(ti.snapPath())
+	walExists := fileExists(ti.walPath())
+
+	if snapExists {
+		if err := ti.loadSnapshot(ti.snapPath(), nil); err != nil {
+			return err
+		}
+	}
+	if walExists {
+		if err := ti.applyWalFile(ti.walPath(), nil); err != nil {
+			return err
+		}
+	}
+	if snapExists || walExists {
+		return nil
+	}
+
+	return ti.importFromLegacy()
+}
+
+func (ti *tableIndex) loadSnapshot(path string, filter func(string, entry) bool) error {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		parts := strings.Split(line, "|")
+		if len(parts) != 4 {
+			continue
+		}
+		start, err1 := strconv.Atoi(parts[2])
+		end, err2 := strconv.Atoi(parts[3])
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		e := entry{file: parts[1], start: start, end: end}
+		if !isPointerRangeValid(e.start, e.end) {
+			continue
+		}
+		if filter != nil && !filter(parts[0], e) {
+			continue
+		}
+		ti.storeKey(parts[0], e)
+	}
+	return sc.Err()
+}
+
+func (ti *tableIndex) applyWalFile(path string, filter func(string, entry) bool) error {
+	f, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		line := sc.Text()
+		parts := strings.Split(line, "|")
+		if len(parts) < 2 {
+			continue
+		}
+		switch parts[0] {
+		case "S":
+			if len(parts) != 5 {
+				continue
+			}
+			start, err1 := strconv.Atoi(parts[3])
+			end, err2 := strconv.Atoi(parts[4])
+			if err1 != nil || err2 != nil {
+				continue
+			}
+			e := entry{file: parts[2], start: start, end: end}
+			if !isPointerRangeValid(e.start, e.end) {
+				continue
+			}
+			if filter != nil && !filter(parts[1], e) {
+				continue
+			}
+			ti.storeKey(parts[1], e)
+		case "D":
+			ti.deleteKey(parts[1])
+		}
+	}
+	return sc.Err()
+}
+
+func (ti *tableIndex) importFromLegacy() error {
+	filter := func(_ string, e entry) bool {
+		return e.file == ti.name && isPointerRangeValid(e.start, e.end)
+	}
+	if err := ti.loadSnapshot(legacySnapPath, filter); err != nil {
+		return err
+	}
+	if err := ti.applyWalFile(legacyWalPath, filter); err != nil {
+		return err
+	}
 	return nil
 }
 
-var walOpsProcessed int64
-
-const lockWarnThreshold = 100 * time.Microsecond
-
-var (
-	storeLockSlowCount int64
-	defragFreedCount   int64
-	defragSkipCount    int64
-)
-
-func setupWalWriter() {
+func (ti *tableIndex) setupWalWriter() error {
 	var err error
-	walFile, err = os.OpenFile(walPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	ti.walFile, err = os.OpenFile(ti.walPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
-		panic(err)
+		return err
 	}
-	walBuf = bufio.NewWriterSize(walFile, 4<<20)
+	ti.walBuf = bufio.NewWriterSize(ti.walFile, 4<<20)
+	return nil
+}
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				dbg.LogExtra("walWriter panic:", r)
-			}
-		}()
+func (ti *tableIndex) getShard(key string) *shard {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return ti.shards[uint(h.Sum32())%numShards]
+}
 
-		ticker := time.NewTicker(50 * time.Millisecond)
-		defer ticker.Stop()
-		pending := 0
+func (ti *tableIndex) storeKey(k string, v entry) (entry, bool) {
+	defer dbg.MeasureTime("storeKey [mapManager]")()
+	s := ti.getShard(k)
+	start := time.Now()
+	s.mu.Lock()
+	if wait := time.Since(start); wait > lockWarnThreshold {
+		atomic.AddInt64(&storeLockSlowCount, 1)
+	}
+	prev, existed := s.m[k]
+	s.m[k] = v
+	s.mu.Unlock()
+	return prev, existed
+}
 
-		go func() {
-			t := time.NewTicker(5 * time.Second)
-			defer t.Stop()
-			var lastCount int64
-			for range t.C {
-				count := atomic.LoadInt64(&walOpsProcessed)
-				dbg.LogExtra(fmt.Sprintf("[WAL-WRITER] Processed %d ops (+%d)", count, count-lastCount))
-				lastCount = count
-			}
-		}()
+func (ti *tableIndex) deleteKey(k string) (entry, bool) {
+	defer dbg.MeasureTime("deleteKey [mapManager]")()
+	s := ti.getShard(k)
+	start := time.Now()
+	s.mu.Lock()
+	if wait := time.Since(start); wait > lockWarnThreshold {
+		atomic.AddInt64(&storeLockSlowCount, 1)
+	}
+	prev, existed := s.m[k]
+	delete(s.m, k)
+	s.mu.Unlock()
+	return prev, existed
+}
 
-		for {
-			select {
-			case op := <-walChan:
-				if err := writeWalLine(op); err != nil {
-					dbg.LogExtra("writeWalLine error:", err)
-				}
-				pending++
-				atomic.AddInt64(&walOpsProcessed, 1)
-				if pending >= 100 {
-					flushWal()
-					pending = 0
-				}
-			case <-ticker.C:
-				if pending > 0 {
-					flushWal()
-					pending = 0
+func (ti *tableIndex) loadEntry(k string) (entry, bool) {
+	defer dbg.MeasureTime("loadKey [mapManager]")()
+	s := ti.getShard(k)
+	s.mu.RLock()
+	val, ok := s.m[k]
+	s.mu.RUnlock()
+	return val, ok
+}
+
+func (ti *tableIndex) saveElement(key, file string, start, end int) (GetElement_output, bool, error) {
+	if !isPointerRangeValid(start, end) {
+		return GetElement_output{}, false, fmt.Errorf("invalid pointer range: start=%d end=%d", start, end)
+	}
+	prevEntry, existed := ti.storeKey(key, entry{file: file, start: start, end: end})
+	op := walOp{op: 'S', key: key, fileName: file, start: start, end: end}
+	if err := ti.enqueueWal(op); err != nil {
+		return GetElement_output{}, existed, err
+	}
+	if existed {
+		return entryToOutput(key, prevEntry), true, nil
+	}
+	return GetElement_output{}, false, nil
+}
+
+func (ti *tableIndex) removeElement(key string) error {
+	ti.deleteKey(key)
+	return ti.enqueueWal(walOp{op: 'D', key: key})
+}
+
+func (ti *tableIndex) getElement(key string) (*GetElement_output, error) {
+	if val, ok := ti.loadEntry(key); ok {
+		out := entryToOutput(key, val)
+		return &out, nil
+	}
+	return nil, errors.New("key not found")
+}
+
+func (ti *tableIndex) keysByRegex(pattern string, max int) ([]string, error) {
+	var rx *regexp.Regexp
+	if c, ok := ti.regexCache.Load(pattern); ok {
+		rx = c.(*regexp.Regexp)
+	} else {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, err
+		}
+		ti.regexCache.Store(pattern, compiled)
+		rx = compiled
+	}
+
+	out := make([]string, 0, max)
+	for _, s := range ti.shards {
+		s.mu.RLock()
+		for k := range s.m {
+			if rx.MatchString(k) {
+				out = append(out, k)
+				if max > 0 && len(out) >= max {
+					s.mu.RUnlock()
+					return out, nil
 				}
 			}
 		}
-	}()
+		s.mu.RUnlock()
+	}
+	return out, nil
 }
 
-func writeWalLine(op walOp) error {
+func (ti *tableIndex) enqueueWal(op walOp) error {
+	select {
+	case ti.walChan <- op:
+		return nil
+	case <-time.After(5 * time.Second):
+		dbg.LogExtra(fmt.Sprintf("WAL blocked for 5s on key: %s (table=%s)", op.key, ti.name))
+		return errors.New("WAL timeout")
+	default:
+		ti.flushWal()
+		ti.walChan <- op
+		return nil
+	}
+}
+
+func (ti *tableIndex) runWalWriter() {
+	defer func() {
+		if r := recover(); r != nil {
+			dbg.LogExtra(fmt.Sprintf("walWriter panic (table=%s): %v", ti.name, r))
+		}
+	}()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	pending := 0
+
+	for {
+		select {
+		case op := <-ti.walChan:
+			if err := ti.writeWalLine(op); err != nil {
+				dbg.LogExtra(fmt.Sprintf("writeWalLine error (table=%s): %v", ti.name, err))
+			}
+			pending++
+			atomic.AddInt64(&walOpsProcessed, 1)
+			if pending >= 100 {
+				ti.flushWal()
+				pending = 0
+			}
+		case <-ticker.C:
+			if pending > 0 {
+				ti.flushWal()
+				pending = 0
+			}
+		}
+	}
+}
+
+func (ti *tableIndex) writeWalLine(op walOp) error {
 	defer dbg.MeasureTime("writeWalLine [mapManager]")()
 	var line string
 	if op.op == 'S' {
@@ -202,56 +454,162 @@ func writeWalLine(op walOp) error {
 	} else {
 		line = fmt.Sprintf("D|%s\n", op.key)
 	}
-	_, err := walBuf.WriteString(line)
+
+	ti.walMu.Lock()
+	defer ti.walMu.Unlock()
+	if ti.walBuf == nil {
+		return errors.New("wal buffer not initialized")
+	}
+	_, err := ti.walBuf.WriteString(line)
 	return err
 }
 
-func flushWal() int64 {
+func (ti *tableIndex) flushWal() int64 {
 	defer dbg.MeasureTime("flushWal [mapManager]")()
-	walMu.Lock()
-	walBuf.Flush()
-	walMu.Unlock()
+	ti.walMu.Lock()
+	if ti.walBuf != nil {
+		ti.walBuf.Flush()
+	}
+	ti.walMu.Unlock()
 
-	seq := atomic.AddInt64(&walSyncRequested, 1)
-	walSyncMu.Lock()
-	walSyncCond.Signal()
-	walSyncMu.Unlock()
+	seq := atomic.AddInt64(&ti.walSyncRequested, 1)
+	ti.walSyncMu.Lock()
+	if ti.walSyncCond != nil {
+		ti.walSyncCond.Signal()
+	}
+	ti.walSyncMu.Unlock()
 	return seq
 }
 
-func walSyncLoop() {
+func (ti *tableIndex) walSyncLoop() {
 	var lastSynced int64
 	for {
-		walSyncMu.Lock()
-		for lastSynced == atomic.LoadInt64(&walSyncRequested) {
-			walSyncCond.Wait()
+		ti.walSyncMu.Lock()
+		for lastSynced == atomic.LoadInt64(&ti.walSyncRequested) {
+			if ti.walSyncCond != nil {
+				ti.walSyncCond.Wait()
+			} else {
+				ti.walSyncMu.Unlock()
+				time.Sleep(10 * time.Millisecond)
+				ti.walSyncMu.Lock()
+			}
 		}
-		walSyncMu.Unlock()
+		ti.walSyncMu.Unlock()
 
-		if err := walFile.Sync(); err != nil {
-			dbg.LogExtra("wal sync error: " + err.Error())
+		ti.walMu.Lock()
+		if ti.walFile != nil {
+			if err := ti.walFile.Sync(); err != nil {
+				dbg.LogExtra(fmt.Sprintf("wal sync error (table=%s): %v", ti.name, err))
+			}
 		}
+		ti.walMu.Unlock()
 
-		lastSynced = atomic.LoadInt64(&walSyncRequested)
-		atomic.StoreInt64(&walSyncCompleted, lastSynced)
+		lastSynced = atomic.LoadInt64(&ti.walSyncRequested)
+		atomic.StoreInt64(&ti.walSyncCompleted, lastSynced)
 
-		walSyncMu.Lock()
-		walSyncCond.Broadcast()
-		walSyncMu.Unlock()
+		ti.walSyncMu.Lock()
+		if ti.walSyncCond != nil {
+			ti.walSyncCond.Broadcast()
+		}
+		ti.walSyncMu.Unlock()
 	}
 }
 
-func waitForWalSync(seq int64) {
+func (ti *tableIndex) waitForWalSync(seq int64) {
 	for {
-		if atomic.LoadInt64(&walSyncCompleted) >= seq {
+		if atomic.LoadInt64(&ti.walSyncCompleted) >= seq {
 			return
 		}
-		walSyncMu.Lock()
-		for atomic.LoadInt64(&walSyncCompleted) < seq {
-			walSyncCond.Wait()
+		ti.walSyncMu.Lock()
+		for atomic.LoadInt64(&ti.walSyncCompleted) < seq {
+			if ti.walSyncCond != nil {
+				ti.walSyncCond.Wait()
+			} else {
+				ti.walSyncMu.Unlock()
+				time.Sleep(10 * time.Millisecond)
+				ti.walSyncMu.Lock()
+			}
 		}
-		walSyncMu.Unlock()
+		ti.walSyncMu.Unlock()
 	}
+}
+
+func (ti *tableIndex) snapshotWorker() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		ti.writeSnapshot()
+	}
+}
+
+func (ti *tableIndex) writeSnapshot() {
+	defer dbg.MeasureTime("snapshotWorker [mapManager]")()
+	tmp, err := os.CreateTemp(ti.tableDir(), "snap_*")
+	if err != nil {
+		dbg.LogExtra(fmt.Sprintf("snapshot temp error (table=%s): %v", ti.name, err))
+		return
+	}
+
+	bw := bufio.NewWriter(tmp)
+	for _, s := range ti.shards {
+		s.mu.RLock()
+		for key, val := range s.m {
+			fmt.Fprintf(bw, "%s|%s|%d|%d\n", key, val.file, val.start, val.end)
+		}
+		s.mu.RUnlock()
+	}
+	if err := bw.Flush(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		dbg.LogExtra(fmt.Sprintf("snapshot flush error (table=%s): %v", ti.name, err))
+		return
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		dbg.LogExtra(fmt.Sprintf("snapshot sync error (table=%s): %v", ti.name, err))
+		return
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		dbg.LogExtra(fmt.Sprintf("snapshot close error (table=%s): %v", ti.name, err))
+		return
+	}
+
+	if err := os.Rename(tmp.Name(), ti.snapPath()); err != nil {
+		os.Remove(tmp.Name())
+		dbg.LogExtra(fmt.Sprintf("snapshot rename error (table=%s): %v", ti.name, err))
+	}
+
+	seq := ti.flushWal()
+	ti.waitForWalSync(seq)
+
+	if err := ti.rotateWal(); err != nil {
+		dbg.LogExtra(fmt.Sprintf("wal rotate error (table=%s): %v", ti.name, err))
+	}
+}
+
+func (ti *tableIndex) rotateWal() error {
+	ti.walMu.Lock()
+	defer ti.walMu.Unlock()
+
+	if ti.walFile != nil {
+		if err := ti.walFile.Close(); err != nil {
+			return err
+		}
+	}
+	if err := os.Remove(ti.walPath()); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	file, err := os.OpenFile(ti.walPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	ti.walFile = file
+	ti.walBuf = bufio.NewWriterSize(file, 4<<20)
+	return nil
 }
 
 func debugCountersWorker() {
@@ -278,148 +636,6 @@ func RecordDefragSkip() {
 	atomic.AddInt64(&defragSkipCount, 1)
 }
 
-func snapshotWorker() {
-	defer dbg.MeasureTime("snapshotWorker [mapManager]")()
-	t := time.NewTicker(5 * time.Minute)
-	defer t.Stop()
-
-	for range t.C {
-		tmp, _ := os.CreateTemp(filepath.Dir(snapPath), "snap_*")
-		bw := bufio.NewWriter(tmp)
-		for _, s := range shardedData {
-			s.mu.RLock()
-			for key, val := range s.m {
-				fmt.Fprintf(bw, "%s|%s|%d|%d\n",
-					key, val.file, val.start, val.end)
-			}
-			s.mu.RUnlock()
-		}
-		bw.Flush()
-		tmp.Sync()
-		tmp.Close()
-		os.Rename(tmp.Name(), snapPath)
-
-		seq := flushWal()
-		waitForWalSync(seq)
-
-		walMu.Lock()
-		walFile.Close()
-		os.Rename(walPath, walPath+".old")
-		walFile, _ = os.OpenFile(walPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		walBuf.Reset(walFile)
-		walMu.Unlock()
-
-		os.Remove(walPath + ".old")
-	}
-}
-
-func storeKey(k string, v entry) (entry, bool) {
-	defer dbg.MeasureTime("storeKey [mapManager]")()
-	s := getShard(k)
-	start := time.Now()
-	s.mu.Lock()
-	if wait := time.Since(start); wait > lockWarnThreshold {
-		atomic.AddInt64(&storeLockSlowCount, 1)
-	}
-	prev, existed := s.m[k]
-	s.m[k] = v
-	s.mu.Unlock()
-	return prev, existed
-}
-
-func deleteKey(k string) (entry, bool) {
-	defer dbg.MeasureTime("deleteKey [mapManager]")()
-	s := getShard(k)
-	start := time.Now()
-	s.mu.Lock()
-	if wait := time.Since(start); wait > lockWarnThreshold {
-		atomic.AddInt64(&storeLockSlowCount, 1)
-	}
-	prev, existed := s.m[k]
-	delete(s.m, k)
-	s.mu.Unlock()
-	return prev, existed
-}
-
-func loadEntry(k string) (entry, bool) {
-	defer dbg.MeasureTime("loadKey [mapManager]")()
-	s := getShard(k)
-	s.mu.RLock()
-	val, ok := s.m[k]
-	s.mu.RUnlock()
-	return val, ok
-}
-
-func SaveElementByKey(key, file string, start, end int) (GetElement_output, bool, error) {
-	defer dbg.MeasureTime("SaveElementByKey [mapManager]")()
-	prevEntry, existed := storeKey(key, entry{file: file, start: start, end: end})
-	select {
-	case walChan <- walOp{'S', key, file, start, end}:
-	case <-time.After(5 * time.Second):
-		dbg.LogExtra("WAL blocked for 5s on key:", key)
-		return GetElement_output{}, existed, errors.New("WAL timeout")
-	default:
-		_ = flushWal()
-		walChan <- walOp{'S', key, file, start, end}
-	}
-	if existed {
-		return entryToOutput(key, prevEntry), true, nil
-	}
-	return GetElement_output{}, false, nil
-}
-
-func RemoveElementByKey(key string) error {
-	defer dbg.MeasureTime("RemoveElementByKey [mapManager]")()
-	deleteKey(key)
-	select {
-	case walChan <- walOp{'D', key, "", 0, 0}:
-	default:
-		_ = flushWal()
-		walChan <- walOp{'D', key, "", 0, 0}
-	}
-	return nil
-}
-
-func GetElementByKey(key string) (*GetElement_output, error) {
-	defer dbg.MeasureTime("GetElementByKey [mapManager]")()
-	if val, ok := loadEntry(key); ok {
-		out := entryToOutput(key, val)
-		return &out, nil
-	}
-	return nil, errors.New("key not found")
-}
-
-func GetKeysByRegex(pattern string, max int) ([]string, error) {
-	defer dbg.MeasureTime("GetKeysByRegex [mapManager]")()
-	var rx *regexp.Regexp
-	if c, ok := regexCache.Load(pattern); ok {
-		rx = c.(*regexp.Regexp)
-	} else {
-		compiled, err := regexp.Compile(pattern)
-		if err != nil {
-			return nil, err
-		}
-		regexCache.Store(pattern, compiled)
-		rx = compiled
-	}
-
-	out := make([]string, 0, max)
-	for _, s := range shardedData {
-		s.mu.RLock()
-		for k := range s.m {
-			if rx.MatchString(k) {
-				out = append(out, k)
-				if max > 0 && len(out) >= max {
-					s.mu.RUnlock()
-					return out, nil
-				}
-			}
-		}
-		s.mu.RUnlock()
-	}
-	return out, nil
-}
-
 func entryToOutput(key string, e entry) GetElement_output {
 	return GetElement_output{
 		Key:      key,
@@ -429,12 +645,107 @@ func entryToOutput(key string, e entry) GetElement_output {
 	}
 }
 
-// ResetForTests clears in-memory metadata caches between test runs.
-func ResetForTests() {
-	for _, s := range shardedData {
-		s.mu.Lock()
-		s.m = make(map[string]entry)
-		s.mu.Unlock()
+func loadCachedIndex(table string) *tableIndex {
+	if v := lastIndexCache.Load(); v != nil {
+		if ci, ok := v.(*cachedIndex); ok && ci != nil {
+			if ci.table == table {
+				return ci.idx
+			}
+		}
 	}
-	regexCache = sync.Map{}
+	return nil
+}
+
+func storeCachedIndex(table string, idx *tableIndex) {
+	lastIndexCache.Store(&cachedIndex{table: table, idx: idx})
+}
+
+func ResetForTests() {
+	registryMu.RLock()
+	indices := make([]*tableIndex, 0, len(indexRegistry))
+	for _, ti := range indexRegistry {
+		indices = append(indices, ti)
+	}
+	registryMu.RUnlock()
+
+	for _, ti := range indices {
+		for _, s := range ti.shards {
+			s.mu.Lock()
+			s.m = make(map[string]entry)
+			s.mu.Unlock()
+		}
+		ti.regexCache = sync.Map{}
+	}
+
+	lastIndexCache.Store((*cachedIndex)(nil))
+}
+
+func getTableIndex(table string) (*tableIndex, error) {
+	normalized, err := normalizeTableName(table)
+	if err != nil {
+		return nil, err
+	}
+
+	if idx := loadCachedIndex(normalized); idx != nil {
+		return idx, nil
+	}
+
+	registryMu.RLock()
+	idx := indexRegistry[normalized]
+	registryMu.RUnlock()
+	if idx != nil {
+		storeCachedIndex(normalized, idx)
+		return idx, nil
+	}
+
+	registryMu.Lock()
+	idx = indexRegistry[normalized]
+	if idx == nil {
+		idx, err = newTableIndex(normalized)
+		if err != nil {
+			registryMu.Unlock()
+			return nil, err
+		}
+		indexRegistry[normalized] = idx
+	}
+	registryMu.Unlock()
+
+	storeCachedIndex(normalized, idx)
+	return idx, nil
+}
+
+func SaveElementByKey(table, key string, start, end int) (GetElement_output, bool, error) {
+	defer dbg.MeasureTime("SaveElementByKey [mapManager]")()
+	idx, err := getTableIndex(table)
+	if err != nil {
+		return GetElement_output{}, false, err
+	}
+	return idx.saveElement(key, table, start, end)
+}
+
+func RemoveElementByKey(table, key string) error {
+	defer dbg.MeasureTime("RemoveElementByKey [mapManager]")()
+	idx, err := getTableIndex(table)
+	if err != nil {
+		return err
+	}
+	return idx.removeElement(key)
+}
+
+func GetElementByKey(table, key string) (*GetElement_output, error) {
+	defer dbg.MeasureTime("GetElementByKey [mapManager]")()
+	idx, err := getTableIndex(table)
+	if err != nil {
+		return nil, err
+	}
+	return idx.getElement(key)
+}
+
+func GetKeysByRegex(table, pattern string, max int) ([]string, error) {
+	defer dbg.MeasureTime("GetKeysByRegex [mapManager]")()
+	idx, err := getTableIndex(table)
+	if err != nil {
+		return nil, err
+	}
+	return idx.keysByRegex(pattern, max)
 }

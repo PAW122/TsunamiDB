@@ -456,7 +456,7 @@ func executeBatch(file *os.File, filePath string, batch []fileRequest) {
 				req.resp <- fileResponse{err: err}
 				continue
 			}
-			defragmentationManager.SaveBlockCheck(req.startPtr, req.endPtr)
+			defragmentationManager.SaveBlockCheck(filePath, req.startPtr, req.endPtr)
 			req.resp <- fileResponse{startPtr: req.startPtr, endPtr: req.endPtr, err: nil}
 		}
 	}

@@ -18,7 +18,7 @@ func ReadEncrypted(key, table, encryption_key string) ([]byte, error) {
 	}
 
 	// Próba pobrania lokalnie
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	fs_data, err := fileSystem_v1.GetElementByKey(table, key)
 	if err != nil {
 		// 🔹 Jeśli nie znaleziono -> wysyłamy zapytanie do innych serwerów
 		req := types.NMmessage{

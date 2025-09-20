@@ -105,7 +105,7 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 
-	fsData, err := fileSystem_v1.GetElementByKey(key)
+	fsData, err := fileSystem_v1.GetElementByKey(file, key)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "Error: "+err.Error())

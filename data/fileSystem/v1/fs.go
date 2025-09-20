@@ -22,7 +22,7 @@ func SaveElement(key string, data *string) {
 // ReadElement odczytuje dane na podstawie klucza i zwraca je jako string
 func ReadElement(key string) (bool, string, error) {
 	// Pobranie wskaźników z mapy
-	element, err := GetElementByKey(key)
+	element, err := GetElementByKey("data.bin", key)
 	if err != nil {
 		return false, "", err
 	}

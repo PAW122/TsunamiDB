@@ -17,7 +17,7 @@ func Read(req types.NMmessage) types.NMmessage {
 		}
 	}
 
-	fs_data, err := fileSystem_v1.GetElementByKey(key)
+	fs_data, err := fileSystem_v1.GetElementByKey(file, key)
 	if err != nil {
 		// w.WriteHeader(http.StatusNotFound)
 		// fmt.Fprint(w, "Error retrieving element from map:", err)

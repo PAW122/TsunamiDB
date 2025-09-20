@@ -73,7 +73,7 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	// save to map
-	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(file, key, int(startPtr), int(endPtr))
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprint(w, "Error saving to map:", err)

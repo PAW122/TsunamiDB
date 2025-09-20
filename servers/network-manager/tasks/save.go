@@ -27,7 +27,7 @@ func Save(req types.NMmessage) types.NMmessage {
 			Finished: false,
 		}
 	}
-	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(key, file, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(file, key, int(startPtr), int(endPtr))
 	if err != nil {
 		// w.WriteHeader(http.StatusInternalServerError)
 		// fmt.Fprint(w, "Error saving to map:", err)
