@@ -18,7 +18,7 @@ func Save(req types.NMmessage) types.NMmessage {
 		}
 	}
 
-	encoded, _ := encoder_v1.Encode(req.Content)
+	encoded, _ := encoder_v1.Encode(req.Content, false)
 	startPtr, endPtr, err := dataManager_v1.SaveDataToFile(encoded, file)
 	if err != nil {
 		// w.WriteHeader(http.StatusInternalServerError)
@@ -27,7 +27,7 @@ func Save(req types.NMmessage) types.NMmessage {
 			Finished: false,
 		}
 	}
-	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(file, key, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(file, key, int(startPtr), int(endPtr), false)
 	if err != nil {
 		// w.WriteHeader(http.StatusInternalServerError)
 		// fmt.Fprint(w, "Error saving to map:", err)

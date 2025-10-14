@@ -28,8 +28,11 @@ func Decode(data []byte) types.Decoded {
 	decoded.Version = int(version)
 
 	// Odczytanie wielkości wskaźnika (1 bajt)
-	var pointerSize uint8
-	binary.Read(buf, binary.LittleEndian, &pointerSize)
+	var pointerHeader uint8
+	binary.Read(buf, binary.LittleEndian, &pointerHeader)
+	hasNested := (pointerHeader & 0x80) != 0
+	pointerSize := pointerHeader & 0x7F
+	decoded.HasNested = hasNested
 
 	// Odczytanie StartPointer i EndPointer zgodnie z rozmiarem
 	var startPos, endPos uint64

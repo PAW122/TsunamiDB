@@ -25,7 +25,7 @@ TsunamiDB.exe 5845
 - Error statuses: `405` wrong method, `400` bad input, `404` missing key, `500` server/storage error.
 
 ## Contents
-- [Basic KV](./kv.md)
+- [Basic KV & Nested JSON](./kv.md)
 - [Encrypted](./encryption.md)
 - [Incremental Tables](./incremental.md)
 - [Subscriptions](./subscriptions.md)

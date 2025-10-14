@@ -10,7 +10,7 @@ import (
 )
 
 // Encode encodes a byte slice into a custom binary format
-func Encode(data []byte) ([]byte, types.Encoded) {
+func Encode(data []byte, hasNested bool) ([]byte, types.Encoded) {
 	defer debug.MeasureTime("encode")()
 
 	var buf bytes.Buffer
@@ -35,8 +35,12 @@ func Encode(data []byte) ([]byte, types.Encoded) {
 		pointerSize = 8 // uint64
 	}
 
-	// pointerSize (1)
-	binary.Write(&buf, binary.LittleEndian, pointerSize)
+	// pointerSize (1) + nested flag (bit7)
+	pointerHeader := pointerSize
+	if hasNested {
+		pointerHeader |= 0x80
+	}
+	binary.Write(&buf, binary.LittleEndian, pointerHeader)
 
 	// Zapisz startPtr i endPtr w odpowiednim formacie
 	/*
@@ -69,6 +73,7 @@ func Encode(data []byte) ([]byte, types.Encoded) {
 		Version:      1,
 		StartPointer: startPtr,
 		EndPointer:   endPtr,
+		HasNested:    hasNested,
 	}
 
 	return buf.Bytes(), res_data

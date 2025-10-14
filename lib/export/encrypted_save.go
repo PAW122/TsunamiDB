@@ -17,7 +17,7 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 		return fmt.Errorf("error encrypting data: %w", err)
 	}
 
-	encoded, _ := encoder_v1.Encode(encrypted_data)
+	encoded, _ := encoder_v1.Encode(encrypted_data, false)
 
 	// save to file
 	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, table)
@@ -26,7 +26,7 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 	}
 
 	// save to map
-	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(table, key, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(table, key, int(startPtr), int(endPtr), false)
 	if err != nil {
 		return fmt.Errorf("error saving to map: %w", err)
 	}

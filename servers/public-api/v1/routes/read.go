@@ -1,15 +1,15 @@
 package routes
 
 import (
+	"encoding/json"
 	"fmt"
-	"net/http"
-
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	types "github.com/PAW122/TsunamiDB/types"
+	"net/http"
 )
 
 func AsyncRead(w http.ResponseWriter, r *http.Request, c *http.Client) {
@@ -30,13 +30,24 @@ func AsyncRead(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	file := pathParts[2]
 	key := pathParts[3]
 
-	// Kanał do odbioru wyniku asynchronicznego odczytu:
+	partialPaths, err := parsePathHeader(r.Header.Get("read_nested"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Invalid read_nested header")
+		return
+	}
+	onlyPaths, err := parsePathHeader(r.Header.Get("read_only_nested"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, "Invalid read_only_nested header")
+		return
+	}
+
 	readChan := make(chan struct {
 		data []byte
 		err  error
 	}, 1)
 
-	// Uruchamiamy goroutine:
 	go func() {
 		fsData, err := fileSystem_v1.GetElementByKey(file, key)
 		if err != nil {
@@ -69,7 +80,6 @@ func AsyncRead(w http.ResponseWriter, r *http.Request, c *http.Client) {
 			return
 		}
 
-		// Odczyt pliku
 		data, err := dataManager_v2.ReadDataFromFileAsync(
 			file,
 			int64(fsData.StartPtr),
@@ -83,18 +93,76 @@ func AsyncRead(w http.ResponseWriter, r *http.Request, c *http.Client) {
 			return
 		}
 
-		// Dekodowanie
 		decodedObj := encoder_v1.Decode(data)
 		debug.LogExtra("Decoded object:", decodedObj)
 
-		// Zwrócenie wyniku
+		responseBytes := []byte(decodedObj.Data)
+		needsProcessing := decodedObj.HasNested || len(partialPaths) > 0 || len(onlyPaths) > 0
+		if needsProcessing {
+			var root interface{}
+			if err := json.Unmarshal([]byte(decodedObj.Data), &root); err != nil {
+				readChan <- struct {
+					data []byte
+					err  error
+				}{nil, fmt.Errorf("invalid stored json: %w", err)}
+				return
+			}
+
+			switch {
+			case len(onlyPaths) > 0:
+				resolved, err := extractNestedOnly(file, root, onlyPaths)
+				if err != nil {
+					readChan <- struct {
+						data []byte
+						err  error
+					}{nil, err}
+					return
+				}
+				responseBytes, err = json.Marshal(resolved)
+				if err != nil {
+					readChan <- struct {
+						data []byte
+						err  error
+					}{nil, err}
+					return
+				}
+			case len(partialPaths) > 0:
+				resolved, err := resolveNestedPaths(file, root, partialPaths)
+				if err != nil {
+					readChan <- struct {
+						data []byte
+						err  error
+					}{nil, err}
+					return
+				}
+				responseBytes, err = json.Marshal(resolved)
+				if err != nil {
+					readChan <- struct {
+						data []byte
+						err  error
+					}{nil, err}
+					return
+				}
+			case decodedObj.HasNested:
+				resolved := cloneWithPlaceholders(root)
+				marshaled, marshalErr := json.Marshal(resolved)
+				if marshalErr != nil {
+					readChan <- struct {
+						data []byte
+						err  error
+					}{nil, marshalErr}
+					return
+				}
+				responseBytes = marshaled
+			}
+		}
+
 		readChan <- struct {
 			data []byte
 			err  error
-		}{[]byte(decodedObj.Data), nil}
+		}{responseBytes, nil}
 	}()
 
-	// Blokująco pobieramy wynik z kanału
 	res := <-readChan
 	if res.err != nil {
 		w.WriteHeader(http.StatusNotFound)

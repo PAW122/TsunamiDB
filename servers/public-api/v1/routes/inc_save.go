@@ -191,7 +191,7 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 			fmt.Fprint(w, "Cannot serialize inc table data: "+err.Error())
 			return
 		}
-		encoded, _ := encoder_v1.Encode(byte_body)
+		encoded, _ := encoder_v1.Encode(byte_body, false)
 		startPtr, endPtr, saveErr = dataManager_v2.SaveDataToFileAsync(encoded, file)
 
 		if saveErr != nil {
@@ -200,7 +200,7 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 			return
 		}
 
-		prevMeta, existed, err := fileSystem_v1.SaveElementByKey(file, key, int(startPtr), int(endPtr))
+		prevMeta, existed, err := fileSystem_v1.SaveElementByKey(file, key, int(startPtr), int(endPtr), false)
 		if err != nil {
 			fmt.Println(err)
 			http.Error(w, "Error saving metadata", http.StatusInternalServerError)

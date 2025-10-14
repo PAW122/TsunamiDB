@@ -31,13 +31,13 @@ func TestAsyncSaveAndRead(amount int) {
 	asyncSave := func(key string, data string) {
 		defer wg.Done()
 		localStart := time.Now()
-		encoded, _ := encoder_v1.Encode([]byte(data))
+		encoded, _ := encoder_v1.Encode([]byte(data), false)
 		startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, "data.bin")
 		if err != nil {
 			fmt.Printf("❌ Error saving %s: %v\n", key, err)
 			return
 		}
-		_, _, err = fileSystem_v1.SaveElementByKey("data.bin", key, int(startPtr), int(endPtr))
+		_, _, err = fileSystem_v1.SaveElementByKey("data.bin", key, int(startPtr), int(endPtr), false)
 		if err != nil {
 			fmt.Printf("❌ Error mapping key %s: %v\n", key, err)
 			return

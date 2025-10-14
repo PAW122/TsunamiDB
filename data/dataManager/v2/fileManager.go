@@ -124,6 +124,9 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 	defer ticker.Stop()
 
 	// Otwórz plik raz przed pętlą
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		panic("Cannot create directory: " + err.Error())
+	}
 	file, err := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		panic("Cannot open file: " + err.Error())

@@ -3,7 +3,7 @@
 + encode string data, add metedata required for db
     > @param string
     ```
-    encoder_v1.Encode("Hello, World")
+    encoder_v1.Encode([]byte("Hello, World"), false)
     ```
 
 + decode readed data from binary
@@ -25,7 +25,7 @@
     > @param dataStart pointer
     > @param dataEnd pointer
     ```
-    fileSystem_v1.SaveElementByKey("test5", "data.bin", int(startPtr), int(endPtr))
+    fileSystem_v1.SaveElementByKey("test5", "data.bin", int(startPtr), int(endPtr), false)
     ```
 
 + read data from file

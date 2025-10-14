@@ -16,12 +16,12 @@ func Save(key, table string, data []byte) error {
 		return fmt.Errorf("Invalid key or table value")
 	}
 
-	encoded, _ := encoder_v1.Encode(data)
+	encoded, _ := encoder_v1.Encode(data, false)
 	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, table)
 	if err != nil {
 		return err
 	}
-	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(table, key, int(startPtr), int(endPtr))
+	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(table, key, int(startPtr), int(endPtr), false)
 	if err != nil {
 		return err
 	}

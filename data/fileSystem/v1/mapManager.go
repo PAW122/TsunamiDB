@@ -18,24 +18,27 @@ import (
 )
 
 type GetElement_output struct {
-	Key      string
-	FileName string
-	StartPtr int
-	EndPtr   int
+	Key       string
+	FileName  string
+	StartPtr  int
+	EndPtr    int
+	HasNested bool
 }
 
 type entry struct {
-	file  string
-	start int
-	end   int
+	file      string
+	start     int
+	end       int
+	hasNested bool
 }
 
 type walOp struct {
-	op       byte
-	key      string
-	fileName string
-	start    int
-	end      int
+	op        byte
+	key       string
+	fileName  string
+	start     int
+	end       int
+	hasNested bool
 }
 
 const (
@@ -214,7 +217,7 @@ func (ti *tableIndex) loadSnapshot(path string, filter func(string, entry) bool)
 	for sc.Scan() {
 		line := sc.Text()
 		parts := strings.Split(line, "|")
-		if len(parts) != 4 {
+		if len(parts) < 4 {
 			continue
 		}
 		start, err1 := strconv.Atoi(parts[2])
@@ -222,7 +225,11 @@ func (ti *tableIndex) loadSnapshot(path string, filter func(string, entry) bool)
 		if err1 != nil || err2 != nil {
 			continue
 		}
-		e := entry{file: parts[1], start: start, end: end}
+		hasNested := false
+		if len(parts) >= 5 {
+			hasNested = parts[4] == "1" || strings.EqualFold(parts[4], "true")
+		}
+		e := entry{file: parts[1], start: start, end: end, hasNested: hasNested}
 		if !isPointerRangeValid(e.start, e.end) {
 			continue
 		}
@@ -253,7 +260,7 @@ func (ti *tableIndex) applyWalFile(path string, filter func(string, entry) bool)
 		}
 		switch parts[0] {
 		case "S":
-			if len(parts) != 5 {
+			if len(parts) < 5 {
 				continue
 			}
 			start, err1 := strconv.Atoi(parts[3])
@@ -261,7 +268,11 @@ func (ti *tableIndex) applyWalFile(path string, filter func(string, entry) bool)
 			if err1 != nil || err2 != nil {
 				continue
 			}
-			e := entry{file: parts[2], start: start, end: end}
+			hasNested := false
+			if len(parts) >= 6 {
+				hasNested = parts[5] == "1" || strings.EqualFold(parts[5], "true")
+			}
+			e := entry{file: parts[2], start: start, end: end, hasNested: hasNested}
 			if !isPointerRangeValid(e.start, e.end) {
 				continue
 			}
@@ -342,12 +353,12 @@ func (ti *tableIndex) loadEntry(k string) (entry, bool) {
 	return val, ok
 }
 
-func (ti *tableIndex) saveElement(key, file string, start, end int) (GetElement_output, bool, error) {
+func (ti *tableIndex) saveElement(key, file string, start, end int, hasNested bool) (GetElement_output, bool, error) {
 	if !isPointerRangeValid(start, end) {
 		return GetElement_output{}, false, fmt.Errorf("invalid pointer range: start=%d end=%d", start, end)
 	}
-	prevEntry, existed := ti.storeKey(key, entry{file: file, start: start, end: end})
-	op := walOp{op: 'S', key: key, fileName: file, start: start, end: end}
+	prevEntry, existed := ti.storeKey(key, entry{file: file, start: start, end: end, hasNested: hasNested})
+	op := walOp{op: 'S', key: key, fileName: file, start: start, end: end, hasNested: hasNested}
 	if err := ti.enqueueWal(op); err != nil {
 		return GetElement_output{}, existed, err
 	}
@@ -450,7 +461,11 @@ func (ti *tableIndex) writeWalLine(op walOp) error {
 	defer dbg.MeasureTime("writeWalLine [mapManager]")()
 	var line string
 	if op.op == 'S' {
-		line = fmt.Sprintf("S|%s|%s|%d|%d\n", op.key, op.fileName, op.start, op.end)
+		nestedFlag := 0
+		if op.hasNested {
+			nestedFlag = 1
+		}
+		line = fmt.Sprintf("S|%s|%s|%d|%d|%d\n", op.key, op.fileName, op.start, op.end, nestedFlag)
 	} else {
 		line = fmt.Sprintf("D|%s\n", op.key)
 	}
@@ -555,7 +570,11 @@ func (ti *tableIndex) writeSnapshot() {
 	for _, s := range ti.shards {
 		s.mu.RLock()
 		for key, val := range s.m {
-			fmt.Fprintf(bw, "%s|%s|%d|%d\n", key, val.file, val.start, val.end)
+			nestedFlag := 0
+			if val.hasNested {
+				nestedFlag = 1
+			}
+			fmt.Fprintf(bw, "%s|%s|%d|%d|%d\n", key, val.file, val.start, val.end, nestedFlag)
 		}
 		s.mu.RUnlock()
 	}
@@ -638,10 +657,11 @@ func RecordDefragSkip() {
 
 func entryToOutput(key string, e entry) GetElement_output {
 	return GetElement_output{
-		Key:      key,
-		FileName: e.file,
-		StartPtr: e.start,
-		EndPtr:   e.end,
+		Key:       key,
+		FileName:  e.file,
+		StartPtr:  e.start,
+		EndPtr:    e.end,
+		HasNested: e.hasNested,
 	}
 }
 
@@ -714,13 +734,13 @@ func getTableIndex(table string) (*tableIndex, error) {
 	return idx, nil
 }
 
-func SaveElementByKey(table, key string, start, end int) (GetElement_output, bool, error) {
+func SaveElementByKey(table, key string, start, end int, hasNested bool) (GetElement_output, bool, error) {
 	defer dbg.MeasureTime("SaveElementByKey [mapManager]")()
 	idx, err := getTableIndex(table)
 	if err != nil {
 		return GetElement_output{}, false, err
 	}
-	return idx.saveElement(key, table, start, end)
+	return idx.saveElement(key, table, start, end, hasNested)
 }
 
 func RemoveElementByKey(table, key string) error {
