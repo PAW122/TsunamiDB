@@ -665,6 +665,18 @@ func entryToOutput(key string, e entry) GetElement_output {
 	}
 }
 
+func (ti *tableIndex) snapshotKeys() []string {
+	keys := make([]string, 0)
+	for _, s := range ti.shards {
+		s.mu.RLock()
+		for k := range s.m {
+			keys = append(keys, k)
+		}
+		s.mu.RUnlock()
+	}
+	return keys
+}
+
 func loadCachedIndex(table string) *tableIndex {
 	if v := lastIndexCache.Load(); v != nil {
 		if ci, ok := v.(*cachedIndex); ok && ci != nil {
