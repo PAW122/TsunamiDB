@@ -33,9 +33,9 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	pathParts := ParseArgs(r.URL.Path, "save_encrypted")
-	if pathParts == nil || len(pathParts) < 2 {
+	if len(pathParts) < 4 {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Print(w, "Invalid url args")
+		fmt.Fprint(w, "Invalid url args")
 		return
 	}
 

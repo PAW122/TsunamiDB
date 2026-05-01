@@ -115,9 +115,9 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 	}
 
 	pathParts := ParseArgs(r.URL.Path, "save_inc")
-	if len(pathParts) < 2 {
+	if len(pathParts) < 4 {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Print(w, "Invalid url args")
+		fmt.Fprint(w, "Invalid url args")
 		return
 	}
 

@@ -8,6 +8,11 @@ import (
 )
 
 func Read(req types.NMmessage) types.NMmessage {
+	if len(req.Args) < 2 {
+		return types.NMmessage{
+			Finished: false,
+		}
+	}
 
 	file := req.Args[0]
 	key := req.Args[1]

@@ -86,11 +86,15 @@ func sendToFileWorker(filePath string, req fileRequest) fileResponse {
 		return fileResponse{err: errors.New("worker is unresponsive (send timeout)")}
 	}
 
-	resp, ok := <-req.resp
-	if !ok {
-		return fileResponse{err: errors.New("worker crashed")}
+	select {
+	case resp, ok := <-req.resp:
+		if !ok {
+			return fileResponse{err: errors.New("worker crashed")}
+		}
+		return resp
+	case <-time.After(1 * time.Second):
+		return fileResponse{err: errors.New("worker response timeout")}
 	}
-	return resp
 }
 
 func handleDeleteIncFile(file **os.File, fullPath string) error {
@@ -181,8 +185,13 @@ func shutdownFileWorkersForTests() {
 	fileWorkers.Range(func(key, value any) bool {
 		ch := value.(chan fileRequest)
 		resp := make(chan fileResponse, 1)
-		ch <- fileRequest{op: "close", resp: resp}
-		<-resp
+		func() {
+			defer func() {
+				_ = recover()
+			}()
+			ch <- fileRequest{op: "close", resp: resp}
+			<-resp
+		}()
 		fileWorkers.Delete(key)
 		return true
 	})

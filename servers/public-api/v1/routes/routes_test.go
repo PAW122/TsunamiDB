@@ -3,11 +3,13 @@ package routes
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	defrag "github.com/PAW122/TsunamiDB/data/defragmentationManager"
@@ -15,15 +17,32 @@ import (
 	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	metrics "github.com/PAW122/TsunamiDB/servers/public-api/v1/metrics"
+	types "github.com/PAW122/TsunamiDB/types"
 )
 
-func setupRoutesTest(t *testing.T) {
-	t.Helper()
+func TestMain(m *testing.M) {
+	_ = os.RemoveAll("./db")
+	code := m.Run()
 	dataManager_v2.ShutdownWorkersForTests()
 	fileSystem_v1.ResetForTests()
 	defrag.ResetForTests()
-	_ = os.RemoveAll("./db/data")
-	_ = os.RemoveAll("./db/inc_tables")
+	networkmanager.SetInstanceForTests(nil)
+	metrics.ResetForTests()
+	incindex.ResetForTests()
+	_ = os.RemoveAll("./db")
+	time.Sleep(50 * time.Millisecond)
+	_ = os.RemoveAll("./db")
+	os.Exit(code)
+}
+
+func setupRoutesTest(t *testing.T) {
+	t.Helper()
+	release := acquireDBTestLock(t)
+	t.Cleanup(release)
+	dataManager_v2.ShutdownWorkersForTests()
+	fileSystem_v1.ResetForTests()
+	defrag.ResetForTests()
+	_ = os.RemoveAll("./db")
 	dataManager_v2.EnsureDirsForTests()
 	networkmanager.SetInstanceForTests(&networkmanager.NetworkManager{ServerIP: "127.0.0.1"})
 	metrics.ResetForTests()
@@ -35,9 +54,28 @@ func setupRoutesTest(t *testing.T) {
 		networkmanager.SetInstanceForTests(nil)
 		metrics.ResetForTests()
 		incindex.ResetForTests()
-		_ = os.RemoveAll("./db/data")
-		_ = os.RemoveAll("./db/inc_tables")
+		_ = os.RemoveAll("./db")
 	})
+}
+
+func acquireDBTestLock(t *testing.T) func() {
+	t.Helper()
+	lockPath := "./db_test.lock"
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		if err == nil {
+			_ = f.Close()
+			return func() { _ = os.Remove(lockPath) }
+		}
+		if !errors.Is(err, os.ErrExist) {
+			t.Fatalf("create test lock: %v", err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting for db test lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func perform(handler func(http.ResponseWriter, *http.Request, *http.Client), method, path string, body io.Reader, headers map[string]string) *httptest.ResponseRecorder {
@@ -271,5 +309,208 @@ func TestIncrementalReadByKey(t *testing.T) {
 	notFound := perform(ReadIncremental, http.MethodGet, readPath, nil, missingHeaders)
 	if notFound.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 for missing key, got %d", notFound.Code)
+	}
+}
+
+func TestShortPathsReturnBadRequest(t *testing.T) {
+	setupRoutesTest(t)
+
+	cases := []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request, *http.Client)
+		method  string
+		path    string
+		body    io.Reader
+		headers map[string]string
+	}{
+		{"read", AsyncRead, http.MethodGet, "/read/table", nil, nil},
+		{"free", Free, http.MethodGet, "/free/table", nil, nil},
+		{"save encrypted", SaveEncrypted, http.MethodPost, "/save_encrypted/table", bytes.NewBufferString("x"), map[string]string{"encryption_key": "secret"}},
+		{"read encrypted", ReadEncrypted, http.MethodGet, "/read_encrypted/table", nil, map[string]string{"encryption_key": "secret"}},
+		{"save inc", SaveIncremental, http.MethodPost, "/save_inc/table", bytes.NewBufferString("x"), map[string]string{"max_entry_size": "16"}},
+		{"read inc", ReadIncremental, http.MethodGet, "/read_inc/table", nil, map[string]string{"read_type": "by_id", "id": "0"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := perform(tc.handler, tc.method, tc.path, tc.body, tc.headers)
+			if resp.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d body=%s", resp.Code, resp.Body.String())
+			}
+		})
+	}
+}
+
+func TestParseArgsAndPathHeader(t *testing.T) {
+	args := ParseArgs("/save/table/key", "save")
+	if len(args) != 4 || args[2] != "table" || args[3] != "key" {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+
+	for _, raw := range []string{`["a.b","c"]`, "a.b,c", "a.b c"} {
+		paths, err := parsePathHeader(raw)
+		if err != nil {
+			t.Fatalf("parse %q: %v", raw, err)
+		}
+		if len(paths) != 2 {
+			t.Fatalf("expected two paths for %q, got %#v", raw, paths)
+		}
+	}
+	if _, err := parsePathHeader("[bad"); err == nil {
+		t.Fatalf("expected invalid json error")
+	}
+}
+
+func TestNestedHelpers(t *testing.T) {
+	normalized, entries, err := processNestedPayload([]byte(`{"plain":1,"nested":"@{\"x\":\"y\"}","arr":["@z"]}`))
+	if err != nil {
+		t.Fatalf("process nested: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected two nested entries, got %d", len(entries))
+	}
+	var root map[string]interface{}
+	if err := json.Unmarshal(normalized, &root); err != nil {
+		t.Fatalf("decode normalized: %v", err)
+	}
+	if !isPointerPlaceholder(root["nested"].(string)) {
+		t.Fatalf("expected pointer placeholder: %#v", root["nested"])
+	}
+
+	ids, err := pointerIDsFromJSON(normalized)
+	if err != nil {
+		t.Fatalf("pointer ids: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected two pointer ids, got %#v", ids)
+	}
+	if extractPointerID("plain") != "" {
+		t.Fatalf("plain string should not be pointer")
+	}
+
+	clone := cloneWithPlaceholders(root).(map[string]interface{})
+	if clone["nested"] != pointerUnresolvedMarker {
+		t.Fatalf("expected unresolved marker, got %#v", clone["nested"])
+	}
+	if id, ok := pointerIDAtPath(root, []string{"nested"}); !ok || id == "" {
+		t.Fatalf("expected pointer at path, got %q %v", id, ok)
+	}
+	out := setValueAtPath(map[string]interface{}{}, []string{"a", "b"}, "c").(map[string]interface{})
+	if out["a"].(map[string]interface{})["b"] != "c" {
+		t.Fatalf("unexpected setValueAtPath output: %#v", out)
+	}
+	if _, _, err := processNestedPayload([]byte("{bad")); err == nil {
+		t.Fatalf("expected invalid JSON error")
+	}
+}
+
+func TestIncrementalReadModesAndValidation(t *testing.T) {
+	setupRoutesTest(t)
+
+	saveHeaders := map[string]string{"max_entry_size": "16"}
+	for _, payload := range []string{"first", "second", "third"} {
+		resp := perform(SaveIncremental, http.MethodPost, "/save_inc/table_modes/key_modes", bytes.NewBufferString(payload), saveHeaders)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("save_inc %q status: %d body=%s", payload, resp.Code, resp.Body.String())
+		}
+	}
+
+	first := perform(ReadIncremental, http.MethodGet, "/read_inc/table_modes/key_modes", nil, map[string]string{"read_type": "first_entries", "amount_to_read": "2"})
+	if first.Code != http.StatusOK {
+		t.Fatalf("first_entries status: %d body=%s", first.Code, first.Body.String())
+	}
+	if !bytes.Contains(first.Body.Bytes(), []byte("first")) || !bytes.Contains(first.Body.Bytes(), []byte("second")) {
+		t.Fatalf("unexpected first_entries body: %s", first.Body.String())
+	}
+
+	last := perform(ReadIncremental, http.MethodGet, "/read_inc/table_modes/key_modes", nil, map[string]string{"read_type": "last_entries", "amount_to_read": "2"})
+	if last.Code != http.StatusOK {
+		t.Fatalf("last_entries status: %d body=%s", last.Code, last.Body.String())
+	}
+	if !bytes.Contains(last.Body.Bytes(), []byte("third")) {
+		t.Fatalf("unexpected last_entries body: %s", last.Body.String())
+	}
+
+	validations := []map[string]string{
+		nil,
+		{"read_type": "by_id"},
+		{"read_type": "by_id", "id": "bad"},
+		{"read_type": "last_entries"},
+		{"read_type": "last_entries", "amount_to_read": "bad"},
+		{"read_type": "by_key"},
+		{"read_type": "unsupported"},
+	}
+	for _, headers := range validations {
+		resp := perform(ReadIncremental, http.MethodGet, "/read_inc/table_modes/key_modes", nil, headers)
+		if resp.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for headers %#v, got %d body=%s", headers, resp.Code, resp.Body.String())
+		}
+	}
+}
+
+func TestIncrementalBinaryHelpers(t *testing.T) {
+	in := types.IncTableEntryData{EntrySize: 12, TableFileName: "table.tbl"}
+	raw, err := StructToBytesBinary(in)
+	if err != nil {
+		t.Fatalf("serialize: %v", err)
+	}
+	out, err := BytesToStructBinary(raw)
+	if err != nil {
+		t.Fatalf("deserialize: %v", err)
+	}
+	if out != in {
+		t.Fatalf("roundtrip mismatch: %+v != %+v", out, in)
+	}
+	if _, err := BytesToStructBinary([]byte{1, 2}); err == nil {
+		t.Fatalf("expected short buffer error")
+	}
+	corrupted := append([]byte{}, raw[:12]...)
+	corrupted[8] = 100
+	if _, err := BytesToStructBinary(corrupted); err == nil {
+		t.Fatalf("expected corrupted payload error")
+	}
+}
+
+func TestKeyByRegexEndpoint(t *testing.T) {
+	setupRoutesTest(t)
+	perform(AsyncSave, http.MethodPost, "/save/table/alpha", bytes.NewBufferString("a"), nil)
+	perform(AsyncSave, http.MethodPost, "/save/table/beta", bytes.NewBufferString("b"), nil)
+
+	resp := perform(GetKeysByRegex, http.MethodGet, "/key_by_regex/table?regex=^a&max=1", nil, nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("regex status: %d body=%s", resp.Code, resp.Body.String())
+	}
+	if !bytes.Contains(resp.Body.Bytes(), []byte("alpha")) {
+		t.Fatalf("expected alpha in response: %s", resp.Body.String())
+	}
+
+	for _, path := range []string{"/key_by_regex/", "/key_by_regex/table", "/key_by_regex/table?regex=*&max=bad"} {
+		resp := perform(GetKeysByRegex, http.MethodGet, path, nil, nil)
+		if resp.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400 for %s, got %d", path, resp.Code)
+		}
+	}
+	method := perform(GetKeysByRegex, http.MethodPost, "/key_by_regex/table?regex=.", nil, nil)
+	if method.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", method.Code)
+	}
+}
+
+func TestSQLEndpointAndScript(t *testing.T) {
+	setupRoutesTest(t)
+
+	method := perform(SQL_api, http.MethodGet, "/sql", nil, nil)
+	if method.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", method.Code)
+	}
+	resp := perform(SQL_api, http.MethodPost, "/sql", bytes.NewBufferString(`{"query":"noop"}`), nil)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("sql status: %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	rr := httptest.NewRecorder()
+	Script(rr, httptest.NewRequest(http.MethodGet, "/script", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("empty script should keep default 200, got %d", rr.Code)
 	}
 }

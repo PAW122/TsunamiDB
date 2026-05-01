@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -28,7 +27,7 @@ type pendingNestedEntry struct {
 }
 
 func nestedDataFile(table string) string {
-	return filepath.Join(table, "nested_values")
+	return table + "__nested_values"
 }
 
 func isPointerPlaceholder(val string) bool {

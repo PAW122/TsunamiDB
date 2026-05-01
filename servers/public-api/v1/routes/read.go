@@ -21,7 +21,7 @@ func AsyncRead(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	pathParts := ParseArgs(r.URL.Path, "read")
-	if pathParts == nil || len(pathParts) < 2 {
+	if len(pathParts) < 4 {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "Invalid URL args")
 		return

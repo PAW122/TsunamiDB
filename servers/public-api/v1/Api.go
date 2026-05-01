@@ -12,27 +12,20 @@ import (
 	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
-// ----------  PULA POŁĄCZEŃ DLA WYCHODZĄCYCH REQUESTÓW  ----------
-
-// Konfiguracja transportu (wspólna pula)
 var transport = &http.Transport{
 	MaxIdleConns:        10000,
 	MaxIdleConnsPerHost: 10000,
 	MaxConnsPerHost:     10000,
 	IdleConnTimeout:     90 * time.Second,
-	DisableKeepAlives:   false, // wymuś keep-alive
-	ForceAttemptHTTP2:   true,  // HTTP/2 = multiplexing
+	DisableKeepAlives:   false,
+	ForceAttemptHTTP2:   true,
 }
 
-// Eksportujemy, gdyby ktoś chciał użyć bez wrappera
 var HTTPClient = &http.Client{
 	Transport: transport,
 	Timeout:   30 * time.Second,
 }
 
-// ----------  HANDLERY Z WSTRZYKNIĘTYM KLIENTEM  ----------
-
-// Adapter: zamienia handler przyjmujący (*http.Client) na http.HandlerFunc
 func withClient(fn func(http.ResponseWriter, *http.Request, *http.Client)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -43,10 +36,9 @@ func withClient(fn func(http.ResponseWriter, *http.Request, *http.Client)) http.
 	}
 }
 
-func RunPublicApi_v1(port int) {
+func newMux() *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// —— zapisy / odczyty ——
 	mux.HandleFunc("/save/", withClient(routes.AsyncSave))
 	mux.HandleFunc("/read/", withClient(routes.AsyncRead))
 	mux.HandleFunc("/free/", withClient(routes.Free))
@@ -57,30 +49,42 @@ func RunPublicApi_v1(port int) {
 	mux.HandleFunc("/save_inc/", withClient(routes.SaveIncremental))
 	mux.HandleFunc("/read_inc/", withClient(routes.ReadIncremental))
 	mux.HandleFunc("/delete_inc/", withClient(routes.DeleteIncremental))
-
-	// —— operacje meta ——
 	mux.HandleFunc("/sql", withClient(routes.SQL_api))
 	mux.HandleFunc("/key_by_regex/", withClient(routes.GetKeysByRegex))
 	mux.HandleFunc("/health", withClient(routes.Health))
 
-	// ------- serwer HTTP --------
-	server := &http.Server{
+	return mux
+}
+
+func newServer(port int, handler http.Handler) *http.Server {
+	return &http.Server{
 		Addr:           fmt.Sprintf(":%d", port),
-		Handler:        mux,
+		Handler:        handler,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
 		IdleTimeout:    120 * time.Second,
-		MaxHeaderBytes: 1 << 20, // 1 MB
+		MaxHeaderBytes: 1 << 20,
 	}
+}
+
+func servePublicAPI(port int) error {
+	server := newServer(port, newMux())
 
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
-		log.Fatalf("Nie można uruchomić listenera: %v", err)
+		return fmt.Errorf("cannot start listener: %w", err)
 	}
 
-	fmt.Printf("Public API v1 nasłuchuje na :%d (keep-alive, HTTP/2 włączone jeśli TLS)\n", port)
+	fmt.Printf("Public API v1 listening on :%d (keep-alive, HTTP/2 when TLS is enabled)\n", port)
 
 	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Błąd serwera: %v", err)
+		return fmt.Errorf("server error: %w", err)
+	}
+	return nil
+}
+
+func RunPublicApi_v1(port int) {
+	if err := servePublicAPI(port); err != nil {
+		log.Fatal(err)
 	}
 }

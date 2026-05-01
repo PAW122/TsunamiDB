@@ -39,7 +39,7 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	pathParts := ParseArgs(r.URL.Path, "read_inc")
-	if pathParts == nil || len(pathParts) < 2 {
+	if len(pathParts) < 4 {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprint(w, "Invalid URL args")
 		return
@@ -117,6 +117,11 @@ func ReadIncremental(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		int64(fsData.StartPtr),
 		int64(fsData.EndPtr),
 	)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "Cannot read inc table data: "+err.Error())
+		return
+	}
 
 	decodedObj := encoder_v1.Decode(data)
 

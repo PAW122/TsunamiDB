@@ -1,31 +1,14 @@
 package core
 
-/*
-	Core:
-		funckje:
-			hostowanie/uruchamianie serwera http
-				> lokalna obsługa db tak samo jak inne db
-			uruchamianie serwera do komunikacji z innymi serwerami db (ws / ptp)
-				> komunikacja pomidzy serwerami github.com/PAW122/TsunamiDB
-			uruchamianie serwera do komunikacji z klientami (ws / ptp)
-				> komunikacja z klientami github.com/PAW122/TsunamiDB
-
-
-		moze w przyszłośco:
-			auto updaty
-			obsługa wielu wersji db
-			custom ui
-
-*/
-
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"strconv"
 
-	config "github.com/PAW122/TsunamiDB/servers/config"
+	configpkg "github.com/PAW122/TsunamiDB/servers/config"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	public_api_v1 "github.com/PAW122/TsunamiDB/servers/public-api/v1"
@@ -34,39 +17,71 @@ import (
 
 var defaultConfigDir = "./config.json"
 
+type coreDeps struct {
+	args                []string
+	loadConfig          func(string)
+	startNetworkManager func(int, []string)
+	startWSServer       func(string) error
+	runPublicAPI        func(int)
+}
+
+func defaultCoreDeps(args []string) coreDeps {
+	return coreDeps{
+		args:                args,
+		loadConfig:          configpkg.LoadConfig,
+		startNetworkManager: networkmanager.StartNetworkManager,
+		startWSServer:       subServer.StartWSServer,
+		runPublicAPI:        public_api_v1.RunPublicApi_v1,
+	}
+}
+
 func RunCore() {
+	if err := runCore(defaultCoreDeps(os.Args[1:])); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func runCore(deps coreDeps) error {
 	debug.Log("Load config")
-	config.LoadConfig(defaultConfigDir)
+	deps.loadConfig(defaultConfigDir)
 
 	debug.Log("Run Core")
-	config := flag.Bool("config", false, "load config from config.json")
-	flag.Parse()
+	fs := flag.NewFlagSet("core", flag.ContinueOnError)
+	loadConfig := fs.Bool("config", false, "load config from config.json")
+	if err := fs.Parse(deps.args); err != nil {
+		return err
+	}
 
-	if *config {
+	if *loadConfig {
 		fmt.Println("load config")
 	}
 
-	if len(os.Args) < 2 {
-		log.Fatal("Użycie: go run main.go <port> [peer1] [peer2] ...")
+	args := fs.Args()
+	if len(args) < 1 {
+		return errors.New("usage: go run main.go <port> [peer1] [peer2] ...")
 	}
 
-	port, err := strconv.Atoi(os.Args[1])
+	port, err := strconv.Atoi(args[0])
 	if err != nil {
-		log.Fatal("Niepoprawny port:", err)
+		return fmt.Errorf("invalid port: %w", err)
 	}
 	fmt.Println("Starting network manager on port: ", port)
 
-	// Lista znanych peerów (opcjonalna)
 	var knownPeers []string
-	if len(os.Args) > 2 {
-		knownPeers = os.Args[2:]
+	if len(args) > 1 {
+		knownPeers = args[1:]
 	}
 
-	networkmanager.StartNetworkManager(port, knownPeers)
+	deps.startNetworkManager(port, knownPeers)
 
 	fmt.Println("Starting sub Sever on port:", 5845)
-	go subServer.StartWSServer("5845")
+	go func() {
+		if err := deps.startWSServer("5845"); err != nil {
+			log.Println("subscription server stopped:", err)
+		}
+	}()
 
 	fmt.Println("Starting server on port: ", 5844)
-	public_api_v1.RunPublicApi_v1(5844)
+	deps.runPublicAPI(5844)
+	return nil
 }
