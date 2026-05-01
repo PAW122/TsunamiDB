@@ -1,6 +1,9 @@
 package dataManager_v2
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"errors"
+)
 
 // push nowego elementu do table
 // w przypadku inc_table fileResponse.data będzie == uint64 id wpisu
@@ -13,8 +16,14 @@ func SaveIncDataToFileAsync(data []byte, filePath string, entry_size uint64) (ui
 		resp:      respChan,
 	}
 	resp := sendToFileWorker(filePath, req)
+	if resp.err != nil {
+		return 0, resp.err
+	}
+	if len(resp.data) < 8 {
+		return 0, errors.New("write_inc: missing id in worker response")
+	}
 	id := binary.LittleEndian.Uint64(resp.data)
-	return id, resp.err
+	return id, nil
 }
 
 // allows you to enter a new element anywhere in inc_table as long as it is not a new id
@@ -30,8 +39,14 @@ func SaveIncDataToFileAsync_Put(data []byte, filePath string, entry_size uint64,
 		resp:       respChan,
 	}
 	resp := sendToFileWorker(filePath, req)
+	if resp.err != nil {
+		return 0, resp.err
+	}
+	if len(resp.data) < 8 {
+		return 0, errors.New("write_inc_ow: missing id in worker response")
+	}
 	id := binary.LittleEndian.Uint64(resp.data)
-	return id, resp.err
+	return id, nil
 }
 
 // overwriting an existing inc_table entry with a given id
@@ -47,8 +62,14 @@ func SaveIncDataToFileAsync_OverWrite(data []byte, filePath string, entry_size u
 		resp:       respChan,
 	}
 	resp := sendToFileWorker(filePath, req)
+	if resp.err != nil {
+		return 0, resp.err
+	}
+	if len(resp.data) < 8 {
+		return 0, errors.New("write_inc_ow: missing id in worker response")
+	}
 	id := binary.LittleEndian.Uint64(resp.data)
-	return id, resp.err
+	return id, nil
 }
 
 // DeleteIncTableFile removes the file backing an incremental table via the file worker.

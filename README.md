@@ -37,3 +37,15 @@ go test -v ./lib/dbclient
 go test -run . -v ./data/dataManager/v2
 go test -run . -v ./servers/public-api/v1/routes
 ```
+
+# Testing
+```bash
+# coverage in %
+go test -cover ./...
+
+# create raport:
+go test ./data/dataManager/v2 -coverprofile=coverage
+go tool cover -html=coverage -o coverage.html
+
+# run tests
+```

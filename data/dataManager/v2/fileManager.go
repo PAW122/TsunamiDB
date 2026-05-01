@@ -36,19 +36,27 @@ var (
 	fileWorkers       sync.Map // map[string]chan fileRequest
 	basePath          = "./db/data"
 	baseIncTablesPath = "./db/inc_tables"
-	batchInterval     = 5 * time.Millisecond
+	removePath        = os.Remove
+	openPathFile      = os.OpenFile
 )
 
 func init() {
-	err := os.MkdirAll(basePath, 0755)
-	if err != nil {
-		panic("Cannot create base directory: " + err.Error())
-	}
+	mustCreateBaseDir(basePath)
+	mustCreateBaseDir(baseIncTablesPath)
+}
 
-	err = os.MkdirAll(baseIncTablesPath, 0755)
-	if err != nil {
+func mustCreateBaseDir(path string) {
+	if err := os.MkdirAll(path, 0755); err != nil {
 		panic("Cannot create base directory: " + err.Error())
 	}
+}
+
+type batchFile interface {
+	Seek(offset int64, whence int) (int64, error)
+	WriteAt(b []byte, off int64) (int, error)
+	ReadAt(b []byte, off int64) (int, error)
+	Truncate(size int64) error
+	Stat() (os.FileInfo, error)
 }
 
 func sendToFileWorker(filePath string, req fileRequest) fileResponse {
@@ -92,9 +100,9 @@ func handleDeleteIncFile(file **os.File, fullPath string) error {
 		}
 	}
 
-	if err := os.Remove(fullPath); err != nil {
+	if err := removePath(fullPath); err != nil {
 		if !os.IsNotExist(err) {
-			reopen, reopenErr := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
+			reopen, reopenErr := openPathFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
 			if reopenErr == nil {
 				*file = reopen
 			}
@@ -102,7 +110,7 @@ func handleDeleteIncFile(file **os.File, fullPath string) error {
 		}
 	}
 
-	reopen, err := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+	reopen, err := openPathFile(fullPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -116,12 +124,6 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 			close(ch)
 		}
 	}()
-
-	var (
-		pending []fileRequest
-		ticker  = time.NewTicker(batchInterval)
-	)
-	defer ticker.Stop()
 
 	// Otwórz plik raz przed pętlą
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
@@ -143,16 +145,12 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 				return
 			}
 			if req.op == "delete_inc" {
-				if len(pending) > 0 {
-					executeBatch(file, logicalPath, pending)
-					pending = pending[:0]
-				}
 				err := handleDeleteIncFile(&file, fullPath)
 				req.resp <- fileResponse{err: err}
 				continue
 			}
 
-			pending = append(pending, req)
+			pending := []fileRequest{req}
 		collectLoop:
 			for {
 				select {
@@ -174,13 +172,6 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 
 			if len(pending) > 0 {
 				executeBatch(file, logicalPath, pending)
-				pending = pending[:0]
-			}
-
-		case <-ticker.C:
-			if len(pending) > 0 {
-				executeBatch(file, logicalPath, pending)
-				pending = pending[:0]
 			}
 		}
 	}
@@ -211,7 +202,7 @@ func EnsureDirsForTests() {
 }
 
 // todo - potencjalna optymalizacja - tylko 1 przejście for po batchu
-func executeBatch(file *os.File, filePath string, batch []fileRequest) {
+func executeBatch(file batchFile, filePath string, batch []fileRequest) {
 	// 1) Wydziel write_inc (append-only, stały rekord) ORAZ write (stary tryb)
 	var writeIncReqs []*fileRequest
 	var overWriteIncReqs []*fileRequest
@@ -485,9 +476,6 @@ func executeBatch(file *os.File, filePath string, batch []fileRequest) {
 			continue
 		}
 		fileSize := fi.Size()
-		if fileSize < 0 {
-			fileSize = 0
-		}
 		// liczba pełnych rekordów (ignorujemy ewentualny ogon)
 		numRecords := fileSize / recordSize
 
