@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB HTTP Meta</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">HTTP API</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./key-value.html">Key-Value</a>
+        <a class="nav-child" href="./encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./incremental.html">Incremental</a>
+        <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Meta, SQL and Health</h1>
+      <p class="lead">Utility endpoints for table metadata, key discovery and runtime status.</p>
+
+      <h2><span class="endpoint">POST</span> /sql</h2>
+      <p>The SQL endpoint is a prototype for table metadata. Current supported query in code is <code>create_table</code>. It writes JSON metadata under <code>./db/sql_map</code>; it does not execute SELECT/INSERT SQL.</p>
+      <pre><code class="language-json">{
+  "query": "create_table",
+  "tableName": "users",
+  "columns": [
+    {
+      "name": "id",
+      "type": "string",
+      "isPrimaryKey": true,
+      "default": "",
+      "maxByteSize": 64
+    }
+  ]
+}</code></pre>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/sql \
+  -H "Content-Type: application/json" \
+  --data-binary @table.json</code></pre>
+
+      <h2><span class="endpoint">GET</span> /key_by_regex/{table}?regex=...&amp;max=...</h2>
+      <p>Returns keys from one table matching a regular expression. <code>max</code> is optional; <code>0</code> means no explicit limit at the route level.</p>
+      <pre><code class="language-bash">curl "http://localhost:5844/key_by_regex/users?regex=^user-&max=100"</code></pre>
+      <p>Response:</p>
+      <pre><code class="language-json">["user-1","user-2"]</code></pre>
+
+      <h2><span class="endpoint">GET</span> /health</h2>
+      <p>Returns API metrics, subscription stats and network manager stats if available.</p>
+      <pre><code class="language-json">{
+  "status": "ok",
+  "timestamp": "2026-05-02T00:00:00Z",
+  "api": {
+    "uptime_seconds": 123.4,
+    "total_requests": 10,
+    "average_response_ms": 1.2,
+    "last_request_at": "2026-05-02T00:00:00Z"
+  },
+  "subscriptions": {
+    "active_clients": 0,
+    "keys_with_subscribers": 0,
+    "active_subscriptions": 0,
+    "pending_auth_keys": 0
+  },
+  "network": {
+    "server_ip": "192.168.1.10",
+    "port": 5845,
+    "connected_peers": 0,
+    "peer_addresses": [],
+    "pending_responses": 0
+  }
+}</code></pre>
+
+      <div class="machine-block">ai_keywords: sql create_table key_by_regex health metrics network subscriptions stats
+source_files: servers/public-api/v1/routes/sql.go, keyByRegex.go, health.go, types/sql.go</div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB DLL Lib</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">DLL Lib</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="../http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="../http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="./overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>DLL Lib</h1>
+      <p class="lead">This page documents the current DLL status and the recommended ABI shape for future native bindings.</p>
+
+      <div class="warning">Current repository state: there are no <code>//export</code> cgo functions and no committed <code>-buildmode=c-shared</code> DLL entrypoint. The existing <code>lib/export</code> package is a Go package, not a stable C ABI. Treat this page as implementation guidance until the DLL layer is added.</div>
+
+      <h2>Recommended Build Shape</h2>
+      <p>A Go DLL/shared library should be built from a dedicated <code>package main</code> file using cgo exports. Keep this separate from <code>lib/export</code> so the C ABI can stay stable while Go internals change.</p>
+      <pre><code class="language-bash"># Windows DLL
+go build -buildmode=c-shared -o tsunamidb.dll ./lib/dll
+
+# Linux shared object
+go build -buildmode=c-shared -o libtsunamidb.so ./lib/dll</code></pre>
+
+      <h2>Proposed ABI</h2>
+      <table>
+        <thead><tr><th>C function</th><th>Purpose</th><th>Maps to Go</th></tr></thead>
+        <tbody>
+          <tr><td><code>TsuInitNetworkManager(port, peersJson)</code></td><td>Start P2P network manager.</td><td><code>dbclient.InitNetworkManager</code></td></tr>
+          <tr><td><code>TsuInitPublicApi(port)</code></td><td>Start HTTP API.</td><td><code>dbclient.InitPublicApi</code></td></tr>
+          <tr><td><code>TsuSave(key, table, data, dataLen)</code></td><td>Save bytes.</td><td><code>dbclient.Save</code></td></tr>
+          <tr><td><code>TsuRead(key, table)</code></td><td>Read bytes and return allocated buffer.</td><td><code>dbclient.Read</code></td></tr>
+          <tr><td><code>TsuFree(key, table)</code></td><td>Delete key.</td><td><code>dbclient.Free</code></td></tr>
+          <tr><td><code>TsuSaveEncrypted(key, table, encryptionKey, data, dataLen)</code></td><td>Save encrypted bytes.</td><td><code>dbclient.SaveEncrypted</code></td></tr>
+          <tr><td><code>TsuReadEncrypted(key, table, encryptionKey)</code></td><td>Read and decrypt bytes.</td><td><code>dbclient.ReadEncrypted</code></td></tr>
+          <tr><td><code>TsuGetKeysByRegex(table, regex, max)</code></td><td>Return JSON array of keys.</td><td><code>dbclient.GetKeysByRegex</code></td></tr>
+          <tr><td><code>TsuLastError()</code></td><td>Return last error message for the calling process/thread model.</td><td>Error bridge</td></tr>
+          <tr><td><code>TsuFreeBuffer(ptr)</code></td><td>Free memory allocated by DLL for returned data.</td><td>C allocator/free wrapper</td></tr>
+        </tbody>
+      </table>
+
+      <h2>ABI Rules</h2>
+      <ul>
+        <li>Do not return Go pointers to C callers. Return C-allocated memory and provide <code>TsuFreeBuffer</code>.</li>
+        <li>Use explicit byte lengths for binary input/output. Do not rely on null-terminated strings for data payloads.</li>
+        <li>Return integer status codes for write operations, for example <code>0</code> success and non-zero failure; expose details through <code>TsuLastError</code>.</li>
+        <li>For arrays such as regex key results, return UTF-8 JSON to keep ABI simple for C#, Python, Rust, C and C++ callers.</li>
+        <li>Document ownership of every returned pointer next to the function signature.</li>
+      </ul>
+
+      <h2>Example Consumer Contract</h2>
+      <pre><code class="language-c">int TsuSave(const char* key, const char* table, const unsigned char* data, int dataLen);
+TsuBuffer TsuRead(const char* key, const char* table);
+void TsuFreeBuffer(void* ptr);</code></pre>
+
+      <p>Until this layer exists, use the HTTP API for non-Go languages. It is stable today and covers more features than the current Go lib wrappers.</p>
+
+      <div class="machine-block">ai_keywords: dll lib c-shared cgo export ABI native bindings TsuSave TsuRead TsuFreeBuffer
+current_status: not implemented in repository
+source_files_checked: lib/export/*.go, build.bat, rg //export</div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB HTTP Subscriptions</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">HTTP API</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./key-value.html">Key-Value</a>
+        <a class="nav-child" href="./encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./incremental.html">Incremental</a>
+        <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Subscriptions</h1>
+      <p class="lead">Subscriptions use private HTTP endpoints to mint auth keys and a public WebSocket endpoint to stream real-time key events.</p>
+
+      <h2>Flow</h2>
+      <ol>
+        <li>Your trusted backend calls <code>POST /subscriptions/enable</code> with a list of keys.</li>
+        <li>TsunamiDB returns a one-time <code>auth_key</code> valid for about 60 seconds.</li>
+        <li>Your client connects to <code>ws://localhost:5845/sub</code> and sends <code>{"auth_key":"..."}</code>.</li>
+        <li>The socket receives <code>subscribed</code>, then update/delete events for the authorized keys.</li>
+      </ol>
+
+      <h2>Example Communication Scheme</h2>
+      <p>Recommended subscription communication pattern:</p>
+      <img class="diagram" src="../assets/subscription-sequence.svg" alt="Sequence diagram for TsunamiDB subscriptions: user application, application server, TsunamiDB HTTP API and TsunamiDB WebSocket endpoint.">
+
+      <h2><span class="endpoint">POST</span> /subscriptions/enable</h2>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/subscriptions/enable \
+  -H "Content-Type: application/json" \
+  --data '{"keys":["user-1","event-feed"]}'</code></pre>
+      <p>Response:</p>
+      <pre><code class="language-json">{"auth_key":"uuid-value"}</code></pre>
+
+      <h2><span class="endpoint">POST</span> /subscriptions/disable</h2>
+      <p>Removes active subscribers for one key and sends them an <code>unsubscribed</code> event.</p>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/subscriptions/disable \
+  -H "Content-Type: application/json" \
+  --data '{"key":"user-1"}'</code></pre>
+
+      <h2><span class="endpoint">WS</span> ws://localhost:5845/sub</h2>
+      <pre><code class="language-json">{"auth_key":"uuid-value"}</code></pre>
+      <p>Successful response:</p>
+      <pre><code class="language-json">{"event":"subscribed","keys":["user-1","event-feed"]}</code></pre>
+
+      <h2>Event Types</h2>
+      <table>
+        <thead><tr><th>Event</th><th>Payload</th><th>Produced by</th></tr></thead>
+        <tbody>
+          <tr><td><code>updated</code></td><td><code>{"event":"updated","key":"...","data":"..."}</code></td><td><code>/save</code>, <code>/save_encrypted</code>, Go <code>Save</code>, Go <code>SaveEncrypted</code></td></tr>
+          <tr><td><code>deleted</code></td><td><code>{"event":"deleted","key":"..."}</code></td><td><code>/free</code>, <code>/delete_inc</code>, Go <code>Free</code></td></tr>
+          <tr><td><code>inc_table_update</code></td><td><code>{"event":"inc_table_update","key":"...","data":{"type":"add|insert|overwrite","new_data":{"id":"...","data":"..."}}}</code></td><td><code>/save_inc</code></td></tr>
+          <tr><td><code>unsubscribed</code></td><td><code>{"event":"unsubscribed","key":"..."}</code></td><td><code>/subscriptions/disable</code></td></tr>
+          <tr><td><code>error</code></td><td><code>{"event":"error","message":"invalid_or_expired_auth_key"}</code></td><td>Invalid or expired auth key.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="warning">Do not expose <code>/subscriptions/enable</code> and <code>/subscriptions/disable</code> directly to untrusted clients. Treat them as server-side endpoints.</div>
+
+      <div class="machine-block">ai_keywords: subscriptions websocket auth_key enable disable subscribed updated deleted inc_table_update
+source_files: servers/subscriptions/subServer.go</div>
+    </main>
+  </div>
+</body>
+</html>

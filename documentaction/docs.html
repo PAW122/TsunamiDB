@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Documentation</title>
+  <meta name="description" content="Statyczna dokumentacja TsunamiDB dla HTTP API, Go Lib i DLL Lib.">
+  <link rel="stylesheet" href="./assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">Documentation v0.8.0</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="./docs.html">Overview</a>
+        <a class="nav-parent" href="./reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="./http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./http/incremental.html">Incremental Tables</a>
+        <a class="nav-child" href="./http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./http/meta.html">Meta, SQL, Health</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="./go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="./dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>TsunamiDB Documentation</h1>
+      <p class="lead">TsunamiDB is a fast key-value database with HTTP endpoints, an in-process Go client library, P2P reads, encrypted values, incremental tables, and WebSocket subscriptions.</p>
+
+      <div class="grid">
+        <section class="card">
+          <h3>HTTP API</h3>
+          <p>Public API for any language over HTTP. Includes raw key-value operations, encrypted values, incremental tables, nested JSON, subscriptions, regex key lookup, SQL metadata and health.</p>
+          <a href="./http/overview.html">Open HTTP docs</a>
+        </section>
+        <section class="card">
+          <h3>Go Lib</h3>
+          <p>In-process API from <code>github.com/PAW122/TsunamiDB/lib/dbclient</code>. Wraps storage operations and can start the API, network manager and subscription server.</p>
+          <a href="./go-lib/overview.html">Open Go Lib docs</a>
+        </section>
+        <section class="card">
+          <h3>DLL Lib</h3>
+          <p>Status and intended ABI for native DLL/shared-library usage. The repository currently does not expose a finished <code>c-shared</code> DLL API.</p>
+          <a href="./dll-lib/overview.html">Open DLL docs</a>
+        </section>
+      </div>
+
+      <h2>Runtime Ports</h2>
+      <table>
+        <thead><tr><th>Service</th><th>Default</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td>HTTP Public API</td><td><code>http://localhost:5844</code></td><td>Application reads, writes, deletes, incremental tables, SQL metadata, health and subscription token endpoints.</td></tr>
+          <tr><td>WebSocket Subscriptions</td><td><code>ws://localhost:5845/sub</code></td><td>Client-side real-time events after a one-time auth key is minted.</td></tr>
+          <tr><td>P2P Network Manager</td><td>CLI argument, for example <code>5845</code></td><td>Internal node-to-node WebSocket mesh used for distributed reads.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Run TsunamiDB</h2>
+      <pre><code class="language-bash"># Windows
+TsunamiDB.exe 5845
+
+# Linux
+./TsunamiDB-linux 5845
+
+# Join existing peers
+TsunamiDB.exe 5845 10.0.0.2:5845 10.0.0.3:5845</code></pre>
+      <p>The first CLI argument starts the P2P network manager. The HTTP API still starts on <code>5844</code>, and the subscription WebSocket server starts on <code>5845</code>.</p>
+
+      <h2>Data Model</h2>
+      <p>Most public operations use a <code>table</code> and a <code>key</code>. The table maps to an internal data file and key map. Values are stored as bytes with TsunamiDB metadata, then decoded back to user bytes on read.</p>
+      <p>Path format for HTTP operations is usually <code>/{operation}/{table}/{key}</code>. Keep table and key URL-safe; encode special characters before sending requests.</p>
+
+      <h2>For AI Search</h2>
+      <p>Use <a href="./reference/ai-index.html">AI Index</a> or <a href="./reference/search-index.json">search-index.json</a> for a compact map of concepts, endpoints, functions and file locations.</p>
+      <div class="machine-block">project: TsunamiDB
+version: 0.8.0
+root_doc: documentaction/docs.html
+sections: HTTP API, Go Lib, DLL Lib
+base_http_url: http://localhost:5844
+subscription_ws_url: ws://localhost:5845/sub
+go_import: github.com/PAW122/TsunamiDB/lib/dbclient</div>
+    </main>
+  </div>
+</body>
+</html>

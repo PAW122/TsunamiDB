@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Go Lib</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">Go Lib</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="../http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="../http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="./overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Go Lib</h1>
+      <p class="lead">The Go library is an in-process client package at <code>github.com/PAW122/TsunamiDB/lib/dbclient</code>. Package name in code is <code>TsuClient</code>.</p>
+
+      <h2>Install</h2>
+      <pre><code class="language-bash">go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.8.0</code></pre>
+
+      <h2>Initialization</h2>
+      <p><code>Read</code> and <code>ReadEncrypted</code> require a NetworkManager instance. Call <code>InitNetworkManager</code> before reads, even for single-node local usage.</p>
+      <pre><code class="language-go">package main
+
+import (
+	"fmt"
+	"time"
+
+	TsuClient "github.com/PAW122/TsunamiDB/lib/dbclient"
+)
+
+func main() {
+	TsuClient.InitNetworkManager(5843, []string{})
+	TsuClient.InitPublicApi(5844)
+	_ = TsuClient.InitSubscriptionServer("5845")
+
+	time.Sleep(500 * time.Millisecond)
+
+	if err := TsuClient.Save("user-1", "users", []byte("hello")); err != nil {
+		panic(err)
+	}
+
+	data, err := TsuClient.Read("user-1", "users")
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(string(data))
+}</code></pre>
+
+      <h2>Function Reference</h2>
+      <table>
+        <thead><tr><th>Function</th><th>Signature</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td><code>Save</code></td><td><code>Save(key, table string, data []byte) error</code></td><td>Saves bytes under key/table. Empty key or table returns an error.</td></tr>
+          <tr><td><code>Read</code></td><td><code>Read(key, table string) ([]byte, error)</code></td><td>Reads local data or asks P2P peers. Requires NetworkManager.</td></tr>
+          <tr><td><code>Free</code></td><td><code>Free(key, table string) error</code></td><td>Deletes key metadata and marks storage span as free.</td></tr>
+          <tr><td><code>SaveEncrypted</code></td><td><code>SaveEncrypted(key, table, encryption_key string, data []byte) error</code></td><td>Encrypts bytes before saving.</td></tr>
+          <tr><td><code>ReadEncrypted</code></td><td><code>ReadEncrypted(key, table, encryption_key string) ([]byte, error)</code></td><td>Reads encrypted data and decrypts it. Requires NetworkManager.</td></tr>
+          <tr><td><code>GetKeysByRegex</code></td><td><code>GetKeysByRegex(table, regex string, max int) ([]string, error)</code></td><td>Returns keys matching regex in one table.</td></tr>
+          <tr><td><code>InitNetworkManager</code></td><td><code>InitNetworkManager(port int, knownPeers []string)</code></td><td>Starts P2P network manager in a goroutine.</td></tr>
+          <tr><td><code>InitPublicApi</code></td><td><code>InitPublicApi(port int)</code></td><td>Starts HTTP public API in a goroutine.</td></tr>
+          <tr><td><code>InitSubscriptionServer</code></td><td><code>InitSubscriptionServer(port string) error</code></td><td>Starts WebSocket subscription server.</td></tr>
+          <tr><td><code>EnableSubscription</code></td><td><code>EnableSubscription(keys []string) (string, error)</code></td><td>Creates one-time auth key for selected keys.</td></tr>
+          <tr><td><code>DisableSubscription</code></td><td><code>DisableSubscription(key string) error</code></td><td>Removes subscribers for a key and sends unsubscribe event.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Encrypted Example</h2>
+      <pre><code class="language-go">encKey := "very_secret_key"
+
+if err := TsuClient.SaveEncrypted("api-token", "secrets", encKey, []byte("secret")); err != nil {
+	panic(err)
+}
+
+plain, err := TsuClient.ReadEncrypted("api-token", "secrets", encKey)
+if err != nil {
+	panic(err)
+}</code></pre>
+
+      <h2>Subscriptions Example</h2>
+      <pre><code class="language-go">authKey, err := TsuClient.EnableSubscription([]string{"user-1"})
+if err != nil {
+	panic(err)
+}
+
+fmt.Println("send this auth key to the WebSocket client:", authKey)
+
+if err := TsuClient.DisableSubscription("user-1"); err != nil {
+	panic(err)
+}</code></pre>
+
+      <h2>Current Limitations</h2>
+      <ul>
+        <li>The Go lib currently does not expose typed wrappers for <code>save_inc</code>, <code>read_inc</code>, nested JSON mode or <code>/sql</code>. Use HTTP for those features.</li>
+        <li><code>Read</code> returns an error when NetworkManager is not initialized.</li>
+        <li>Public API and subscription server use goroutines; give them a short startup window before first request in tests or examples.</li>
+      </ul>
+
+      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Free SaveEncrypted ReadEncrypted InitNetworkManager InitPublicApi subscriptions
+source_files: lib/dbclient/client.go, lib/export/*.go, lib/dbclient/client_test.go</div>
+    </main>
+  </div>
+</body>
+</html>

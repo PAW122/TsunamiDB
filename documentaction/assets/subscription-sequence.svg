@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="760" viewBox="0 0 980 760" role="img" aria-labelledby="title desc">
+  <title id="title">TsunamiDB subscription communication sequence</title>
+  <desc id="desc">Sequence diagram showing a user application asking an application server for a subscription, the server requesting an auth key from TsunamiDB, the user connecting to the WebSocket endpoint, and TsunamiDB streaming updates.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1b4332"/>
+    </marker>
+    <marker id="arrow-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#52606d"/>
+    </marker>
+    <style>
+      .bg { fill: #ffffff; }
+      .actor { fill: #0b6f6a; stroke: #084f4b; stroke-width: 2; }
+      .actor-alt { fill: #f2f6f8; stroke: #52606d; stroke-width: 2; }
+      .actor-text { fill: #ffffff; font: 700 15px system-ui, sans-serif; }
+      .actor-alt-text { fill: #1f2933; font: 700 15px system-ui, sans-serif; }
+      .label { fill: #1f2933; font: 13px system-ui, sans-serif; }
+      .small { fill: #52606d; font: 12px system-ui, sans-serif; }
+      .lane { stroke: #38a169; stroke-width: 4; }
+      .lifeline { stroke: #38a169; stroke-width: 3; }
+      .call { stroke: #1b4332; stroke-width: 2; marker-end: url(#arrow); }
+      .return { stroke: #52606d; stroke-width: 2; stroke-dasharray: 8 7; marker-end: url(#arrow-muted); }
+      .section { fill: none; stroke: #38a169; stroke-width: 2; }
+      .section-line { stroke: #38a169; stroke-width: 2; stroke-dasharray: 12 8; }
+      .section-title { fill: #0f5132; font: 700 14px system-ui, sans-serif; }
+      .note { fill: #f8fff9; stroke: #9ae6b4; stroke-width: 1.5; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="980" height="760"/>
+
+  <rect x="32" y="96" width="916" height="488" class="section"/>
+  <text x="48" y="122" class="section-title">Success path</text>
+  <rect x="32" y="604" width="916" height="112" class="section"/>
+  <text x="48" y="630" class="section-title">Invalid or expired auth key</text>
+  <line x1="32" y1="584" x2="948" y2="584" class="section-line"/>
+
+  <rect x="92" y="30" width="124" height="54" rx="3" class="actor-alt"/>
+  <text x="122" y="54" class="actor-alt-text">User</text>
+  <text x="107" y="73" class="small">application</text>
+
+  <rect x="306" y="30" width="124" height="54" rx="3" class="actor"/>
+  <text x="324" y="61" class="actor-text">App server</text>
+
+  <rect x="520" y="30" width="132" height="54" rx="3" class="actor"/>
+  <text x="538" y="54" class="actor-text">TsunamiDB</text>
+  <text x="565" y="73" class="actor-text">HTTP</text>
+
+  <rect x="740" y="30" width="132" height="54" rx="3" class="actor"/>
+  <text x="758" y="54" class="actor-text">TsunamiDB</text>
+  <text x="779" y="73" class="actor-text">WebSocket</text>
+
+  <line x1="154" y1="84" x2="154" y2="724" class="lifeline"/>
+  <line x1="368" y1="84" x2="368" y2="724" class="lifeline"/>
+  <line x1="586" y1="84" x2="586" y2="724" class="lifeline"/>
+  <line x1="806" y1="84" x2="806" y2="724" class="lifeline"/>
+
+  <rect x="144" y="130" width="20" height="414" class="lane"/>
+  <rect x="358" y="160" width="20" height="166" class="lane"/>
+  <rect x="576" y="196" width="20" height="86" class="lane"/>
+  <rect x="358" y="374" width="20" height="64" class="lane"/>
+  <rect x="796" y="408" width="20" height="136" class="lane"/>
+
+  <line x1="164" y1="142" x2="358" y2="142" class="call"/>
+  <text x="194" y="132" class="label">Request subscription</text>
+  <text x="198" y="153" class="small">key list or user context</text>
+
+  <line x1="378" y1="196" x2="576" y2="196" class="call"/>
+  <text x="410" y="186" class="label">POST /subscriptions/enable</text>
+  <text x="439" y="207" class="small">{"keys":[...]}</text>
+
+  <line x1="576" y1="252" x2="378" y2="252" class="return"/>
+  <text x="434" y="242" class="label">auth_key</text>
+  <text x="421" y="263" class="small">single use, about 60s TTL</text>
+
+  <line x1="358" y1="306" x2="164" y2="306" class="return"/>
+  <text x="228" y="296" class="label">Return auth_key</text>
+
+  <rect x="92" y="344" width="734" height="188" rx="4" class="note"/>
+  <text x="112" y="369" class="section-title">User opens database subscription directly after receiving auth_key</text>
+
+  <line x1="164" y1="408" x2="796" y2="408" class="call"/>
+  <text x="368" y="398" class="label">Connect ws://localhost:5845/sub</text>
+
+  <line x1="164" y1="452" x2="796" y2="452" class="call"/>
+  <text x="393" y="442" class="label">Send {"auth_key":"..."}</text>
+
+  <line x1="796" y1="496" x2="164" y2="496" class="return"/>
+  <text x="402" y="486" class="label">{"event":"subscribed","keys":[...]}</text>
+
+  <line x1="806" y1="534" x2="164" y2="534" class="return"/>
+  <text x="372" y="524" class="label">Stream updates: updated, deleted, inc_table_update</text>
+
+  <rect x="144" y="650" width="20" height="42" class="lane"/>
+  <rect x="796" y="650" width="20" height="42" class="lane"/>
+  <line x1="164" y1="658" x2="796" y2="658" class="call"/>
+  <text x="393" y="648" class="label">Send expired or invalid auth_key</text>
+  <line x1="796" y1="692" x2="164" y2="692" class="return"/>
+  <text x="384" y="684" class="label">{"event":"error","message":"invalid_or_expired_auth_key"}</text>
+</svg>

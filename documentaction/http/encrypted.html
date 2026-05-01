@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB HTTP Encrypted</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">HTTP API</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./key-value.html">Key-Value</a>
+        <a class="nav-child" href="./encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./incremental.html">Incremental</a>
+        <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>HTTP Encrypted Values</h1>
+      <p class="lead">Encrypted endpoints encrypt data before storage and decrypt it on read. The caller provides the encryption key in a request header.</p>
+
+      <div class="warning">The <code>save_encrypted</code> route sends plaintext data to active subscribers for the key. Do not expose subscriptions for sensitive keys unless that behavior is acceptable.</div>
+
+      <h2><span class="endpoint">POST</span> /save_encrypted/{table}/{key}</h2>
+      <table>
+        <thead><tr><th>Input</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Header <code>encryption_key</code></td><td>Required passphrase/key material.</td></tr>
+          <tr><td>Body</td><td>Plain bytes to encrypt and store.</td></tr>
+          <tr><td>Success body</td><td><code>save</code></td></tr>
+        </tbody>
+      </table>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/save_encrypted/secrets/api-token \
+  -H "encryption_key: correct-horse-battery-staple" \
+  --data-binary "secret value"</code></pre>
+
+      <h2><span class="endpoint">GET</span> /read_encrypted/{table}/{key}</h2>
+      <p>Uses the same <code>encryption_key</code> header to decrypt the stored value. If the key is missing locally, the route asks P2P peers and decrypts the returned encrypted bytes.</p>
+      <pre><code class="language-bash">curl http://localhost:5844/read_encrypted/secrets/api-token \
+  -H "encryption_key: correct-horse-battery-staple"</code></pre>
+
+      <h2>Error Notes</h2>
+      <table>
+        <thead><tr><th>Case</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Missing <code>encryption_key</code></td><td><code>400</code></td></tr>
+          <tr><td>Key not found locally or on peers</td><td><code>404</code></td></tr>
+          <tr><td>Wrong encryption key or decrypt failure</td><td><code>500</code></td></tr>
+          <tr><td>Network manager not initialized on read</td><td><code>500</code></td></tr>
+        </tbody>
+      </table>
+
+      <div class="machine-block">ai_keywords: encrypted save_encrypted read_encrypted encryption_key decrypt encrypt
+source_files: servers/public-api/v1/routes/save_encrypted.go, read_encrypted.go, encoding/v1/encrypt.go</div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB HTTP API</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">HTTP API</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./key-value.html">Key-Value</a>
+        <a class="nav-child" href="./encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./incremental.html">Incremental</a>
+        <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>HTTP API Overview</h1>
+      <p class="lead">HTTP API is the language-neutral interface to TsunamiDB. Base URL: <code>http://localhost:5844</code>.</p>
+
+      <h2>Endpoint Index</h2>
+      <table>
+        <thead><tr><th>Method</th><th>Path</th><th>Use</th><th>Docs</th></tr></thead>
+        <tbody>
+          <tr><td>POST</td><td><code>/save/{table}/{key}</code></td><td>Save raw bytes or nested JSON.</td><td><a href="./key-value.html">Key-Value</a></td></tr>
+          <tr><td>GET</td><td><code>/read/{table}/{key}</code></td><td>Read raw bytes or selected nested JSON paths.</td><td><a href="./key-value.html">Key-Value</a></td></tr>
+          <tr><td>GET</td><td><code>/free/{table}/{key}</code></td><td>Delete a key and mark data as reusable.</td><td><a href="./key-value.html">Key-Value</a></td></tr>
+          <tr><td>POST</td><td><code>/save_encrypted/{table}/{key}</code></td><td>Encrypt and save bytes.</td><td><a href="./encrypted.html">Encrypted</a></td></tr>
+          <tr><td>GET</td><td><code>/read_encrypted/{table}/{key}</code></td><td>Read and decrypt bytes.</td><td><a href="./encrypted.html">Encrypted</a></td></tr>
+          <tr><td>POST</td><td><code>/save_inc/{table}/{key}</code></td><td>Append, insert or overwrite an incremental-table entry.</td><td><a href="./incremental.html">Incremental</a></td></tr>
+          <tr><td>GET</td><td><code>/read_inc/{table}/{key}</code></td><td>Read incremental entries by id, key, first N or last N.</td><td><a href="./incremental.html">Incremental</a></td></tr>
+          <tr><td>GET</td><td><code>/delete_inc/{table}/{key}</code></td><td>Delete incremental table metadata and backing file.</td><td><a href="./incremental.html">Incremental</a></td></tr>
+          <tr><td>POST</td><td><code>/subscriptions/enable</code></td><td>Mint a one-time subscription auth key.</td><td><a href="./subscriptions.html">Subscriptions</a></td></tr>
+          <tr><td>POST</td><td><code>/subscriptions/disable</code></td><td>Unsubscribe active sockets from one key.</td><td><a href="./subscriptions.html">Subscriptions</a></td></tr>
+          <tr><td>POST</td><td><code>/sql</code></td><td>Create table metadata prototype.</td><td><a href="./meta.html">Meta</a></td></tr>
+          <tr><td>GET</td><td><code>/key_by_regex/{table}?regex=...&amp;max=...</code></td><td>Find keys in one table by regex.</td><td><a href="./meta.html">Meta</a></td></tr>
+          <tr><td>GET</td><td><code>/health</code></td><td>Runtime health and stats.</td><td><a href="./meta.html">Meta</a></td></tr>
+        </tbody>
+      </table>
+
+      <h2>Status Codes</h2>
+      <table>
+        <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>200</code></td><td>Operation completed.</td></tr>
+          <tr><td><code>400</code></td><td>Invalid URL args, missing required header, invalid JSON or invalid numeric header.</td></tr>
+          <tr><td><code>404</code></td><td>Key or incremental entry not found.</td></tr>
+          <tr><td><code>405</code></td><td>Wrong HTTP method.</td></tr>
+          <tr><td><code>409</code></td><td>Incremental <code>entry_key</code> already exists.</td></tr>
+          <tr><td><code>500</code></td><td>Storage, encryption, index, network or serialization failure.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Quick Smoke Test</h2>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/save/users/user-1 --data-binary "hello"
+curl http://localhost:5844/read/users/user-1
+curl http://localhost:5844/free/users/user-1</code></pre>
+
+      <div class="machine-block">ai_keywords: http api, endpoint list, status codes, base url, public api
+source_files: servers/public-api/v1/Api.go, servers/public-api/v1/routes/*.go</div>
+    </main>
+  </div>
+</body>
+</html>

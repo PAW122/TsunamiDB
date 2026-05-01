@@ -1,0 +1,93 @@
+{
+  "project": "TsunamiDB",
+  "version": "0.8.0",
+  "root": "documentaction/docs.html",
+  "ports": {
+    "http_public_api": "http://localhost:5844",
+    "subscriptions_websocket": "ws://localhost:5845/sub",
+    "network_manager": "first CLI argument, example 5845"
+  },
+  "http": [
+    {
+      "id": "kv-save",
+      "method": "POST",
+      "path": "/save/{table}/{key}",
+      "page": "../http/key-value.html",
+      "keywords": ["save", "write", "key-value", "bytes", "nested json"],
+      "source": ["servers/public-api/v1/routes/save.go"]
+    },
+    {
+      "id": "kv-read",
+      "method": "GET",
+      "path": "/read/{table}/{key}",
+      "page": "../http/key-value.html",
+      "keywords": ["read", "key-value", "bytes", "read_nested", "read_only_nested"],
+      "source": ["servers/public-api/v1/routes/read.go", "servers/public-api/v1/routes/nested.go"]
+    },
+    {
+      "id": "kv-free",
+      "method": "GET",
+      "path": "/free/{table}/{key}",
+      "page": "../http/key-value.html",
+      "keywords": ["delete", "free", "remove key", "defragmentation"],
+      "source": ["servers/public-api/v1/routes/free.go"]
+    },
+    {
+      "id": "encrypted",
+      "method": "POST/GET",
+      "path": "/save_encrypted/{table}/{key}, /read_encrypted/{table}/{key}",
+      "page": "../http/encrypted.html",
+      "keywords": ["encryption_key", "encrypt", "decrypt"],
+      "source": ["servers/public-api/v1/routes/save_encrypted.go", "servers/public-api/v1/routes/read_encrypted.go"]
+    },
+    {
+      "id": "incremental",
+      "method": "POST/GET",
+      "path": "/save_inc/{table}/{key}, /read_inc/{table}/{key}, /delete_inc/{table}/{key}",
+      "page": "../http/incremental.html",
+      "keywords": ["incremental table", "entry_key", "max_entry_size", "read_type", "by_id", "by_key", "last_entries", "first_entries"],
+      "source": ["servers/public-api/v1/routes/inc_save.go", "servers/public-api/v1/routes/inc_read.go", "servers/public-api/v1/routes/inc_delete.go"]
+    },
+    {
+      "id": "subscriptions",
+      "method": "POST/WS",
+      "path": "/subscriptions/enable, /subscriptions/disable, ws://localhost:5845/sub",
+      "page": "../http/subscriptions.html",
+      "keywords": ["websocket", "auth_key", "updated", "deleted", "inc_table_update", "unsubscribed"],
+      "source": ["servers/subscriptions/subServer.go"]
+    },
+    {
+      "id": "meta",
+      "method": "POST/GET",
+      "path": "/sql, /key_by_regex/{table}, /health",
+      "page": "../http/meta.html",
+      "keywords": ["sql", "create_table", "key_by_regex", "health", "metrics"],
+      "source": ["servers/public-api/v1/routes/sql.go", "servers/public-api/v1/routes/keyByRegex.go", "servers/public-api/v1/routes/health.go"]
+    }
+  ],
+  "go_lib": {
+    "import": "github.com/PAW122/TsunamiDB/lib/dbclient",
+    "package": "TsuClient",
+    "page": "../go-lib/overview.html",
+    "functions": [
+      "Save(key, table string, data []byte) error",
+      "Read(key, table string) ([]byte, error)",
+      "Free(key, table string) error",
+      "SaveEncrypted(key, table, encryption_key string, data []byte) error",
+      "ReadEncrypted(key, table, encryption_key string) ([]byte, error)",
+      "InitNetworkManager(port int, knownPeers []string)",
+      "InitPublicApi(port int)",
+      "InitSubscriptionServer(port string) error",
+      "EnableSubscription(keys []string) (string, error)",
+      "DisableSubscription(key string) error",
+      "GetKeysByRegex(table, regex string, max int) ([]string, error)"
+    ],
+    "source": ["lib/dbclient/client.go", "lib/export/*.go"]
+  },
+  "dll_lib": {
+    "status": "not implemented as stable c-shared ABI in current repository",
+    "page": "../dll-lib/overview.html",
+    "keywords": ["dll", "c-shared", "cgo", "ABI", "native bindings"],
+    "source_checked": ["lib/export/*.go", "build.bat"]
+  }
+}

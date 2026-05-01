@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB HTTP Incremental Tables</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">HTTP API</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./key-value.html">Key-Value</a>
+        <a class="nav-child" href="./encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./incremental.html">Incremental</a>
+        <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>HTTP Incremental Tables</h1>
+      <p class="lead">Incremental tables store many fixed-size entries behind one key. They are useful for append-heavy logs, feeds and event streams.</p>
+
+      <h2><span class="endpoint">POST</span> /save_inc/{table}/{key}</h2>
+      <p>Creates incremental table metadata if missing, then writes one entry. Response is JSON: <code>{"id":"0"}</code>. If <code>max_entry_size</code> does not match an existing table, the existing size is used and a <code>warning</code> can be returned.</p>
+      <table>
+        <thead><tr><th>Header</th><th>Required</th><th>Values</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>max_entry_size</code></td><td>First write</td><td>uint64 bytes</td><td>Fixed maximum size of every entry.</td></tr>
+          <tr><td><code>entry_key</code></td><td>No</td><td>string</td><td>Stable logical lookup key. Must be unique per incremental table.</td></tr>
+          <tr><td><code>id</code></td><td>No</td><td>uint64</td><td>Target position for insert or overwrite.</td></tr>
+          <tr><td><code>mode</code></td><td>No</td><td><code>append</code>, <code>overwrite</code></td><td>Default is <code>append</code>. With <code>id</code>, append means insert at position.</td></tr>
+          <tr><td><code>count_from</code></td><td>No</td><td><code>top</code>, <code>bottom</code></td><td>Default in code is <code>top</code>.</td></tr>
+        </tbody>
+      </table>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/save_inc/events/activity \
+  -H "max_entry_size: 256" \
+  -H "entry_key: event-001" \
+  --data-binary "{\"type\":\"login\",\"user\":\"jane\"}"</code></pre>
+
+      <h2><span class="endpoint">GET</span> /read_inc/{table}/{key}</h2>
+      <table>
+        <thead><tr><th>read_type</th><th>Extra header</th><th>Response</th></tr></thead>
+        <tbody>
+          <tr><td><code>by_id</code></td><td><code>id</code></td><td><code>{"data":"..."}</code></td></tr>
+          <tr><td><code>by_key</code></td><td><code>entry_key</code></td><td><code>{"data":"..."}</code></td></tr>
+          <tr><td><code>first_entries</code></td><td><code>amount_to_read</code></td><td><code>[{"id":0,"data":"..."}]</code></td></tr>
+          <tr><td><code>last_entries</code></td><td><code>amount_to_read</code></td><td><code>[{"id":0,"data":"..."}]</code>, where <code>0</code> is the newest entry in that response.</td></tr>
+        </tbody>
+      </table>
+      <pre><code class="language-bash">curl http://localhost:5844/read_inc/events/activity \
+  -H "read_type: by_key" \
+  -H "entry_key: event-001"
+
+curl http://localhost:5844/read_inc/events/activity \
+  -H "read_type: last_entries" \
+  -H "amount_to_read: 10"</code></pre>
+
+      <h2><span class="endpoint">GET</span> /delete_inc/{table}/{key}</h2>
+      <p>Deletes the backing incremental table file, drops the entry-key index, removes KV metadata and notifies subscribers with a <code>deleted</code> event.</p>
+      <pre><code class="language-bash">curl http://localhost:5844/delete_inc/events/activity</code></pre>
+
+      <h2>Behavior Notes</h2>
+      <ul>
+        <li>Payload length must be less than or equal to <code>max_entry_size</code>.</li>
+        <li>Duplicate <code>entry_key</code> returns <code>409</code>.</li>
+        <li>Incremental read responses serialize entry data as strings; base64 encode arbitrary binary data in the application layer.</li>
+        <li>Successful writes emit <code>inc_table_update</code> subscription events.</li>
+      </ul>
+
+      <div class="machine-block">ai_keywords: incremental tables save_inc read_inc delete_inc entry_key max_entry_size read_type amount_to_read by_id by_key
+source_files: servers/public-api/v1/routes/inc_save.go, inc_read.go, inc_delete.go, data/incIndex/index.go</div>
+    </main>
+  </div>
+</body>
+</html>

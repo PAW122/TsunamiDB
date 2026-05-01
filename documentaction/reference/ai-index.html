@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB AI Index</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">AI Index</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="./ai-index.html">AI Index</a>
+        <a class="nav-child" href="./search-index.json">search-index.json</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="../http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="../http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>AI Index</h1>
+      <p class="lead">Compact reference designed for search, retrieval and agent use. Every entry points to the human-readable page and the source files used to verify behavior.</p>
+
+      <h2>Canonical Facts</h2>
+      <div class="machine-block">project: TsunamiDB
+version: 0.8.0
+documentation_root: documentaction/docs.html
+http_base_url: http://localhost:5844
+subscription_ws_url: ws://localhost:5845/sub
+go_import: github.com/PAW122/TsunamiDB/lib/dbclient
+go_package_name: TsuClient
+dll_status: not implemented as stable c-shared ABI</div>
+
+      <h2>HTTP Lookup</h2>
+      <table>
+        <thead><tr><th>Need</th><th>Endpoint or Function</th><th>Page</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Save bytes</td><td><code>POST /save/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/save.go</code></td></tr>
+          <tr><td>Read bytes</td><td><code>GET /read/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/read.go</code></td></tr>
+          <tr><td>Delete key</td><td><code>GET /free/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/free.go</code></td></tr>
+          <tr><td>Nested JSON</td><td><code>mode: save_nested_json</code>, <code>read_nested</code>, <code>read_only_nested</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/nested.go</code></td></tr>
+          <tr><td>Encrypted save/read</td><td><code>/save_encrypted</code>, <code>/read_encrypted</code></td><td><a href="../http/encrypted.html">Encrypted</a></td><td><code>routes/save_encrypted.go</code>, <code>routes/read_encrypted.go</code></td></tr>
+          <tr><td>Incremental append/read/delete</td><td><code>/save_inc</code>, <code>/read_inc</code>, <code>/delete_inc</code></td><td><a href="../http/incremental.html">Incremental</a></td><td><code>routes/inc_*.go</code></td></tr>
+          <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
+          <tr><td>Regex key search</td><td><code>GET /key_by_regex/{table}?regex=...&amp;max=...</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/keyByRegex.go</code></td></tr>
+          <tr><td>Health</td><td><code>GET /health</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/health.go</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>Go Lookup</h2>
+      <div class="machine-block">Save(key, table string, data []byte) error
+Read(key, table string) ([]byte, error)
+Free(key, table string) error
+SaveEncrypted(key, table, encryption_key string, data []byte) error
+ReadEncrypted(key, table, encryption_key string) ([]byte, error)
+InitNetworkManager(port int, knownPeers []string)
+InitPublicApi(port int)
+InitSubscriptionServer(port string) error
+EnableSubscription(keys []string) (string, error)
+DisableSubscription(key string) error
+GetKeysByRegex(table, regex string, max int) ([]string, error)</div>
+    </main>
+  </div>
+</body>
+</html>
