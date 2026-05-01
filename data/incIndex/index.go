@@ -14,6 +14,15 @@ var (
 	ErrDuplicateKey = errors.New("incindex: duplicate entry_key")
 )
 
+var (
+	mkdirAll    = os.MkdirAll
+	readFile    = os.ReadFile
+	writeFile   = os.WriteFile
+	renameFile  = os.Rename
+	removeFile  = os.Remove
+	marshalJSON = json.Marshal
+)
+
 type tableIndex struct {
 	mu        sync.RWMutex
 	path      string
@@ -49,11 +58,11 @@ func getIndex(tableFile string) (*tableIndex, error) {
 }
 
 func (t *tableIndex) load() error {
-	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+	if err := mkdirAll(baseDir, 0o755); err != nil {
 		return err
 	}
 
-	data, err := os.ReadFile(t.path)
+	data, err := readFile(t.path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
@@ -75,6 +84,9 @@ func (t *tableIndex) load() error {
 		if key == "" {
 			continue
 		}
+		if _, exists := t.positions[key]; exists {
+			return ErrDuplicateKey
+		}
 		t.positions[key] = uint64(i)
 	}
 	return nil
@@ -82,16 +94,24 @@ func (t *tableIndex) load() error {
 
 func (t *tableIndex) saveLocked() error {
 	payload := diskPayload{Keys: t.keys}
-	data, err := json.Marshal(payload)
+	data, err := marshalJSON(payload)
 	if err != nil {
 		return err
 	}
 
 	tmp := t.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := writeFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, t.path)
+	if err := renameFile(tmp, t.path); err != nil {
+		if removeErr := removeFile(t.path); removeErr != nil && !os.IsNotExist(removeErr) {
+			return removeErr
+		}
+		if retryErr := renameFile(tmp, t.path); retryErr != nil {
+			return retryErr
+		}
+	}
+	return nil
 }
 
 func (t *tableIndex) ensureLength(length uint64) {
@@ -210,7 +230,7 @@ func Remove(tableFile, key string) error {
 func DropTable(tableFile string) error {
 	indices.Delete(tableFile)
 	path := filepath.Join(baseDir, tableFile+".idx")
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := removeFile(path); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil
@@ -222,7 +242,7 @@ func ResetForTests() {
 		idx.mu.Lock()
 		idx.keys = nil
 		idx.positions = make(map[string]uint64)
-		_ = os.Remove(idx.path)
+		_ = removeFile(idx.path)
 		idx.mu.Unlock()
 		indices.Delete(key)
 		return true
