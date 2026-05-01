@@ -24,16 +24,7 @@ func Encode(data []byte, hasNested bool) ([]byte, types.Encoded) {
 	endPtr := startPtr + len(data)
 
 	// Określenie najmniejszego możliwego rozmiaru pointera
-	var pointerSize uint8
-	if endPtr < 256 {
-		pointerSize = 1 // uint8
-	} else if endPtr < 65536 {
-		pointerSize = 2 // uint16
-	} else if int64(endPtr) < int64(4294967296) {
-		pointerSize = 4 // uint32
-	} else {
-		pointerSize = 8 // uint64
-	}
+	pointerSize := pointerSizeForEnd(endPtr)
 
 	// pointerSize (1) + nested flag (bit7)
 	pointerHeader := pointerSize
@@ -47,20 +38,7 @@ func Encode(data []byte, hasNested bool) ([]byte, types.Encoded) {
 		startPtr (8)
 		endPtr(8 - 64)
 	*/
-	switch pointerSize {
-	case 1:
-		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
-		binary.Write(&buf, binary.LittleEndian, uint8(endPtr))
-	case 2:
-		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
-		binary.Write(&buf, binary.LittleEndian, uint16(endPtr))
-	case 4:
-		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
-		binary.Write(&buf, binary.LittleEndian, uint32(endPtr))
-	case 8:
-		binary.Write(&buf, binary.LittleEndian, uint8(startPtr))
-		binary.Write(&buf, binary.LittleEndian, uint64(endPtr))
-	}
+	writeEncodedPointers(&buf, pointerSize, startPtr, endPtr)
 
 	// Zapisz długość danych (4 bajty) - nie potrzebne, latwe do obl z ptr
 	// binary.Write(&buf, binary.LittleEndian, uint32(len(data)))
@@ -77,4 +55,34 @@ func Encode(data []byte, hasNested bool) ([]byte, types.Encoded) {
 	}
 
 	return buf.Bytes(), res_data
+}
+
+func pointerSizeForEnd(endPtr int) uint8 {
+	if endPtr < 256 {
+		return 1 // uint8
+	}
+	if endPtr < 65536 {
+		return 2 // uint16
+	}
+	if int64(endPtr) < int64(4294967296) {
+		return 4 // uint32
+	}
+	return 8 // uint64
+}
+
+func writeEncodedPointers(buf *bytes.Buffer, pointerSize uint8, startPtr, endPtr int) {
+	switch pointerSize {
+	case 1:
+		binary.Write(buf, binary.LittleEndian, uint8(startPtr))
+		binary.Write(buf, binary.LittleEndian, uint8(endPtr))
+	case 2:
+		binary.Write(buf, binary.LittleEndian, uint8(startPtr))
+		binary.Write(buf, binary.LittleEndian, uint16(endPtr))
+	case 4:
+		binary.Write(buf, binary.LittleEndian, uint8(startPtr))
+		binary.Write(buf, binary.LittleEndian, uint32(endPtr))
+	case 8:
+		binary.Write(buf, binary.LittleEndian, uint8(startPtr))
+		binary.Write(buf, binary.LittleEndian, uint64(endPtr))
+	}
 }

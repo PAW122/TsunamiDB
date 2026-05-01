@@ -3,32 +3,41 @@ package encoding_v1
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
+	cryptoRand "crypto/rand"
 	"errors"
 	"fmt"
 	"io"
 )
 
+var (
+	newCipher  = aes.NewCipher
+	newGCM     = cipher.NewGCM
+	randReader = cryptoRand.Reader
+)
+
 // **Funkcja szyfrująca `Encrypt()`**
 func Encrypt(data []byte, key string) ([]byte, error) {
 	//  Zamiana klucza na 32-bajtowy klucz AES-256
-	aesKey := deriveKey(key)
+	aesKey, err := deriveKey(key)
+	if err != nil {
+		return nil, err
+	}
 
 	//  Tworzenie nowej instancji AES
-	block, err := aes.NewCipher(aesKey)
+	block, err := newCipher(aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cipher: %w", err)
 	}
 
 	//  Użycie GCM (Galois/Counter Mode)
-	aesGCM, err := cipher.NewGCM(block)
+	aesGCM, err := newGCM(block)
 	if err != nil {
 		return nil, fmt.Errorf("error creating GCM: %w", err)
 	}
 
 	//  Tworzenie unikalnego Nonce (12 bajtów)
 	nonce := make([]byte, aesGCM.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+	if _, err := io.ReadFull(randReader, nonce); err != nil {
 		return nil, fmt.Errorf("error generating nonce: %w", err)
 	}
 
@@ -40,16 +49,19 @@ func Encrypt(data []byte, key string) ([]byte, error) {
 // **Funkcja deszyfrująca `Decrypt()`**
 func Decrypt(ciphertext []byte, key string) ([]byte, error) {
 	//  Zamiana klucza na 32-bajtowy klucz AES-256
-	aesKey := deriveKey(key)
+	aesKey, err := deriveKey(key)
+	if err != nil {
+		return nil, err
+	}
 
 	//  Tworzenie AES
-	block, err := aes.NewCipher(aesKey)
+	block, err := newCipher(aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("error creating cipher: %w", err)
 	}
 
 	//  Użycie GCM
-	aesGCM, err := cipher.NewGCM(block)
+	aesGCM, err := newGCM(block)
 	if err != nil {
 		return nil, fmt.Errorf("error creating GCM: %w", err)
 	}
@@ -72,13 +84,17 @@ func Decrypt(ciphertext []byte, key string) ([]byte, error) {
 }
 
 // **Konwersja klucza na 32 bajty (AES-256)**
-func deriveKey(key string) []byte {
+func deriveKey(key string) ([]byte, error) {
 	keyBytes := []byte(key)
+	if len(keyBytes) == 0 {
+		return nil, errors.New("key cannot be empty")
+	}
+
 	finalKey := make([]byte, 32)
 
 	for i := 0; i < 32; i++ {
 		finalKey[i] = keyBytes[i%len(keyBytes)]
 	}
 
-	return finalKey
+	return finalKey, nil
 }

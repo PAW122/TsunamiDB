@@ -31,6 +31,11 @@ pos = total - len(payload) - 1
 // Jeśli body ma długość 0..entrySize -> skipBit=0, marker 0x01 przed danymi.
 // Jeśli chcesz trwale „usunąć” (skip), wywołaj z body=nil oraz skip=true (patrz SetSkipIncEntry).
 func EncodeIncEntry(entrySize uint64, body []byte) []byte {
+	maxInt := uint64(int(^uint(0) >> 1))
+	if entrySize > maxInt-3 {
+		return nil
+	}
+
 	total := int(entrySize) + 3
 	buf := make([]byte, total)
 
@@ -46,10 +51,6 @@ func EncodeIncEntry(entrySize uint64, body []byte) []byte {
 
 	// Wstaw marker 0x01 i dane na końcu
 	pos := total - len(body) - 1
-	if pos < 1 {
-		// Teoretycznie nie powinno się zdarzyć (mamy +3 bajty na overhead)
-		return nil
-	}
 	buf[pos] = 0x01
 	copy(buf[pos+1:], body)
 	return buf
@@ -80,6 +81,11 @@ func SetSkipIncEntry(entry []byte, nextEntryPointer uint64) {
 // Gdy SkipBit==true, Data jest puste; NextEntryPointer wypełniony jeśli obecny.
 // Gdy SkipBit==false, Data to bajty za znacznikiem 0x01.
 func DecodeIncEntry(entrySize uint64, raw []byte) (types.IncTableBody, error) {
+	maxInt := uint64(int(^uint(0) >> 1))
+	if entrySize > maxInt-3 {
+		return types.IncTableBody{}, errors.New("entry size too large")
+	}
+
 	total := int(entrySize) + 3
 	if len(raw) != total {
 		return types.IncTableBody{}, errors.New("invalid entry length")
