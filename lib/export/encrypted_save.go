@@ -2,43 +2,41 @@ package export
 
 import (
 	"fmt"
-
-	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
-	defragmanager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
-	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
-	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 
-	encrypted_data, err := encoder_v1.Encrypt(data, encryption_key)
+	if key == "" || table == "" {
+		return fmt.Errorf("Invalid key or table value")
+	}
+
+	encrypted_data, err := encrypt(data, encryption_key)
 	if err != nil {
 		return fmt.Errorf("error encrypting data: %w", err)
 	}
 
-	encoded, _ := encoder_v1.Encode(encrypted_data, false)
+	encoded, _ := encode(encrypted_data, false)
 
 	// save to file
-	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, table)
+	startPtr, endPtr, err := saveDataToFileAsync(encoded, table)
 	if err != nil {
 		return fmt.Errorf("error saving to file: %w", err)
 	}
 
 	// save to map
-	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(table, key, int(startPtr), int(endPtr), false)
+	prevMeta, existed, err := saveElementByKey(table, key, int(startPtr), int(endPtr), false)
 	if err != nil {
 		return fmt.Errorf("error saving to map: %w", err)
 	}
 	if existed {
 		if prevMeta.FileName != table || prevMeta.StartPtr != int(startPtr) || prevMeta.EndPtr != int(endPtr) {
-			defragmanager.MarkAsFree(prevMeta.Key, prevMeta.FileName, int64(prevMeta.StartPtr), int64(prevMeta.EndPtr))
-			fileSystem_v1.RecordDefragFree()
+			markAsFree(prevMeta.Key, prevMeta.FileName, int64(prevMeta.StartPtr), int64(prevMeta.EndPtr))
+			recordDefragFree()
 		} else {
-			fileSystem_v1.RecordDefragSkip()
+			recordDefragSkip()
 		}
 	}
 
-	go subServer.NotifySubscribers(key, data)
+	go notifySubscribers(key, data)
 	return nil
 }

@@ -2,20 +2,43 @@ package TsuClient_test
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
+	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	// fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	TsuClient "github.com/PAW122/TsunamiDB/lib/dbclient"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestMain(m *testing.M) {
+	originalWD, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	_ = os.RemoveAll("db")
+	tmpWD, err := os.MkdirTemp("", "tsunamidb-lib-dbclient-*")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := os.Chdir(tmpWD); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
 	TsuClient.InitNetworkManager(5843, []string{})
 	TsuClient.InitPublicApi(5844)
 	time.Sleep(1500 * time.Millisecond)
 	code := m.Run()
+	dataManager_v2.ShutdownWorkersForTests()
+	_ = os.Chdir(originalWD)
+	_ = os.RemoveAll("db")
+	_ = os.RemoveAll(tmpWD)
 	os.Exit(code)
 }
 
@@ -66,6 +89,40 @@ func TestClient_SaveReadEncrypted(t *testing.T) {
 
 	_, err = TsuClient.ReadEncrypted(key, table, encKey)
 	assert.Error(t, err, "oczekiwano błędu po usunięciu klucza")
+}
+
+func TestClient_GetKeysByRegex(t *testing.T) {
+	table := "test_table_regex"
+	keys := []string{"client_regex_alpha", "client_regex_beta"}
+
+	for _, key := range keys {
+		err := TsuClient.Save(key, table, []byte("regex-data"))
+		assert.NoError(t, err)
+	}
+
+	got, err := TsuClient.GetKeysByRegex(table, `^client_regex_`, 10)
+	assert.NoError(t, err)
+	sort.Strings(got)
+	assert.Equal(t, keys, got)
+
+	for _, key := range keys {
+		assert.NoError(t, TsuClient.Free(key, table))
+	}
+}
+
+func TestClient_SubscriptionWrappers(t *testing.T) {
+	_, err := TsuClient.EnableSubscription(nil)
+	assert.Error(t, err)
+
+	authKey, err := TsuClient.EnableSubscription([]string{"client_sub_key"})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, authKey)
+
+	assert.NoError(t, TsuClient.DisableSubscription("client_sub_key"))
+	assert.Error(t, TsuClient.DisableSubscription(""))
+
+	err = TsuClient.InitSubscriptionServer("bad-port")
+	assert.Error(t, err)
 }
 
 // func TestClient_PersistenceAfterRestart(t *testing.T) {

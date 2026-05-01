@@ -2,19 +2,15 @@ package export
 
 import (
 	"fmt"
-
-	defragmentationManager "github.com/PAW122/TsunamiDB/data/defragmentationManager"
-	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
-	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
 func Free(key, table string) error {
-	fs_data, err := fileSystem_v1.GetElementByKey(table, key)
+	fs_data, err := getElementByKey(table, key)
 	if err != nil {
 		return fmt.Errorf("error retrieving element from map: %w", err)
 	}
-	fileSystem_v1.RemoveElementByKey(table, key)
-	defragmentationManager.MarkAsFree(key, table, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
-	go subServer.NotifyDeleteAndRemove(key)
+	removeElementByKey(table, key)
+	markAsFree(key, table, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
+	go notifyDeleteAndRemove(key)
 	return nil
 }
