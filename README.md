@@ -43,9 +43,10 @@ go test -run . -v ./servers/public-api/v1/routes
 # coverage in %
 go test -cover ./...
 
-# create raport:
+# create raport (example):
 go test ./data/dataManager/v2 -coverprofile=coverage
 go tool cover -html=coverage -o coverage.html
 
 # run tests
+go test -cover ./...
 ```

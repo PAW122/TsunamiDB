@@ -82,16 +82,15 @@ func getTableFreeList(table string) (*tableFreeList, error) {
 
 	freeRegistryMu.Lock()
 	defer freeRegistryMu.Unlock()
-	if fl = freeRegistry[table]; fl != nil {
-		return fl, nil
+	if fl = freeRegistry[table]; fl == nil {
+		fl = &tableFreeList{
+			name:     table,
+			safeName: safe,
+			path:     path,
+			blocks:   make(map[string]FreeBlock),
+		}
+		freeRegistry[table] = fl
 	}
-	fl = &tableFreeList{
-		name:     table,
-		safeName: safe,
-		path:     path,
-		blocks:   make(map[string]FreeBlock),
-	}
-	freeRegistry[table] = fl
 	return fl, nil
 }
 

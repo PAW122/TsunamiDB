@@ -64,7 +64,7 @@ func LoadFiles(path string) bool {
 load data from temp to cache
 */
 func LoadTempData() {
-
+	debug.Log("[async block manager] [defragManager] LoadTempData")
 }
 
 /*
