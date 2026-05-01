@@ -1,0 +1,558 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB HTTP Examples in Go</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">Examples</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="../http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="../http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="./http-go.html">Overview</a>
+          <a class="nav-child" href="./http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="./http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="./http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="./http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="./http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="./http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="./http-go.html#meta-sql-health">Meta, SQL, Health</a>
+          <a class="nav-child" href="./http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>HTTP Examples in Go</h1>
+      <p class="lead">Copy-paste examples for using TsunamiDB HTTP API from Go with the standard <code>net/http</code> package. Subscription WebSocket examples use <code>github.com/gorilla/websocket</code>.</p>
+
+      <h2 id="common-imports">Common Imports</h2>
+      <pre><code class="language-go">import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/gorilla/websocket"
+)</code></pre>
+
+      <h2 id="basic-key-value">Basic Key-Value</h2>
+      <pre><code class="language-go">const baseURL = "http://localhost:5844"
+
+func Save(table, key string, data []byte) error {
+	url := fmt.Sprintf("%s/save/%s/%s", baseURL, table, key)
+	resp, err := http.Post(url, "application/octet-stream", bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("save failed: %s: %s", resp.Status, string(body))
+	}
+	return nil
+}
+
+func Read(table, key string) ([]byte, error) {
+	url := fmt.Sprintf("%s/read/%s/%s", baseURL, table, key)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("read failed: %s: %s", resp.Status, string(body))
+	}
+	return io.ReadAll(resp.Body)
+}
+
+func Free(table, key string) error {
+	url := fmt.Sprintf("%s/free/%s/%s", baseURL, table, key)
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("free failed: %s: %s", resp.Status, string(body))
+	}
+	return nil
+}</code></pre>
+
+      <h2 id="nested-json">Nested JSON</h2>
+      <pre><code class="language-go">func SaveNested(table, key string, body []byte) error {
+	url := fmt.Sprintf("%s/save/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("mode", "save_nested_json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("save nested failed: %s: %s", resp.Status, string(errBody))
+	}
+	return nil
+}
+
+func ReadNested(table, key string, paths []string, only bool) ([]byte, error) {
+	url := fmt.Sprintf("%s/read/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(paths) > 0 {
+		header := "read_nested"
+		if only {
+			header = "read_only_nested"
+		}
+		req.Header.Set(header, strings.Join(paths, " "))
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("read nested failed: %s: %s", resp.Status, string(body))
+	}
+	return io.ReadAll(resp.Body)
+}</code></pre>
+
+      <h2 id="encrypted-values">Encrypted Values</h2>
+      <pre><code class="language-go">func SaveEncrypted(table, key, encryptionKey string, data []byte) error {
+	url := fmt.Sprintf("%s/save_encrypted/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("encryption_key", encryptionKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("save encrypted failed: %s: %s", resp.Status, string(body))
+	}
+	return nil
+}
+
+func ReadEncrypted(table, key, encryptionKey string) ([]byte, error) {
+	url := fmt.Sprintf("%s/read_encrypted/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("encryption_key", encryptionKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("read encrypted failed: %s: %s", resp.Status, string(body))
+	}
+	return io.ReadAll(resp.Body)
+}</code></pre>
+
+      <h2 id="incremental-tables">Incremental Tables</h2>
+      <pre><code class="language-go">type SaveIncResponse struct {
+	ID      string `json:"id"`
+	Warning string `json:"warning,omitempty"`
+}
+
+type IncEntry struct {
+	ID   uint64 `json:"id"`
+	Data string `json:"data"`
+}
+
+func SaveIncAppend(table, key string, maxEntrySize uint64, entryKey string, data []byte) (*SaveIncResponse, error) {
+	url := fmt.Sprintf("%s/save_inc/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("max_entry_size", fmt.Sprintf("%d", maxEntrySize))
+	if entryKey != "" {
+		req.Header.Set("entry_key", entryKey)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("save_inc failed: %s: %s", resp.Status, string(body))
+	}
+
+	var out SaveIncResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func SaveIncAt(table, key string, maxEntrySize uint64, id uint64, mode, countFrom string, data []byte) (*SaveIncResponse, error) {
+	url := fmt.Sprintf("%s/save_inc/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	req.Header.Set("max_entry_size", fmt.Sprintf("%d", maxEntrySize))
+	req.Header.Set("id", fmt.Sprintf("%d", id))
+	req.Header.Set("mode", mode)             // append or overwrite
+	req.Header.Set("count_from", countFrom)  // top or bottom
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("save_inc at position failed: %s: %s", resp.Status, string(body))
+	}
+
+	var out SaveIncResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func ReadIncByID(table, key string, id uint64) (string, error) {
+	url := fmt.Sprintf("%s/read_inc/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("read_type", "by_id")
+	req.Header.Set("id", fmt.Sprintf("%d", id))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("read_inc by_id failed: %s: %s", resp.Status, string(body))
+	}
+
+	var out struct {
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", err
+	}
+	return out.Data, nil
+}
+
+func ReadIncByKey(table, key, entryKey string) (string, error) {
+	url := fmt.Sprintf("%s/read_inc/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("read_type", "by_key")
+	req.Header.Set("entry_key", entryKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("read_inc by_key failed: %s: %s", resp.Status, string(body))
+	}
+
+	var out struct {
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", err
+	}
+	return out.Data, nil
+}
+
+func ReadIncMany(table, key, readType string, amount uint64) ([]IncEntry, error) {
+	url := fmt.Sprintf("%s/read_inc/%s/%s", baseURL, table, key)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("read_type", readType) // first_entries or last_entries
+	req.Header.Set("amount_to_read", fmt.Sprintf("%d", amount))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("read_inc many failed: %s: %s", resp.Status, string(body))
+	}
+
+	var out []IncEntry
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func DeleteInc(table, key string) error {
+	url := fmt.Sprintf("%s/delete_inc/%s/%s", baseURL, table, key)
+	resp, err := http.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("delete_inc failed: %s: %s", resp.Status, string(body))
+	}
+	return nil
+}</code></pre>
+
+      <h2 id="subscriptions-example">Subscriptions</h2>
+      <pre><code class="language-go">type enableSubscriptionRequest struct {
+	Keys []string `json:"keys"`
+}
+
+type enableSubscriptionResponse struct {
+	AuthKey string `json:"auth_key"`
+}
+
+func MintSubscriptionToken(keys []string) (string, error) {
+	payload, _ := json.Marshal(enableSubscriptionRequest{Keys: keys})
+	resp, err := http.Post(
+		baseURL+"/subscriptions/enable",
+		"application/json",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("enable subscription failed: %s: %s", resp.Status, string(body))
+	}
+
+	var out enableSubscriptionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return "", err
+	}
+	return out.AuthKey, nil
+}
+
+func DisableSubscription(key string) error {
+	payload, _ := json.Marshal(map[string]string{"key": key})
+	resp, err := http.Post(
+		baseURL+"/subscriptions/disable",
+		"application/json",
+		bytes.NewReader(payload),
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("disable subscription failed: %s: %s", resp.Status, string(body))
+	}
+	return nil
+}</code></pre>
+
+      <h3>WebSocket Client</h3>
+      <pre><code class="language-go">func ConnectSubscriptionSocket(authKey string) (*websocket.Conn, error) {
+	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
+	conn, _, err := dialer.Dial("ws://localhost:5845/sub", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	payload, _ := json.Marshal(map[string]string{"auth_key": authKey})
+	if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+func ReadSubscriptionEvents(conn *websocket.Conn) error {
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			return err
+		}
+		fmt.Println(string(msg))
+	}
+}</code></pre>
+
+      <h2 id="meta-sql-health">Meta, SQL and Health</h2>
+      <pre><code class="language-go">type Column struct {
+	Name         string `json:"name"`
+	Type         string `json:"type"`
+	IsPrimaryKey bool   `json:"isPrimaryKey"`
+	Default      string `json:"default,omitempty"`
+	MaxByteSize  int    `json:"maxByteSize"`
+}
+
+type SQLRequest struct {
+	Query     string   `json:"query"`
+	TableName string   `json:"tableName"`
+	Columns   []Column `json:"columns"`
+}
+
+func CreateTable(name string, columns []Column) error {
+	payload, _ := json.Marshal(SQLRequest{
+		Query:     "create_table",
+		TableName: name,
+		Columns:   columns,
+	})
+
+	resp, err := http.Post(baseURL+"/sql", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("sql failed: %s: %s", resp.Status, string(body))
+	}
+	return nil
+}
+
+func KeysByRegex(table, pattern string, max int) ([]string, error) {
+	url := fmt.Sprintf(
+		"%s/key_by_regex/%s?regex=%s&max=%d",
+		baseURL,
+		table,
+		url.QueryEscape(pattern),
+		max,
+	)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("key_by_regex failed: %s: %s", resp.Status, string(body))
+	}
+
+	var out []string
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func FetchHealth() (map[string]any, error) {
+	resp, err := http.Get(baseURL + "/health")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("health failed: %s", resp.Status)
+	}
+
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}</code></pre>
+
+      <h2 id="minimal-demo">Minimal Demo</h2>
+      <pre><code class="language-go">func main() {
+	if err := Save("users", "user-1", []byte("hello")); err != nil {
+		panic(err)
+	}
+
+	data, err := Read("users", "user-1")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(data))
+
+	if err := Free("users", "user-1"); err != nil {
+		panic(err)
+	}
+}</code></pre>
+
+      <div class="machine-block">ai_keywords: HTTP examples in Go net/http curl replacement save read free nested encrypted incremental subscriptions websocket sql health key_by_regex
+source_docs: docs_api/kv.md, docs_api/encryption.md, docs_api/incremental.md, docs_api/subscriptions.md, docs_api/meta.md</div>
+    </main>
+  </div>
+  <script src="../assets/syntax-highlight.js"></script>
+</body>
+</html>

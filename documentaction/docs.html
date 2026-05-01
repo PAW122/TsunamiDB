@@ -23,6 +23,21 @@
         <a class="nav-child" href="./http/incremental.html">Incremental Tables</a>
         <a class="nav-child" href="./http/subscriptions.html">Subscriptions</a>
         <a class="nav-child" href="./http/meta.html">Meta, SQL, Health</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="./examples/http-go.html">Overview</a>
+          <a class="nav-child" href="./examples/http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="./examples/http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="./examples/http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="./examples/http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="./examples/http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="./examples/http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="./examples/http-go.html#meta-sql-health">Meta, SQL, Health</a>
+          <a class="nav-child" href="./examples/http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="./downloads/index.html">Insomnia endpoints</a>
         <p class="nav-group">Libraries</p>
         <a class="nav-parent" href="./go-lib/overview.html">Go Lib</a>
         <a class="nav-parent" href="./dll-lib/overview.html">DLL Lib</a>
@@ -42,6 +57,16 @@
           <h3>Go Lib</h3>
           <p>In-process API from <code>github.com/PAW122/TsunamiDB/lib/dbclient</code>. Wraps storage operations and can start the API, network manager and subscription server.</p>
           <a href="./go-lib/overview.html">Open Go Lib docs</a>
+        </section>
+        <section class="card">
+          <h3>Examples</h3>
+          <p>Copy-paste Go examples for calling the HTTP API directly with <code>net/http</code>, including subscriptions with WebSocket.</p>
+          <a href="./examples/http-go.html">Open Go examples</a>
+        </section>
+        <section class="card">
+          <h3>Downloads</h3>
+          <p>Download or replace the Insomnia endpoint dump used for manual API testing.</p>
+          <a href="./downloads/index.html">Open downloads</a>
         </section>
         <section class="card">
           <h3>DLL Lib</h3>
@@ -86,5 +111,6 @@ subscription_ws_url: ws://localhost:5845/sub
 go_import: github.com/PAW122/TsunamiDB/lib/dbclient</div>
     </main>
   </div>
+  <script src="./assets/syntax-highlight.js"></script>
 </body>
 </html>

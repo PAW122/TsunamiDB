@@ -63,6 +63,14 @@
       "page": "../http/meta.html",
       "keywords": ["sql", "create_table", "key_by_regex", "health", "metrics"],
       "source": ["servers/public-api/v1/routes/sql.go", "servers/public-api/v1/routes/keyByRegex.go", "servers/public-api/v1/routes/health.go"]
+    },
+    {
+      "id": "http-go-examples",
+      "method": "examples",
+      "path": "documentaction/examples/http-go.html",
+      "page": "../examples/http-go.html",
+      "keywords": ["HTTP examples in Go", "net/http", "copy paste", "Save", "Read", "SaveEncrypted", "SaveIncAppend", "MintSubscriptionToken", "FetchHealth"],
+      "source": ["docs_api/kv.md", "docs_api/encryption.md", "docs_api/incremental.md", "docs_api/subscriptions.md", "docs_api/meta.md"]
     }
   ],
   "go_lib": {
@@ -89,5 +97,11 @@
     "page": "../dll-lib/overview.html",
     "keywords": ["dll", "c-shared", "cgo", "ABI", "native bindings"],
     "source_checked": ["lib/export/*.go", "build.bat"]
+  },
+  "downloads": {
+    "page": "../downloads/index.html",
+    "insomnia_endpoints_source": "../downloads/insomnia-endpoints.har",
+    "insomnia_endpoints_download": "../downloads/insomnia-endpoints.zip",
+    "keywords": ["downloads", "Insomnia", "HAR", "endpoint dump", "API collection"]
   }
 }

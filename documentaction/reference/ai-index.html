@@ -23,6 +23,21 @@
         <a class="nav-child" href="../http/incremental.html">Incremental</a>
         <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
         <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="../examples/http-go.html">Overview</a>
+          <a class="nav-child" href="../examples/http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="../examples/http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="../examples/http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-sql-health">Meta, SQL, Health</a>
+          <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
         <p class="nav-group">Libraries</p>
         <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
         <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
@@ -55,6 +70,7 @@ dll_status: not implemented as stable c-shared ABI</div>
           <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
           <tr><td>Regex key search</td><td><code>GET /key_by_regex/{table}?regex=...&amp;max=...</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/keyByRegex.go</code></td></tr>
           <tr><td>Health</td><td><code>GET /health</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/health.go</code></td></tr>
+          <tr><td>Go HTTP snippets</td><td><code>net/http</code> functions for all HTTP groups</td><td><a href="../examples/http-go.html">HTTP examples in Go</a></td><td><code>docs_api/*.md</code></td></tr>
         </tbody>
       </table>
 
@@ -72,5 +88,6 @@ DisableSubscription(key string) error
 GetKeysByRegex(table, regex string, max int) ([]string, error)</div>
     </main>
   </div>
+  <script src="../assets/syntax-highlight.js"></script>
 </body>
 </html>
