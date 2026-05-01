@@ -10,7 +10,14 @@ import (
 @param data -> pointer to encoded data
 */
 func SaveElement(key string, data *string) {
-
+	if data == nil {
+		return
+	}
+	startPtr, endPtr, err := dataManager_v1.SaveDataToFile([]byte(*data), "data.bin")
+	if err != nil {
+		return
+	}
+	_, _, _ = SaveElementByKey("data.bin", key, int(startPtr), int(endPtr), false)
 }
 
 /*

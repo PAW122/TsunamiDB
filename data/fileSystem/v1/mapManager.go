@@ -60,6 +60,11 @@ var (
 	defragFreedCount   int64
 	defragSkipCount    int64
 	debugOnce          sync.Once
+	walEnqueueTimeout  = 5 * time.Second
+	snapshotInterval   = 5 * time.Minute
+	debugCounterPeriod = 5 * time.Second
+	snapshotWorkerStop <-chan struct{}
+	debugCountersStop  <-chan struct{}
 )
 
 type shard struct {
@@ -415,20 +420,29 @@ func (ti *tableIndex) enqueueWal(op walOp) error {
 	select {
 	case ti.walChan <- op:
 		return nil
-	case <-time.After(5 * time.Second):
+	default:
+	}
+
+	seq := ti.flushWal()
+	ti.waitForWalSync(seq)
+
+	select {
+	case ti.walChan <- op:
+		return nil
+	case <-time.After(walEnqueueTimeout):
 		dbg.LogExtra(fmt.Sprintf("WAL blocked for 5s on key: %s (table=%s)", op.key, ti.name))
 		return errors.New("WAL timeout")
-	default:
-		ti.flushWal()
-		ti.walChan <- op
-		return nil
 	}
 }
 
 func (ti *tableIndex) runWalWriter() {
 	defer func() {
 		if r := recover(); r != nil {
-			dbg.LogExtra(fmt.Sprintf("walWriter panic (table=%s): %v", ti.name, r))
+			tableName := "<nil>"
+			if ti != nil {
+				tableName = ti.name
+			}
+			dbg.LogExtra(fmt.Sprintf("walWriter panic (table=%s): %v", tableName, r))
 		}
 	}()
 
@@ -550,11 +564,16 @@ func (ti *tableIndex) waitForWalSync(seq int64) {
 }
 
 func (ti *tableIndex) snapshotWorker() {
-	ticker := time.NewTicker(5 * time.Minute)
+	ticker := time.NewTicker(snapshotInterval)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		ti.writeSnapshot()
+	for {
+		select {
+		case <-ticker.C:
+			ti.writeSnapshot()
+		case <-snapshotWorkerStop:
+			return
+		}
 	}
 }
 
@@ -632,17 +651,22 @@ func (ti *tableIndex) rotateWal() error {
 }
 
 func debugCountersWorker() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(debugCounterPeriod)
 	defer ticker.Stop()
-	for range ticker.C {
-		if v := atomic.SwapInt64(&storeLockSlowCount, 0); v > 0 {
-			dbg.LogExtra(fmt.Sprintf("[mapManager] store lock slow waits: %d", v))
-		}
-		if v := atomic.SwapInt64(&defragFreedCount, 0); v > 0 {
-			dbg.LogExtra(fmt.Sprintf("[mapManager] defrag frees: %d", v))
-		}
-		if v := atomic.SwapInt64(&defragSkipCount, 0); v > 0 {
-			dbg.LogExtra(fmt.Sprintf("[mapManager] defrag skips (same span): %d", v))
+	for {
+		select {
+		case <-ticker.C:
+			if v := atomic.SwapInt64(&storeLockSlowCount, 0); v > 0 {
+				dbg.LogExtra(fmt.Sprintf("[mapManager] store lock slow waits: %d", v))
+			}
+			if v := atomic.SwapInt64(&defragFreedCount, 0); v > 0 {
+				dbg.LogExtra(fmt.Sprintf("[mapManager] defrag frees: %d", v))
+			}
+			if v := atomic.SwapInt64(&defragSkipCount, 0); v > 0 {
+				dbg.LogExtra(fmt.Sprintf("[mapManager] defrag skips (same span): %d", v))
+			}
+		case <-debugCountersStop:
+			return
 		}
 	}
 }

@@ -1,20 +1,5 @@
 package fileSystem_v1
 
-// Pointer Manager + High-Level API dla pointerów w TsunamiDB.
-// -----------------------------------------------------------
-// Moduł dostarcza:
-//   • niskopoziomowy rekurencyjny resolver pointerów (eager/lazy),
-//   • funkcje ReadPtrAll, ReadPtrSome – zgodne z wymaganiami użytkownika,
-//   • funkcję CreatePtrObj do tworzenia obiektów pointera z walidacją.
-//
-// Format pointera zapisany w bazie:
-//   "$ptr_<custom_name>": ["key", "table"]
-// Klucz musi zaczynać się od "$ptr_".  W wyniku ReadPtrAll / ReadPtrSome
-// nazwa pola jest zwracana *bez* tego prefiksu.
-//
-// Zależności od reszty TsunamiDB są wyrażone przez interfejs Database ↓
-// – podłącz tu swój konkretny storage.
-
 import (
 	"context"
 	"errors"
@@ -23,34 +8,20 @@ import (
 	"sync"
 )
 
-// -----------------------------------------------------------------------------
-//  Minimalny interfejs do TsunamiDB (wstrzykuj konkretną implementację)
-// -----------------------------------------------------------------------------
-
 type Database interface {
-	// Get zwraca niezdeserializowany obiekt JSON (map[string]any lub []any).
 	Get(ctx context.Context, table, key string) (interface{}, error)
-
-	// Put zapisuje obiekt pod dany klucz.
 	Put(ctx context.Context, table, key string, value interface{}) error
 }
 
-// -----------------------------------------------------------------------------
-//  Niskopoziomowy resolver pointerów (eager)
-// -----------------------------------------------------------------------------
-
 type Manager struct {
 	db    Database
-	cache sync.Map // map[string]interface{}
+	cache sync.Map
 }
 
 func NewManager(db Database) *Manager { return &Manager{db: db} }
 
-// resolveEntry to {key,table} pointer.
-
 type resolveEntry struct{ key, table string }
 
-// isPointer sprawdza czy v jest tablicą [key, table].
 func isPointer(v interface{}) (resolveEntry, bool) {
 	a, ok := v.([]interface{})
 	if !ok || len(a) != 2 {
@@ -64,33 +35,31 @@ func isPointer(v interface{}) (resolveEntry, bool) {
 	return resolveEntry{key: k, table: t}, true
 }
 
-// ResolveAll – rekurencyjnie rozwija pointery (używana przez ReadPtrAll).
 func (m *Manager) ResolveAll(ctx context.Context, node interface{}, visited map[string]struct{}) (interface{}, error) {
 	switch n := node.(type) {
 	case map[string]interface{}:
 		out := make(map[string]interface{}, len(n))
 		for k, v := range n {
 			if entry, ok := isPointer(v); ok {
-				// Cykl?
 				loopID := entry.table + "/" + entry.key
-				if _, seen := visited[loopID]; seen {
-					return nil, fmt.Errorf("pointer loop detected at %s", loopID)
-				}
-				visited[loopID] = struct{}{}
-
-				// Spróbuj z cache.
 				if cached, ok := m.cache.Load(loopID); ok {
 					out[stripPrefix(k)] = cached
 					continue
 				}
 
+				if _, seen := visited[loopID]; seen {
+					return nil, fmt.Errorf("pointer loop detected at %s", loopID)
+				}
+				visited[loopID] = struct{}{}
+
 				raw, err := m.db.Get(ctx, entry.table, entry.key)
 				if err != nil {
-					// jeśli brak – zwróć null (nil).
 					out[stripPrefix(k)] = nil
+					delete(visited, loopID)
 					continue
 				}
 				resolved, err := m.ResolveAll(ctx, raw, visited)
+				delete(visited, loopID)
 				if err != nil {
 					return nil, err
 				}
@@ -121,7 +90,6 @@ func (m *Manager) ResolveAll(ctx context.Context, node interface{}, visited map[
 	}
 }
 
-// stripPrefix usuwa "$ptr_" jeśli występuje.
 func stripPrefix(k string) string {
 	const p = "$ptr_"
 	if strings.HasPrefix(k, p) {
@@ -130,11 +98,6 @@ func stripPrefix(k string) string {
 	return k
 }
 
-// -----------------------------------------------------------------------------
-//  Publiczne API zgodne z koncepcją użytkownika
-// -----------------------------------------------------------------------------
-
-// ReadPtrAll – pobiera obiekt i rozwija wszystkie pointery.  Braki ⇒ null.
 func ReadPtrAll(ctx context.Context, db Database, table, key string) (map[string]interface{}, error) {
 	raw, err := db.Get(ctx, table, key)
 	if err != nil {
@@ -152,7 +115,6 @@ func ReadPtrAll(ctx context.Context, db Database, table, key string) (map[string
 	return resolved.(map[string]interface{}), nil
 }
 
-// ReadPtrSome – rozwija tylko wybrane pola.  Inne pozostają surowe.
 func ReadPtrSome(ctx context.Context, db Database, table, key string, fields []string) (map[string]interface{}, error) {
 	raw, err := db.Get(ctx, table, key)
 	if err != nil {
@@ -171,9 +133,12 @@ func ReadPtrSome(ctx context.Context, db Database, table, key string, fields []s
 	}
 
 	for k, v := range obj {
-		if _, want := set[k]; want {
+		_, want := set[k]
+		if !want {
+			_, want = set[stripPrefix(k)]
+		}
+		if want {
 			if entry, ok := isPointer(v); ok {
-				// resolve
 				rawChild, _ := db.Get(ctx, entry.table, entry.key)
 				if rawChild == nil {
 					out[stripPrefix(k)] = nil
@@ -187,26 +152,16 @@ func ReadPtrSome(ctx context.Context, db Database, table, key string, fields []s
 				continue
 			}
 		}
-		// kopiuj w stanie niezmienionym
 		out[k] = v
 	}
 	return out, nil
 }
 
-// CreatePtrObj – zapisuje "obiekt pointera" (ptrJson) pod (table,key).
-// ptrJson musi być map[string][]string (dokładnie 2 elementy: key, table).
-// Walidacja: unikalne klucze + istnienie wskazywanych rekordów.
 func CreatePtrObj(ctx context.Context, db Database, table, key string, ptrJson map[string][]string) error {
-	seen := make(map[string]struct{})
 	for field, target := range ptrJson {
 		if !strings.HasPrefix(field, "$ptr_") {
 			return fmt.Errorf("pointer field %s must start with $ptr_", field)
 		}
-		if _, dup := seen[field]; dup {
-			return fmt.Errorf("duplicate pointer field %s", field)
-		}
-		seen[field] = struct{}{}
-
 		if len(target) != 2 {
 			return fmt.Errorf("pointer %s must be [key,table]", field)
 		}
@@ -215,7 +170,7 @@ func CreatePtrObj(ctx context.Context, db Database, table, key string, ptrJson m
 			return fmt.Errorf("target %s/%s does not exist", trgTable, trgKey)
 		}
 	}
-	// Konwersja []string → []interface{} aby trzymać się jednego typu JSON.
+
 	data := make(map[string]interface{}, len(ptrJson))
 	for k, v := range ptrJson {
 		data[k] = []interface{}{v[0], v[1]}
