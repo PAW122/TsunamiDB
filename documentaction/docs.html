@@ -87,20 +87,23 @@
         <tbody>
           <tr><td>HTTP Public API</td><td><code>http://localhost:5844</code></td><td>Application reads, writes, deletes, incremental tables, health and subscription token endpoints.</td></tr>
           <tr><td>WebSocket Subscriptions</td><td><code>ws://localhost:5845/sub</code></td><td>Client-side real-time events after a one-time auth key is minted.</td></tr>
-          <tr><td>P2P Network Manager</td><td>CLI argument, for example <code>5845</code></td><td>Internal node-to-node WebSocket mesh used for distributed reads.</td></tr>
+          <tr><td>P2P Network Manager</td><td>Optional CLI argument, for example <code>5845</code></td><td>Internal node-to-node WebSocket mesh used for distributed reads. Disabled when no port is provided.</td></tr>
         </tbody>
       </table>
 
       <h2>Run TsunamiDB</h2>
-      <pre><code class="language-bash"># Windows
+      <pre><code class="language-bash"># Local server without P2P network manager
+TsunamiDB.exe
+
+# Start P2P network manager
 TsunamiDB.exe 5845
 
-# Linux
+# Linux with P2P network manager
 ./TsunamiDB-linux 5845
 
 # Join existing peers
 TsunamiDB.exe 5845 10.0.0.2:5845 10.0.0.3:5845</code></pre>
-      <p>The first CLI argument starts the P2P network manager. The HTTP API still starts on <code>5844</code>, and the subscription WebSocket server starts on <code>5845</code>.</p>
+      <p>The P2P network manager is optional. When no network-manager port is passed, TsunamiDB starts only the HTTP API on <code>5844</code> and the subscription WebSocket server on <code>5845</code>. Passing the first CLI argument starts the P2P network manager on that port; any following arguments are known peers.</p>
 
       <h2>Data Model</h2>
       <p>Most public operations use a <code>table</code> and a <code>key</code>. The table maps to an internal data file and key map. Values are stored as bytes with TsunamiDB metadata, then decoded back to user bytes on read.</p>
@@ -114,6 +117,7 @@ root_doc: documentaction/docs.html
 sections: HTTP API, Go Lib, DLL Lib
 base_http_url: http://localhost:5844
 subscription_ws_url: ws://localhost:5845/sub
+network_manager: optional CLI port; disabled when omitted
 go_import: github.com/PAW122/TsunamiDB/lib/dbclient</div>
     </main>
   </div>

@@ -5,7 +5,7 @@
   "ports": {
     "http_public_api": "http://localhost:5844",
     "subscriptions_websocket": "ws://localhost:5845/sub",
-    "network_manager": "first CLI argument, example 5845"
+    "network_manager": "optional CLI argument, example 5845; disabled when omitted"
   },
   "http": [
     {

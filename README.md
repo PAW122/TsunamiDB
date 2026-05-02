@@ -99,3 +99,31 @@ $env:TSU_TENSOR_ACCURACY_TEST='1'
 $env:TSU_TENSOR_KEEP_DIR='1'
 go test ./tests -run TestTensorAcuricy -count=1 -v
 ```
+
+## Relational DB Benchmark
+```powershell
+# microbenchmarks: insert, read, select scan, select indexes, LIKE trigram, row_ref join
+# use fixed benchtime so Go does not repeat expensive table setup during benchmark calibration
+go test ./data/relational -run '^$' -bench BenchmarkRelational -benchmem -benchtime=100x -count=1
+
+# smaller/larger seeded tables for read/select/join benchmarks
+$env:TSU_REL_BENCH_ROWS='1000'
+go test ./data/relational -run '^$' -bench 'BenchmarkRelational/(ReadByRowID|Select|Join)' -benchmem -benchtime=100x -count=1
+
+# throughput-style relational performance test with useful logs
+$env:TSU_SPECIAL_TESTS='1'
+$env:TSU_REL_PERF_DURATION='30s'
+$env:TSU_REL_PERF_WORKERS='1'
+$env:TSU_REL_PERF_ROWS='1000'
+go test ./tests -run TestSpecialRelationalPerformance -count=1 -v
+
+# raise workers only when you want concurrent table load; setup creates one seeded table per worker
+$env:TSU_REL_PERF_WORKERS='12'
+
+# saturation profiles for pushing the relational layer harder
+$env:TSU_REL_SAT_DURATION='30s'
+$env:TSU_REL_SAT_WORKERS='12'
+$env:TSU_REL_SAT_ROWS='1000'
+$env:TSU_REL_SAT_MODE='read'        # read, insert, select-eq, select-like, mixed
+go test ./tests -run TestSpecialRelationalSaturation -count=1 -v
+```
