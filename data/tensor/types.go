@@ -89,6 +89,70 @@ type TuneReport struct {
 	TopClassSuppressed map[string][]GateWeightSummary `json:"top_class_suppressed,omitempty"`
 }
 
+type AITrainOptions struct {
+	Epochs            int                        `json:"epochs,omitempty"`
+	BatchSize         int                        `json:"batch_size,omitempty"`
+	HiddenSizes       []int                      `json:"hidden_sizes,omitempty"`
+	LearningRate      float64                    `json:"learning_rate,omitempty"`
+	WeightDecay       float64                    `json:"weight_decay,omitempty"`
+	InputDropout      float64                    `json:"input_dropout,omitempty"`
+	ValidationSplit   float64                    `json:"validation_split,omitempty"`
+	ValidationSamples []Sample                   `json:"-"`
+	Patience          int                        `json:"patience,omitempty"`
+	Seed              int64                      `json:"seed,omitempty"`
+	Device            string                     `json:"device,omitempty"`
+	Progress          func(completed, total int) `json:"-"`
+}
+
+type AITrainReport struct {
+	Samples                 int      `json:"samples"`
+	TrainingSamples         int      `json:"training_samples"`
+	ValidationSamples       int      `json:"validation_samples"`
+	Epochs                  int      `json:"epochs"`
+	BestEpoch               int      `json:"best_epoch"`
+	TrainLabelAccuracy      float64  `json:"train_label_accuracy"`
+	ValidationLabelAccuracy float64  `json:"validation_label_accuracy"`
+	ValidationExactAccuracy float64  `json:"validation_exact_accuracy"`
+	ValidationLoss          float64  `json:"validation_loss"`
+	ResultKeys              []string `json:"result_keys,omitempty"`
+	OutputClasses           int      `json:"output_classes"`
+	HiddenSizes             []int    `json:"hidden_sizes,omitempty"`
+	Device                  string   `json:"device"`
+	ModelSizeBytes          int      `json:"model_size_bytes"`
+}
+
+type AIMetrics struct {
+	Samples                 int     `json:"samples"`
+	TrainingSamples         int     `json:"training_samples"`
+	ValidationSamples       int     `json:"validation_samples"`
+	Epochs                  int     `json:"epochs"`
+	BestEpoch               int     `json:"best_epoch"`
+	TrainLabelAccuracy      float64 `json:"train_label_accuracy"`
+	ValidationLabelAccuracy float64 `json:"validation_label_accuracy"`
+	ValidationExactAccuracy float64 `json:"validation_exact_accuracy"`
+	ValidationLoss          float64 `json:"validation_loss"`
+	Device                  string  `json:"device,omitempty"`
+}
+
+type AIModel struct {
+	Version     uint32              `json:"version"`
+	InputMean   []float64           `json:"input_mean"`
+	InputStd    []float64           `json:"input_std"`
+	ResultKeys  []string            `json:"result_keys"`
+	ClassValues map[string][]string `json:"class_values"`
+	Layers      []DenseLayer        `json:"layers"`
+	Activation  string              `json:"activation,omitempty"`
+	Device      string              `json:"device,omitempty"`
+	Metrics     AIMetrics           `json:"metrics"`
+}
+
+type DenseLayer struct {
+	In      int       `json:"in"`
+	Out     int       `json:"out"`
+	Weights []float64 `json:"weights"`
+	Bias    []float64 `json:"bias"`
+}
+
 type GateWeightSummary struct {
 	Input  string  `json:"input"`
 	Index  int     `json:"index"`

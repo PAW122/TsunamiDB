@@ -24,7 +24,9 @@ type Table struct {
 	resultIndexByKey   map[string]int
 	inputResultIndex   []int
 	inputDensePosition []int
+	inputSignalWeights []float64
 	allFloatInputs     bool
+	aiModel            *AIModel
 }
 
 func (t *Table) Schema() Schema {
@@ -33,6 +35,13 @@ func (t *Table) Schema() Schema {
 
 func (t *Table) FlushStats() error {
 	return writeStatsSnapshot(t.files.stats, t.schema, t.stats)
+}
+
+func (t *Table) FlushAIModel() error {
+	if t == nil || t.aiModel == nil {
+		return ErrNoModelData
+	}
+	return writeKVJSON(t.files.aiModel, t.aiModel)
 }
 
 func newTable(schema Schema, stats *statsSnapshot, files tableFiles) *Table {
@@ -68,6 +77,7 @@ func newTable(schema Schema, stats *statsSnapshot, files tableFiles) *Table {
 		t.inputsByResult[field.ResultKey] = append(t.inputsByResult[field.ResultKey], i)
 	}
 	t.prepareStatsLayout()
+	t.prepareInputSignalWeights()
 	return t
 }
 
@@ -80,6 +90,94 @@ func (t *Table) prepareStatsLayout() {
 	}
 }
 
+func (t *Table) prepareInputSignalWeights() {
+	if t == nil || t.stats == nil || len(t.schema.Inputs) == 0 {
+		return
+	}
+	t.inputSignalWeights = make([]float64, len(t.schema.Inputs))
+	for i := range t.inputSignalWeights {
+		t.inputSignalWeights[i] = 1
+	}
+	if len(t.stats.LabelStats) == 0 {
+		return
+	}
+	for _, result := range t.schema.Results {
+		for _, inputIndex := range t.inputIndexesForResult(result.Key) {
+			if inputIndex < 0 || inputIndex >= len(t.inputSignalWeights) {
+				continue
+			}
+			t.inputSignalWeights[inputIndex] = t.numericInputSignalWeight(result.Key, inputIndex)
+		}
+	}
+}
+
+func (t *Table) numericInputSignalWeight(resultKey string, inputIndex int) float64 {
+	total := 0.0
+	weightedMean := 0.0
+	labels := 0
+	for _, label := range t.stats.LabelStats {
+		if label == nil || label.Key != resultKey {
+			continue
+		}
+		stat := label.numericAt(label.densePosition(-1, inputIndex), inputIndex)
+		if stat == nil || stat.Count == 0 {
+			continue
+		}
+		count := float64(stat.Count)
+		total += count
+		weightedMean += count * stat.Mean
+		labels++
+	}
+	if labels < 2 || total <= 0 {
+		return 1
+	}
+	weightedMean /= total
+
+	within := 0.0
+	between := 0.0
+	for _, label := range t.stats.LabelStats {
+		if label == nil || label.Key != resultKey {
+			continue
+		}
+		stat := label.numericAt(label.densePosition(-1, inputIndex), inputIndex)
+		if stat == nil || stat.Count == 0 {
+			continue
+		}
+		count := float64(stat.Count)
+		within += count * stat.variance()
+		diff := stat.Mean - weightedMean
+		between += count * diff * diff
+	}
+	within /= total
+	between /= total
+	if within < 0 || between < 0 || math.IsNaN(within) || math.IsNaN(between) || math.IsInf(within, 0) || math.IsInf(between, 0) {
+		return 1
+	}
+	signal := between / (between + within + 1e-12)
+	if signal < 0 {
+		signal = 0
+	}
+	if signal > 1 {
+		signal = 1
+	}
+	weight := 0.10 + 1.90*math.Sqrt(signal)
+	if weight < 0.05 {
+		return 0.05
+	}
+	if weight > 2 {
+		return 2
+	}
+	return weight
+}
+
+func (t *Table) effectiveInputWeight(label *labelStats, index int) float64 {
+	weight := t.stats.effectiveInputWeight(label, index)
+	if index >= 0 && index < len(t.inputSignalWeights) {
+		weight *= t.inputSignalWeights[index]
+	}
+	return weight
+}
+
 func (t *Table) inputIndexesForResult(key string) []int {
 	if t.inputsByResult == nil && t.globalInputs == nil {
 		rebuilt := newTable(t.schema, t.stats, t.files)
@@ -88,6 +186,7 @@ func (t *Table) inputIndexesForResult(key string) []int {
 		t.resultIndexByKey = rebuilt.resultIndexByKey
 		t.inputResultIndex = rebuilt.inputResultIndex
 		t.inputDensePosition = rebuilt.inputDensePosition
+		t.inputSignalWeights = rebuilt.inputSignalWeights
 		t.allFloatInputs = rebuilt.allFloatInputs
 	}
 	specific := t.inputsByResult[key]
@@ -436,6 +535,9 @@ func (t *Table) addFloatSamples(samples []Sample) error {
 }
 
 func (t *Table) Predict(input map[string]any, topN int) (Prediction, error) {
+	if t.aiModel != nil {
+		return t.PredictAI(input)
+	}
 	if t.allFloatInputs {
 		normalized, err := t.validateFloatInput(input)
 		if err != nil {
@@ -710,7 +812,7 @@ func (t *Table) scoreFloatLabelOnly(input []float64, label *labelStats) float64 
 			continue
 		}
 		contribution := numericLogContribution(input[idx], stat)
-		score += t.stats.effectiveInputWeight(label, idx) * contribution
+		score += t.effectiveInputWeight(label, idx) * contribution
 	}
 	return score
 }
@@ -735,7 +837,7 @@ func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64
 				continue
 			}
 			contribution := numericLogContribution(numeric, stat)
-			score += t.stats.effectiveInputWeight(label, idx) * contribution
+			score += t.effectiveInputWeight(label, idx) * contribution
 			continue
 		}
 
@@ -745,7 +847,7 @@ func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64
 		}
 		category := categoryValue(value)
 		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
-		score += t.stats.effectiveInputWeight(label, idx) * math.Log(frequency)
+		score += t.effectiveInputWeight(label, idx) * math.Log(frequency)
 	}
 	return score
 }
@@ -769,7 +871,7 @@ func (t *Table) scoreFloatLabel(input []float64, label *labelStats) PredictedRes
 		if stat == nil || stat.Count == 0 {
 			continue
 		}
-		weight := t.stats.effectiveInputWeight(label, idx)
+		weight := t.effectiveInputWeight(label, idx)
 		impact := numericImpact(input[idx], stat)
 		contribution := numericLogContribution(input[idx], stat)
 		score += weight * contribution
@@ -820,9 +922,10 @@ func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedRe
 			if stat == nil || stat.Count == 0 {
 				continue
 			}
-			weight := t.stats.effectiveInputWeight(label, idx)
+			weight := t.effectiveInputWeight(label, idx)
 			impact := numericImpact(numeric, stat)
-			contribution := weight * numericLogContribution(numeric, stat)
+			contribution := numericLogContribution(numeric, stat)
+			contribution *= weight
 			score += contribution
 			influences = append(influences, Influence{
 				Input:  field.Name,
@@ -838,7 +941,7 @@ func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedRe
 		}
 		category := categoryValue(value)
 		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
-		weight := t.stats.effectiveInputWeight(label, idx)
+		weight := t.effectiveInputWeight(label, idx)
 		score += weight * math.Log(frequency)
 		influences = append(influences, Influence{
 			Input:  field.Name,

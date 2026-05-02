@@ -27,6 +27,7 @@ type tableFiles struct {
 	samples         string
 	sampleData      string
 	stats           string
+	aiModel         string
 	sampleEntrySize uint64
 	legacySchema    string
 	legacySamples   string
@@ -39,6 +40,7 @@ func paths(table string) tableFiles {
 		samples:       "tensor_" + table + "_sample_manifest.tbl",
 		sampleData:    "tensor_" + table + "_sample_data.bin",
 		stats:         "tensor:" + table + ":stats",
+		aiModel:       "tensor:" + table + ":ai_model",
 		legacySchema:  filepath.Join(baseDir, table+".schema"),
 		legacySamples: filepath.Join(baseDir, table+".samples"),
 		legacyStats:   filepath.Join(baseDir, table+".stats"),
@@ -120,7 +122,14 @@ func OpenTable(name string) (*Table, error) {
 		}
 	}
 
-	return newTable(calculated, stats, files), nil
+	table := newTable(calculated, stats, files)
+	var model AIModel
+	if err := readKVJSON(files.aiModel, &model); err == nil {
+		table.aiModel = &model
+	} else if !errors.Is(err, ErrTableNotFound) {
+		return nil, err
+	}
+	return table, nil
 }
 
 func tensorKVExists(key string) bool {

@@ -327,10 +327,10 @@ func (t *Table) tuneFloatMargin(input []float64, expectedLabel, wrongLabel *labe
 		}
 		if adjustClass {
 			classRate := options.LearningRate * defaultClassLayerRate
-			if t.stats.adjustLabelInputWeight(expectedLabel, idx, classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+			if t.stats.adjustLabelInputWeight(expectedLabel, idx, classRate*good, options.Regularization, options.MinWeight, options.MaxWeight) {
 				adjustments++
 			}
-			if wrongLabel != nil && t.stats.adjustLabelInputWeight(wrongLabel, idx, -classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+			if wrongLabel != nil && t.stats.adjustLabelInputWeight(wrongLabel, idx, -classRate*bad, options.Regularization, options.MinWeight, options.MaxWeight) {
 				adjustments++
 			}
 		}
@@ -361,10 +361,10 @@ func (t *Table) tuneMargin(input normalizedInput, expectedLabel, wrongLabel *lab
 		}
 		if adjustClass {
 			classRate := options.LearningRate * defaultClassLayerRate
-			if t.stats.adjustLabelInputWeight(expectedLabel, idx, classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+			if t.stats.adjustLabelInputWeight(expectedLabel, idx, classRate*good, options.Regularization, options.MinWeight, options.MaxWeight) {
 				adjustments++
 			}
-			if wrongLabel != nil && t.stats.adjustLabelInputWeight(wrongLabel, idx, -classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+			if wrongLabel != nil && t.stats.adjustLabelInputWeight(wrongLabel, idx, -classRate*bad, options.Regularization, options.MinWeight, options.MaxWeight) {
 				adjustments++
 			}
 		}

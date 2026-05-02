@@ -118,33 +118,50 @@ func TestTensorAcuricy(t *testing.T) {
 	beforeTune := evaluateTensorAccuracy(t, table, testSamples, resultCount, "pretest")
 	pretestDuration := time.Since(pretestStarted)
 
-	var tuneReport tensor.TuneReport
-	var tuneDuration time.Duration
+	var aiReport tensor.AITrainReport
+	var aiDuration time.Duration
 	if useAILayer {
-		var tuneProgress *testProgress
-		tuneOptions := tensor.TuneOptions{
+		aiTrainCount := envInt("TSU_TENSOR_AI_TRAIN_SAMPLES", minInt(sampleCount, 2_000))
+		aiEpochs := envInt("TSU_TENSOR_AI_EPOCHS", 8)
+		aiHidden := envInt("TSU_TENSOR_AI_HIDDEN", 64)
+		aiRNG := rand.New(rand.NewSource(333777))
+		aiTrainingSamples := make([]tensor.Sample, 0, aiTrainCount)
+		for i := 0; i < aiTrainCount; i++ {
+			aiTrainingSamples = append(aiTrainingSamples, fixture.sample(aiRNG, i))
+		}
+
+		var aiProgress *testProgress
+		aiOptions := tensor.AITrainOptions{
+			Epochs:            aiEpochs,
+			BatchSize:         envInt("TSU_TENSOR_AI_BATCH", 32),
+			HiddenSizes:       []int{aiHidden},
+			LearningRate:      0.03,
+			InputDropout:      0.10,
+			ValidationSamples: validationSamples,
+			Patience:          envInt("TSU_TENSOR_AI_PATIENCE", 4),
+			Seed:              9901,
 			Progress: func(completed, total int) {
-				if tuneProgress == nil {
-					tuneProgress = newTestProgress("tune", total)
+				if aiProgress == nil {
+					aiProgress = newTestProgress("ai", total)
 				}
-				tuneProgress.Update(completed)
+				aiProgress.Update(completed)
 			},
 		}
-		tuneStarted := time.Now()
-		tuneReport, err = table.TuneWeights(validationSamples, tuneOptions)
-		if tuneProgress != nil {
-			tuneProgress.Finish()
+		aiStarted := time.Now()
+		aiReport, err = table.TrainAI(aiTrainingSamples, aiOptions)
+		if aiProgress != nil {
+			aiProgress.Finish()
 		}
 		if err != nil {
-			t.Fatalf("TuneWeights: %v", err)
+			t.Fatalf("TrainAI: %v", err)
 		}
-		tuneDuration = time.Since(tuneStarted)
-		if err := table.FlushStats(); err != nil {
-			t.Fatalf("FlushStats after tune: %v", err)
+		aiDuration = time.Since(aiStarted)
+		if err := table.FlushAIModel(); err != nil {
+			t.Fatalf("FlushAIModel: %v", err)
 		}
 		table, err = tensor.OpenTable("tensor_accuracy")
 		if err != nil {
-			t.Fatalf("OpenTable after tune: %v", err)
+			t.Fatalf("OpenTable after TrainAI: %v", err)
 		}
 	}
 
@@ -157,15 +174,12 @@ func TestTensorAcuricy(t *testing.T) {
 		useAILayer, sampleCount, validationCount, testCount, inputCount, resultCount, labelNoiseRate,
 		beforeTune.exactAccuracy, beforeTune.labelAccuracy,
 		afterTune.exactAccuracy, afterTune.labelAccuracy,
-		trainingDuration, rebuildDuration, pretestDuration, tuneDuration, verifyDuration, totalDuration,
+		trainingDuration, rebuildDuration, pretestDuration, aiDuration, verifyDuration, totalDuration,
 	))
 	if useAILayer {
-		t.Logf("\n%s", formatTensorTuneReport(
-			tuneReport.Iterations, tuneReport.AccuracyBefore, tuneReport.AccuracyAfter,
-			tuneReport.Corrections, tuneReport.Adjustments, tuneReport.ErrorsByResult,
-		))
+		t.Logf("\n%s", formatTensorAIReport(aiReport))
 	} else {
-		t.Log("tensor tune ai_layer=false skipped")
+		t.Log("tensor AI layer disabled")
 	}
 
 	exactAccuracyCeiling := math.Pow(0.995, float64(resultCount))
@@ -179,11 +193,8 @@ func TestTensorAcuricy(t *testing.T) {
 	if afterTune.labelAccuracy > 0.98 {
 		t.Fatalf("label accuracy %.4f is unrealistically high for the noisy fixture", afterTune.labelAccuracy)
 	}
-	if afterTune.labelAccuracy+0.02 < beforeTune.labelAccuracy {
-		t.Fatalf("tuned label accuracy %.4f regressed too far from baseline %.4f", afterTune.labelAccuracy, beforeTune.labelAccuracy)
-	}
-	if useAILayer && tuneReport.AccuracyAfter < tuneReport.AccuracyBefore {
-		t.Fatalf("tuning validation accuracy regressed from %.4f to %.4f", tuneReport.AccuracyBefore, tuneReport.AccuracyAfter)
+	if useAILayer && afterTune.labelAccuracy+0.02 < beforeTune.labelAccuracy {
+		t.Fatalf("AI label accuracy %.4f regressed too far from tensor baseline %.4f", afterTune.labelAccuracy, beforeTune.labelAccuracy)
 	}
 }
 
@@ -198,22 +209,33 @@ func formatTensorAccuracyReport(
 	aiLayer bool,
 	sampleCount, validationCount, testCount, inputCount, resultCount int,
 	labelNoiseRate, beforeExact, beforeLabel, afterExact, afterLabel float64,
-	trainingDuration, rebuildDuration, pretestDuration, tuneDuration, verifyDuration, totalDuration time.Duration,
+	trainingDuration, rebuildDuration, pretestDuration, aiDuration, verifyDuration, totalDuration time.Duration,
 ) string {
 	return fmt.Sprintf(`Tensor accuracy
   config:   ai_layer=%t samples=%d validation=%d test=%d inputs=%d results=%d label_noise=%.2f
   exact:    before=%.4f after=%.4f
   labels:   before=%.4f after=%.4f delta=%+.4f
-  timing:   train=%s rebuild=%s pretest=%s tune=%s verify=%s total=%s`,
+  timing:   train=%s rebuild=%s pretest=%s ai=%s verify=%s total=%s`,
 		aiLayer, sampleCount, validationCount, testCount, inputCount, resultCount, labelNoiseRate,
 		beforeExact, afterExact,
 		beforeLabel, afterLabel, afterLabel-beforeLabel,
 		roundDuration(trainingDuration),
 		roundDuration(rebuildDuration),
 		roundDuration(pretestDuration),
-		roundDuration(tuneDuration),
+		roundDuration(aiDuration),
 		roundDuration(verifyDuration),
 		roundDuration(totalDuration),
+	)
+}
+
+func formatTensorAIReport(report tensor.AITrainReport) string {
+	return fmt.Sprintf(`Tensor AI
+  validation: labels=%.4f exact=%.4f loss=%.4f
+  training:   samples=%d validation=%d epochs=%d best_epoch=%d hidden=%v device=%s
+  model:      outputs=%d size=%d bytes`,
+		report.ValidationLabelAccuracy, report.ValidationExactAccuracy, report.ValidationLoss,
+		report.TrainingSamples, report.ValidationSamples, report.Epochs, report.BestEpoch, report.HiddenSizes, report.Device,
+		report.OutputClasses, report.ModelSizeBytes,
 	)
 }
 
@@ -521,6 +543,13 @@ func randomSign(rng *rand.Rand) float64 {
 
 func maxInt(a, b int) int {
 	if a > b {
+		return a
+	}
+	return b
+}
+
+func minInt(a, b int) int {
+	if a < b {
 		return a
 	}
 	return b
