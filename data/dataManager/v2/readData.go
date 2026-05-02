@@ -8,6 +8,7 @@ func ReadDataFromFileAsync(filePath string, dataStartPtr int64, dataEndPtr int64
 		op:       "read",
 		startPtr: dataStartPtr,
 		endPtr:   dataEndPtr,
+		timeout:  dataTransferTimeout(dataEndPtr - dataStartPtr),
 		resp:     respChan,
 	}
 	resp := sendToFileWorker(filePath, req)

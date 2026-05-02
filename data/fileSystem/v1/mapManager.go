@@ -724,6 +724,26 @@ func ResetForTests() {
 	lastIndexCache.Store((*cachedIndex)(nil))
 }
 
+func ShutdownForTests() {
+	registryMu.Lock()
+	for _, ti := range indexRegistry {
+		ti.walMu.Lock()
+		if ti.walBuf != nil {
+			_ = ti.walBuf.Flush()
+		}
+		if ti.walFile != nil {
+			_ = ti.walFile.Close()
+		}
+		ti.walBuf = nil
+		ti.walFile = nil
+		ti.walMu.Unlock()
+	}
+	indexRegistry = make(map[string]*tableIndex)
+	registryMu.Unlock()
+	lastIndexCache.Store((*cachedIndex)(nil))
+	time.Sleep(20 * time.Millisecond)
+}
+
 func getTableIndex(table string) (*tableIndex, error) {
 	normalized, err := normalizeTableName(table)
 	if err != nil {

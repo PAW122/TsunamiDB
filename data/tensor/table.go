@@ -1,0 +1,946 @@
+package tensor
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"math"
+	"sort"
+
+	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
+)
+
+type Table struct {
+	schema             Schema
+	stats              *statsSnapshot
+	files              tableFiles
+	globalInputs       []int
+	inputsByResult     map[string][]int
+	resultIndexByKey   map[string]int
+	inputResultIndex   []int
+	inputDensePosition []int
+	allFloatInputs     bool
+}
+
+func (t *Table) Schema() Schema {
+	return t.schema
+}
+
+func (t *Table) FlushStats() error {
+	return writeStatsSnapshot(t.files.stats, t.schema, t.stats)
+}
+
+func newTable(schema Schema, stats *statsSnapshot, files tableFiles) *Table {
+	t := &Table{
+		schema:             schema,
+		stats:              stats,
+		files:              files,
+		inputsByResult:     make(map[string][]int),
+		resultIndexByKey:   make(map[string]int, len(schema.Results)),
+		inputResultIndex:   make([]int, len(schema.Inputs)),
+		inputDensePosition: make([]int, len(schema.Inputs)),
+	}
+	for i := range t.inputResultIndex {
+		t.inputResultIndex[i] = -1
+		t.inputDensePosition[i] = -1
+	}
+	for i, result := range schema.Results {
+		t.resultIndexByKey[result.Key] = i
+	}
+	t.allFloatInputs = true
+	for i, field := range schema.Inputs {
+		if field.Type != InputTypeFloat64 {
+			t.allFloatInputs = false
+		}
+		if field.ResultKey == "" {
+			t.globalInputs = append(t.globalInputs, i)
+			continue
+		}
+		if resultIndex, ok := t.resultIndexByKey[field.ResultKey]; ok {
+			t.inputResultIndex[i] = resultIndex
+			t.inputDensePosition[i] = len(t.inputsByResult[field.ResultKey])
+		}
+		t.inputsByResult[field.ResultKey] = append(t.inputsByResult[field.ResultKey], i)
+	}
+	t.prepareStatsLayout()
+	return t
+}
+
+func (t *Table) prepareStatsLayout() {
+	if t == nil || t.stats == nil {
+		return
+	}
+	for _, label := range t.stats.LabelStats {
+		label.prepareDense(t.inputIndexesForResult(label.Key))
+	}
+}
+
+func (t *Table) inputIndexesForResult(key string) []int {
+	if t.inputsByResult == nil && t.globalInputs == nil {
+		rebuilt := newTable(t.schema, t.stats, t.files)
+		t.globalInputs = rebuilt.globalInputs
+		t.inputsByResult = rebuilt.inputsByResult
+		t.resultIndexByKey = rebuilt.resultIndexByKey
+		t.inputResultIndex = rebuilt.inputResultIndex
+		t.inputDensePosition = rebuilt.inputDensePosition
+		t.allFloatInputs = rebuilt.allFloatInputs
+	}
+	specific := t.inputsByResult[key]
+	if len(t.globalInputs) == 0 {
+		return specific
+	}
+	if len(specific) == 0 {
+		return t.globalInputs
+	}
+	indexes := make([]int, 0, len(t.globalInputs)+len(specific))
+	indexes = append(indexes, t.globalInputs...)
+	indexes = append(indexes, specific...)
+	return indexes
+}
+
+func (t *Table) addStats(input normalizedInput, results []ResultLabel) {
+	if len(results) == 0 {
+		return
+	}
+	if len(t.globalInputs) == 0 && len(t.resultIndexByKey) != 0 {
+		if t.addStatsByResultInputs(input, results) {
+			return
+		}
+	}
+	t.stats.add(input, results, t.inputIndexesForResult)
+}
+
+func (t *Table) addStatsByResultInputs(input normalizedInput, results []ResultLabel) bool {
+	resultCount := len(t.schema.Results)
+	if resultCount == 0 {
+		return false
+	}
+
+	var fixedSeen [512]bool
+	seen := fixedSeen[:]
+	if resultCount > len(fixedSeen) {
+		seen = make([]bool, resultCount)
+	}
+	for _, result := range results {
+		idx, ok := t.resultIndexByKey[result.Key]
+		if !ok || idx < 0 || idx >= resultCount || seen[idx] {
+			return false
+		}
+		seen[idx] = true
+	}
+
+	var fixedLabels [512]*labelStats
+	labelsByResult := fixedLabels[:]
+	if resultCount > len(fixedLabels) {
+		labelsByResult = make([]*labelStats, resultCount)
+	}
+	labelsByResult = labelsByResult[:resultCount]
+
+	t.stats.TotalCount++
+	for _, result := range results {
+		id := labelID(result)
+		label := t.stats.LabelStats[id]
+		if label == nil {
+			label = newLabelStats(result.Key, result.Value, t.inputIndexesForResult(result.Key))
+			t.stats.LabelStats[id] = label
+		}
+		label.Count++
+		labelsByResult[t.resultIndexByKey[result.Key]] = label
+	}
+
+	for idx, value := range input {
+		if idx < 0 || idx >= len(t.inputResultIndex) {
+			continue
+		}
+		resultIndex := t.inputResultIndex[idx]
+		if resultIndex < 0 || resultIndex >= len(labelsByResult) {
+			continue
+		}
+		label := labelsByResult[resultIndex]
+		if label == nil {
+			continue
+		}
+		position := t.inputDensePosition[idx]
+		if numeric, ok := numericValue(value); ok {
+			label.addNumericAt(position, idx, numeric)
+			continue
+		}
+		label.addCategoryAt(position, idx, categoryValue(value))
+	}
+	return true
+}
+
+func (t *Table) addFloatStats(input []float64, results []ResultLabel) {
+	if len(results) == 0 {
+		return
+	}
+	if len(t.globalInputs) == 0 && len(t.resultIndexByKey) != 0 {
+		if t.addFloatStatsByResultInputs(input, results) {
+			return
+		}
+	}
+	normalized := make(normalizedInput, len(input))
+	for i, value := range input {
+		normalized[i] = value
+	}
+	t.stats.add(normalized, results, t.inputIndexesForResult)
+}
+
+func (t *Table) addFloatStatsByResultInputs(input []float64, results []ResultLabel) bool {
+	resultCount := len(t.schema.Results)
+	if resultCount == 0 {
+		return false
+	}
+
+	var fixedSeen [512]bool
+	seen := fixedSeen[:]
+	if resultCount > len(fixedSeen) {
+		seen = make([]bool, resultCount)
+	}
+	for _, result := range results {
+		idx, ok := t.resultIndexByKey[result.Key]
+		if !ok || idx < 0 || idx >= resultCount || seen[idx] {
+			return false
+		}
+		seen[idx] = true
+	}
+
+	var fixedLabels [512]*labelStats
+	labelsByResult := fixedLabels[:]
+	if resultCount > len(fixedLabels) {
+		labelsByResult = make([]*labelStats, resultCount)
+	}
+	labelsByResult = labelsByResult[:resultCount]
+
+	t.stats.TotalCount++
+	for _, result := range results {
+		id := labelID(result)
+		label := t.stats.LabelStats[id]
+		if label == nil {
+			label = newLabelStats(result.Key, result.Value, t.inputIndexesForResult(result.Key))
+			t.stats.LabelStats[id] = label
+		}
+		label.Count++
+		labelsByResult[t.resultIndexByKey[result.Key]] = label
+	}
+
+	for idx, value := range input {
+		if idx < 0 || idx >= len(t.inputResultIndex) {
+			continue
+		}
+		resultIndex := t.inputResultIndex[idx]
+		if resultIndex < 0 || resultIndex >= len(labelsByResult) {
+			continue
+		}
+		label := labelsByResult[resultIndex]
+		if label == nil {
+			continue
+		}
+		label.addNumericAt(t.inputDensePosition[idx], idx, value)
+	}
+	return true
+}
+
+func (t *Table) AddSample(sample Sample) error {
+	input, results, err := t.validateSample(sample)
+	if err != nil {
+		return err
+	}
+
+	frame, err := encodeSampleFrame(t.schema, sample, input)
+	if err != nil {
+		return err
+	}
+	startPtr, endPtr, err := dataManager_v2.SaveDataAppendToFileAsync(frame, t.files.sampleData)
+	if err != nil {
+		return err
+	}
+	entry, err := encodeSampleManifestEntry(startPtr, endPtr)
+	if err != nil {
+		return err
+	}
+	if _, err := dataManager_v2.SaveIncDataToFileAsync(entry, t.files.samples, t.files.sampleEntrySize); err != nil {
+		return err
+	}
+
+	if t.shouldLearn(sample.LearningStatus) {
+		t.addStats(input, results)
+	}
+	return nil
+}
+
+func (t *Table) AddSamples(samples []Sample) error {
+	if len(samples) == 0 {
+		return nil
+	}
+	if t.allFloatInputs {
+		return t.addFloatSamples(samples)
+	}
+
+	type learnedSample struct {
+		input   normalizedInput
+		results []ResultLabel
+	}
+	var payload bytes.Buffer
+	frameSizes := make([]int, 0, len(samples))
+	learned := make([]learnedSample, 0, len(samples))
+
+	for _, sample := range samples {
+		input, results, err := t.validateSample(sample)
+		if err != nil {
+			return err
+		}
+		if t.shouldLearn(sample.LearningStatus) {
+			learned = append(learned, learnedSample{input: input, results: results})
+		}
+		frame, err := encodeSampleFrame(t.schema, sample, input)
+		if err != nil {
+			return err
+		}
+		frameSizes = append(frameSizes, len(frame))
+		payload.Write(frame)
+	}
+
+	startPtr, _, err := dataManager_v2.SaveDataAppendToFileAsync(payload.Bytes(), t.files.sampleData)
+	if err != nil {
+		return err
+	}
+
+	entries := make([][]byte, 0, len(frameSizes))
+	offset := startPtr
+	for _, size := range frameSizes {
+		endPtr := offset + int64(size)
+		entry, err := encodeSampleManifestEntry(offset, endPtr)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, entry)
+		offset = endPtr
+	}
+	if _, err := dataManager_v2.SaveIncDataBatchToFileAsync(entries, t.files.samples, t.files.sampleEntrySize); err != nil {
+		return err
+	}
+
+	for _, sample := range learned {
+		t.addStats(sample.input, sample.results)
+	}
+	return nil
+}
+
+func (t *Table) addFloatSamples(samples []Sample) error {
+	type learnedSample struct {
+		input   []float64
+		results []ResultLabel
+	}
+	var payload bytes.Buffer
+	frameSizes := make([]int, 0, len(samples))
+	learned := make([]learnedSample, 0, len(samples))
+
+	for _, sample := range samples {
+		input, results, err := t.validateFloatSample(sample)
+		if err != nil {
+			return err
+		}
+		if t.shouldLearn(sample.LearningStatus) {
+			learned = append(learned, learnedSample{input: input, results: results})
+		}
+		frame, err := encodeFloatSampleFrame(t.schema, sample, input, t.resultIndexByKey)
+		if err != nil {
+			return err
+		}
+		frameSizes = append(frameSizes, len(frame))
+		payload.Write(frame)
+	}
+
+	startPtr, _, err := dataManager_v2.SaveDataAppendToFileAsync(payload.Bytes(), t.files.sampleData)
+	if err != nil {
+		return err
+	}
+
+	entries := make([][]byte, 0, len(frameSizes))
+	offset := startPtr
+	for _, size := range frameSizes {
+		endPtr := offset + int64(size)
+		entry, err := encodeSampleManifestEntry(offset, endPtr)
+		if err != nil {
+			return err
+		}
+		entries = append(entries, entry)
+		offset = endPtr
+	}
+	if _, err := dataManager_v2.SaveIncDataBatchToFileAsync(entries, t.files.samples, t.files.sampleEntrySize); err != nil {
+		return err
+	}
+
+	for _, sample := range learned {
+		t.addFloatStats(sample.input, sample.results)
+	}
+	return nil
+}
+
+func (t *Table) Predict(input map[string]any, topN int) (Prediction, error) {
+	if t.allFloatInputs {
+		normalized, err := t.validateFloatInput(input)
+		if err != nil {
+			return Prediction{}, err
+		}
+		if topN <= 0 {
+			topN = 10
+		}
+		if len(t.stats.LabelStats) == 0 {
+			return Prediction{}, ErrNoModelData
+		}
+		if topN >= len(t.schema.Results) && len(t.schema.Results) > 0 {
+			return t.predictFloatBestPerResult(normalized)
+		}
+		return t.predictFloatTopN(normalized, topN)
+	}
+
+	normalized, err := t.validateInput(input)
+	if err != nil {
+		return Prediction{}, err
+	}
+	if topN <= 0 {
+		topN = 10
+	}
+	if len(t.stats.LabelStats) == 0 {
+		return Prediction{}, ErrNoModelData
+	}
+
+	if topN >= len(t.schema.Results) && len(t.schema.Results) > 0 {
+		return t.predictBestPerResult(normalized)
+	}
+
+	type scoredLabel struct {
+		label  *labelStats
+		result PredictedResult
+	}
+	scored := make([]scoredLabel, 0, len(t.stats.LabelStats))
+	for _, label := range t.stats.LabelStats {
+		scored = append(scored, scoredLabel{
+			label: label,
+			result: PredictedResult{
+				Key:     label.Key,
+				Value:   label.Value,
+				Score:   t.scoreLabelOnly(normalized, label),
+				Samples: label.Count,
+			},
+		})
+	}
+
+	sort.Slice(scored, func(i, j int) bool {
+		if scored[i].result.Score == scored[j].result.Score {
+			if scored[i].result.Key == scored[j].result.Key {
+				return scored[i].result.Value < scored[j].result.Value
+			}
+			return scored[i].result.Key < scored[j].result.Key
+		}
+		return scored[i].result.Score > scored[j].result.Score
+	})
+
+	if len(scored) > topN {
+		scored = scored[:topN]
+	}
+	results := make([]PredictedResult, len(scored))
+	for i := range scored {
+		results[i] = t.scoreLabel(normalized, scored[i].label)
+	}
+	normalizeProbabilities(results)
+	return Prediction{Results: results}, nil
+}
+
+func (t *Table) predictFloatTopN(input []float64, topN int) (Prediction, error) {
+	type scoredLabel struct {
+		label  *labelStats
+		result PredictedResult
+	}
+	scored := make([]scoredLabel, 0, len(t.stats.LabelStats))
+	for _, label := range t.stats.LabelStats {
+		scored = append(scored, scoredLabel{
+			label: label,
+			result: PredictedResult{
+				Key:     label.Key,
+				Value:   label.Value,
+				Score:   t.scoreFloatLabelOnly(input, label),
+				Samples: label.Count,
+			},
+		})
+	}
+	sort.Slice(scored, func(i, j int) bool {
+		if scored[i].result.Score == scored[j].result.Score {
+			if scored[i].result.Key == scored[j].result.Key {
+				return scored[i].result.Value < scored[j].result.Value
+			}
+			return scored[i].result.Key < scored[j].result.Key
+		}
+		return scored[i].result.Score > scored[j].result.Score
+	})
+	if len(scored) > topN {
+		scored = scored[:topN]
+	}
+	results := make([]PredictedResult, len(scored))
+	for i := range scored {
+		results[i] = t.scoreFloatLabel(input, scored[i].label)
+	}
+	normalizeProbabilities(results)
+	return Prediction{Results: results}, nil
+}
+
+func (t *Table) predictFloatBestPerResult(input []float64) (Prediction, error) {
+	bestByResult := make([]*labelStats, len(t.schema.Results))
+	bestScores := make([]float64, len(t.schema.Results))
+	for i := range bestScores {
+		bestScores[i] = math.Inf(-1)
+	}
+
+	for _, label := range t.stats.LabelStats {
+		resultIndex, ok := t.resultIndexByKey[label.Key]
+		if !ok || resultIndex < 0 || resultIndex >= len(bestByResult) {
+			continue
+		}
+		score := t.scoreFloatLabelOnly(input, label)
+		best := bestByResult[resultIndex]
+		if best == nil || score > bestScores[resultIndex] ||
+			(score == bestScores[resultIndex] && label.Value < best.Value) {
+			bestByResult[resultIndex] = label
+			bestScores[resultIndex] = score
+		}
+	}
+
+	results := make([]PredictedResult, 0, len(bestByResult))
+	for _, label := range bestByResult {
+		if label != nil {
+			results = append(results, t.scoreFloatLabel(input, label))
+		}
+	}
+	normalizeProbabilities(results)
+	return Prediction{Results: results}, nil
+}
+
+func (t *Table) predictBestPerResult(input normalizedInput) (Prediction, error) {
+	bestByResult := make([]*labelStats, len(t.schema.Results))
+	bestScores := make([]float64, len(t.schema.Results))
+	for i := range bestScores {
+		bestScores[i] = math.Inf(-1)
+	}
+
+	for _, label := range t.stats.LabelStats {
+		resultIndex, ok := t.resultIndexByKey[label.Key]
+		if !ok || resultIndex < 0 || resultIndex >= len(bestByResult) {
+			continue
+		}
+		score := t.scoreLabelOnly(input, label)
+		best := bestByResult[resultIndex]
+		if best == nil || score > bestScores[resultIndex] ||
+			(score == bestScores[resultIndex] && label.Value < best.Value) {
+			bestByResult[resultIndex] = label
+			bestScores[resultIndex] = score
+		}
+	}
+
+	results := make([]PredictedResult, 0, len(bestByResult))
+	for _, label := range bestByResult {
+		if label != nil {
+			results = append(results, t.scoreLabel(input, label))
+		}
+	}
+	normalizeProbabilities(results)
+	return Prediction{Results: results}, nil
+}
+
+func (t *Table) scoreFloatLabelOnly(input []float64, label *labelStats) float64 {
+	denominator := float64(maxUint64(t.stats.TotalCount, 1))
+	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	indexes := t.inputIndexesForResult(label.Key)
+	if len(label.inputIndexes) != 0 {
+		indexes = label.inputIndexes
+	}
+
+	for pos, idx := range indexes {
+		if idx < 0 || idx >= len(input) || idx >= len(t.schema.Inputs) {
+			continue
+		}
+		stat := label.numericAt(pos, idx)
+		if stat == nil || stat.Count == 0 {
+			continue
+		}
+		variance := stat.variance()
+		z := (input[idx] - stat.Mean) / math.Sqrt(variance)
+		impact := 1 / (1 + math.Abs(z))
+		score += math.Log(0.05 + impact)
+	}
+	return score
+}
+
+func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64 {
+	denominator := float64(maxUint64(t.stats.TotalCount, 1))
+	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	indexes := t.inputIndexesForResult(label.Key)
+	if len(label.inputIndexes) != 0 {
+		indexes = label.inputIndexes
+	}
+
+	for pos, idx := range indexes {
+		if idx < 0 || idx >= len(input) || idx >= len(t.schema.Inputs) {
+			continue
+		}
+		value := input[idx]
+		if numeric, ok := numericValue(value); ok {
+			stat := label.numericAt(pos, idx)
+			if stat == nil || stat.Count == 0 {
+				continue
+			}
+			variance := stat.variance()
+			z := (numeric - stat.Mean) / math.Sqrt(variance)
+			impact := 1 / (1 + math.Abs(z))
+			score += math.Log(0.05 + impact)
+			continue
+		}
+
+		stat := label.categoryAt(pos, idx)
+		if stat == nil || stat.Count == 0 {
+			continue
+		}
+		category := categoryValue(value)
+		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
+		score += math.Log(frequency)
+	}
+	return score
+}
+
+func (t *Table) scoreFloatLabel(input []float64, label *labelStats) PredictedResult {
+	denominator := float64(maxUint64(t.stats.TotalCount, 1))
+	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	indexes := t.inputIndexesForResult(label.Key)
+	if len(label.inputIndexes) != 0 {
+		indexes = label.inputIndexes
+	}
+	influences := make([]Influence, 0, len(indexes))
+
+	for pos, idx := range indexes {
+		if idx < 0 || idx >= len(input) || idx >= len(t.schema.Inputs) {
+			continue
+		}
+		field := t.schema.Inputs[idx]
+		stat := label.numericAt(pos, idx)
+		if stat == nil || stat.Count == 0 {
+			continue
+		}
+		variance := stat.variance()
+		z := (input[idx] - stat.Mean) / math.Sqrt(variance)
+		impact := 1 / (1 + math.Abs(z))
+		score += math.Log(0.05 + impact)
+		influences = append(influences, Influence{
+			Input:  field.Name,
+			Impact: impact,
+			Reason: fmt.Sprintf("numeric distance from mean %.4f", stat.Mean),
+		})
+	}
+
+	sort.Slice(influences, func(i, j int) bool {
+		if influences[i].Impact == influences[j].Impact {
+			return influences[i].Input < influences[j].Input
+		}
+		return influences[i].Impact > influences[j].Impact
+	})
+	if len(influences) > 5 {
+		influences = influences[:5]
+	}
+
+	return PredictedResult{
+		Key:        label.Key,
+		Value:      label.Value,
+		Score:      score,
+		Samples:    label.Count,
+		Influences: influences,
+	}
+}
+
+func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedResult {
+	denominator := float64(maxUint64(t.stats.TotalCount, 1))
+	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	indexes := t.inputIndexesForResult(label.Key)
+	influences := make([]Influence, 0, len(indexes))
+
+	if len(label.inputIndexes) != 0 {
+		indexes = label.inputIndexes
+	}
+	for pos, idx := range indexes {
+		if idx < 0 || idx >= len(input) || idx >= len(t.schema.Inputs) {
+			continue
+		}
+		field := t.schema.Inputs[idx]
+		value := input[idx]
+		if numeric, ok := numericValue(value); ok {
+			stat := label.numericAt(pos, idx)
+			if stat == nil || stat.Count == 0 {
+				continue
+			}
+			variance := stat.variance()
+			z := (numeric - stat.Mean) / math.Sqrt(variance)
+			impact := 1 / (1 + math.Abs(z))
+			contribution := math.Log(0.05 + impact)
+			score += contribution
+			influences = append(influences, Influence{
+				Input:  field.Name,
+				Impact: impact,
+				Reason: fmt.Sprintf("numeric distance from mean %.4f", stat.Mean),
+			})
+			continue
+		}
+
+		stat := label.categoryAt(pos, idx)
+		if stat == nil || stat.Count == 0 {
+			continue
+		}
+		category := categoryValue(value)
+		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
+		score += math.Log(frequency)
+		influences = append(influences, Influence{
+			Input:  field.Name,
+			Impact: frequency,
+			Reason: "categorical frequency matched learned cases",
+		})
+	}
+
+	sort.Slice(influences, func(i, j int) bool {
+		if influences[i].Impact == influences[j].Impact {
+			return influences[i].Input < influences[j].Input
+		}
+		return influences[i].Impact > influences[j].Impact
+	})
+	if len(influences) > 5 {
+		influences = influences[:5]
+	}
+
+	return PredictedResult{
+		Key:        label.Key,
+		Value:      label.Value,
+		Score:      score,
+		Samples:    label.Count,
+		Influences: influences,
+	}
+}
+
+func RebuildStats(table string) error {
+	t, err := OpenTable(table)
+	if err != nil {
+		return err
+	}
+	t.stats.reset(t.schema)
+
+	if err := t.rebuildStatsFromIncTable(); err == nil {
+		return t.FlushStats()
+	} else if !errors.Is(err, ErrTableNotFound) {
+		return err
+	}
+
+	file, err := openLegacySamples(t.files.legacySamples)
+	if err != nil {
+		if errors.Is(err, ErrTableNotFound) {
+			return nil
+		}
+		return err
+	}
+	defer file.Close()
+
+	reader := bufio.NewReaderSize(file, 4<<20)
+	if first, err := reader.Peek(1); err == nil && len(first) > 0 && first[0] == '{' {
+		return t.rebuildStatsFromJSONLines(reader)
+	} else if err != nil && !errors.Is(err, io.EOF) {
+		return err
+	}
+
+	for {
+		frame, err := readSampleFrame(reader)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if t.allFloatInputs {
+			learningStatus, input, results, err := decodeFloatSampleFrameForStats(t.schema, frame)
+			if err != nil {
+				return err
+			}
+			if t.shouldLearn(learningStatus) {
+				t.addFloatStats(input, results)
+			}
+		} else {
+			learningStatus, input, results, err := decodeSampleFrameForStats(t.schema, frame)
+			if err != nil {
+				return err
+			}
+			if t.shouldLearn(learningStatus) {
+				t.addStats(input, results)
+			}
+		}
+	}
+	return t.FlushStats()
+}
+
+func (t *Table) rebuildStatsFromJSONLines(reader io.Reader) error {
+	scanner := bufio.NewScanner(reader)
+	scanner.Buffer(make([]byte, 64*1024), 16*1024*1024)
+	for scanner.Scan() {
+		var sample Sample
+		if err := json.Unmarshal(scanner.Bytes(), &sample); err != nil {
+			return err
+		}
+		input, results, err := t.validateSample(sample)
+		if err != nil {
+			return err
+		}
+		if t.shouldLearn(sample.LearningStatus) {
+			t.addStats(input, results)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return t.FlushStats()
+}
+
+func (t *Table) rebuildStatsFromIncTable() error {
+	count, err := dataManager_v2.GetIncRecordCount(t.files.samples, t.files.sampleEntrySize)
+	if err != nil {
+		return ErrTableNotFound
+	}
+	if count == 0 {
+		return nil
+	}
+
+	recordSize := int(t.files.sampleEntrySize) + 3
+	chunkRecords := rebuildChunkRecords(t.files.sampleEntrySize)
+	for start := uint64(0); start < count; start += chunkRecords {
+		amount := chunkRecords
+		if remaining := count - start; remaining < amount {
+			amount = remaining
+		}
+		raw, err := dataManager_v2.ReadIncDataFromFileAsync_Range(t.files.samples, start, amount, t.files.sampleEntrySize)
+		if err != nil {
+			return err
+		}
+		if len(raw)%recordSize != 0 {
+			return errors.New("tensor: corrupted inc table sample log")
+		}
+		spans := make([]sampleSpan, 0, len(raw)/recordSize)
+		for offset := 0; offset < len(raw); offset += recordSize {
+			startPtr, endPtr, ok, err := decodeSampleManifestEntry(raw[offset : offset+recordSize])
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+			spans = append(spans, sampleSpan{start: startPtr, end: endPtr})
+		}
+		if err := t.rebuildStatsFromSpans(spans); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type sampleSpan struct {
+	start int64
+	end   int64
+}
+
+func (t *Table) rebuildStatsFromSpans(spans []sampleSpan) error {
+	for i := 0; i < len(spans); {
+		groupStart := spans[i].start
+		groupEnd := spans[i].end
+		j := i + 1
+		for j < len(spans) && spans[j].start == groupEnd {
+			groupEnd = spans[j].end
+			j++
+		}
+
+		raw, err := dataManager_v2.ReadDataFromFileAsync(t.files.sampleData, groupStart, groupEnd)
+		if err != nil {
+			return err
+		}
+		for k := i; k < j; k++ {
+			localStart := spans[k].start - groupStart
+			localEnd := spans[k].end - groupStart
+			if localStart < 0 || localEnd <= localStart || localEnd > int64(len(raw)) {
+				return errors.New("tensor: invalid sample data span")
+			}
+			frame := raw[localStart:localEnd]
+			if t.allFloatInputs {
+				learningStatus, input, results, err := decodeFloatSampleFrameForStats(t.schema, frame)
+				if err != nil {
+					return err
+				}
+				if t.shouldLearn(learningStatus) {
+					t.addFloatStats(input, results)
+				}
+			} else {
+				learningStatus, input, results, err := decodeSampleFrameForStats(t.schema, frame)
+				if err != nil {
+					return err
+				}
+				if t.shouldLearn(learningStatus) {
+					t.addStats(input, results)
+				}
+			}
+		}
+		i = j
+	}
+	return nil
+}
+
+func rebuildChunkRecords(entrySize uint64) uint64 {
+	recordSize := entrySize + 3
+	if recordSize == 0 {
+		return 1
+	}
+	byBytes := uint64(tensorRebuildChunkBytes) / recordSize
+	if byBytes == 0 {
+		return 1
+	}
+	if byBytes > tensorRebuildChunkRecords {
+		return tensorRebuildChunkRecords
+	}
+	return byBytes
+}
+
+func normalizeProbabilities(results []PredictedResult) {
+	if len(results) == 0 {
+		return
+	}
+	maxScore := results[0].Score
+	for _, result := range results[1:] {
+		if result.Score > maxScore {
+			maxScore = result.Score
+		}
+	}
+
+	sum := 0.0
+	for i := range results {
+		results[i].Probability = math.Exp(results[i].Score - maxScore)
+		sum += results[i].Probability
+	}
+	if sum == 0 || math.IsNaN(sum) || math.IsInf(sum, 0) {
+		p := 1 / float64(len(results))
+		for i := range results {
+			results[i].Probability = p
+		}
+		return
+	}
+	for i := range results {
+		results[i].Probability /= sum
+	}
+}
+
+func maxUint64(a, b uint64) uint64 {
+	if a > b {
+		return a
+	}
+	return b
+}

@@ -14,14 +14,17 @@ import (
 )
 
 type fileRequest struct {
-	op         string // "read" | "write" | "write_inc" | "write_inc_ow" | "read_inc" | "delete_inc"
+	op         string // "read" | "write" | "write_append" | "write_inc" | "write_inc_ow" | "read_inc" | "delete_inc"
 	data       []byte
+	dataBatch  [][]byte
 	startPtr   int64
 	endPtr     int64
 	entrySize  uint64 // używane dla incTables
 	inc_id     uint64 // używane dla incTables
+	amount     uint64
 	read_type  uint8  // 0 = by id, 1 = last N entries, 2 = first N entries (używane dla incTables)
 	count_from string // top | bottom incTables save using custom id
+	timeout    time.Duration
 	resp       chan fileResponse
 }
 
@@ -60,9 +63,14 @@ type batchFile interface {
 }
 
 func sendToFileWorker(filePath string, req fileRequest) fileResponse {
+	timeout := req.timeout
+	if timeout <= 0 {
+		timeout = time.Second
+	}
+
 	// Dla write_inc i read_inc korzystamy z osobnego katalogu inc_tables
 	var fullPath string
-	if req.op == "write_inc" || req.op == "write_inc_ow" || req.op == "read_inc" || req.op == "delete_inc" {
+	if req.op == "write_inc" || req.op == "write_inc_batch" || req.op == "write_inc_ow" || req.op == "read_inc" || req.op == "delete_inc" {
 		fullPath = filepath.Join(baseIncTablesPath, filePath)
 	} else {
 		fullPath = filepath.Join(basePath, filePath)
@@ -82,7 +90,7 @@ func sendToFileWorker(filePath string, req fileRequest) fileResponse {
 
 	select {
 	case workerChan <- req:
-	case <-time.After(1 * time.Second):
+	case <-time.After(timeout):
 		return fileResponse{err: errors.New("worker is unresponsive (send timeout)")}
 	}
 
@@ -92,9 +100,23 @@ func sendToFileWorker(filePath string, req fileRequest) fileResponse {
 			return fileResponse{err: errors.New("worker crashed")}
 		}
 		return resp
-	case <-time.After(1 * time.Second):
+	case <-time.After(timeout):
 		return fileResponse{err: errors.New("worker response timeout")}
 	}
+}
+
+func dataTransferTimeout(bytes int64) time.Duration {
+	if bytes <= 0 {
+		return time.Second
+	}
+	timeout := 5*time.Second + time.Duration(bytes/(4<<20))*time.Second
+	if timeout < time.Second {
+		return time.Second
+	}
+	if timeout > 2*time.Minute {
+		return 2 * time.Minute
+	}
+	return timeout
 }
 
 func handleDeleteIncFile(file **os.File, fullPath string) error {
@@ -137,12 +159,20 @@ func fileWorkerLoop(fullPath string, logicalPath string, ch chan fileRequest) {
 	if err != nil {
 		panic("Cannot open file: " + err.Error())
 	}
-	defer file.Close()
+	defer func() {
+		if file != nil {
+			_ = file.Close()
+		}
+	}()
 
 	for {
 		select {
 		case req := <-ch:
 			if req.op == "close" {
+				if file != nil {
+					_ = file.Close()
+					file = nil
+				}
 				if req.resp != nil {
 					req.resp <- fileResponse{}
 				}
@@ -214,17 +244,23 @@ func EnsureDirsForTests() {
 func executeBatch(file batchFile, filePath string, batch []fileRequest) {
 	// 1) Wydziel write_inc (append-only, stały rekord) ORAZ write (stary tryb)
 	var writeIncReqs []*fileRequest
+	var writeIncBatchReqs []*fileRequest
 	var overWriteIncReqs []*fileRequest
 	var writeReqs []*fileRequest
+	var writeAppendReqs []*fileRequest
 
 	for i := range batch {
 		switch batch[i].op {
 		case "write_inc":
 			writeIncReqs = append(writeIncReqs, &batch[i])
+		case "write_inc_batch":
+			writeIncBatchReqs = append(writeIncBatchReqs, &batch[i])
 		case "write_inc_ow":
 			overWriteIncReqs = append(overWriteIncReqs, &batch[i])
 		case "write":
 			writeReqs = append(writeReqs, &batch[i])
+		case "write_append":
+			writeAppendReqs = append(writeAppendReqs, &batch[i])
 		}
 	}
 
@@ -370,6 +406,67 @@ func executeBatch(file batchFile, filePath string, batch []fileRequest) {
 		}
 	}
 
+	if len(writeIncBatchReqs) > 0 {
+		for _, req := range writeIncBatchReqs {
+			recordSize := int64(req.entrySize) + 3
+			if recordSize <= 0 {
+				req.resp <- fileResponse{err: errors.New("invalid entry size for write_inc_batch")}
+				continue
+			}
+			if len(req.dataBatch) == 0 {
+				req.resp <- fileResponse{data: []byte{}, err: nil}
+				continue
+			}
+			valid := true
+			for _, data := range req.dataBatch {
+				if int64(len(data)) != recordSize {
+					req.resp <- fileResponse{err: errors.New("write_inc_batch: data length mismatch with record size")}
+					valid = false
+					break
+				}
+			}
+			if !valid {
+				continue
+			}
+
+			fileSize, err := file.Seek(0, io.SeekEnd)
+			if err != nil {
+				req.resp <- fileResponse{err: err}
+				continue
+			}
+			if rem := fileSize % recordSize; rem != 0 {
+				pad := make([]byte, recordSize-rem)
+				if _, err := file.WriteAt(pad, fileSize); err != nil {
+					req.resp <- fileResponse{err: err}
+					continue
+				}
+				fileSize += int64(len(pad))
+			}
+
+			firstID := fileSize / recordSize
+			ids := make([]byte, len(req.dataBatch)*8)
+			for i, data := range req.dataBatch {
+				id := firstID + int64(i)
+				offset := id * recordSize
+				if _, err := file.WriteAt(data, offset); err != nil {
+					req.resp <- fileResponse{err: err}
+					valid = false
+					break
+				}
+				binary.LittleEndian.PutUint64(ids[i*8:(i+1)*8], uint64(id))
+			}
+			if !valid {
+				continue
+			}
+			req.resp <- fileResponse{
+				data:     ids,
+				startPtr: firstID * recordSize,
+				endPtr:   (firstID + int64(len(req.dataBatch))) * recordSize,
+				err:      nil,
+			}
+		}
+	}
+
 	// 2) Obsłuż write_inc – każdy rekord append-only, policz id po rozmiarze pliku
 	if len(writeIncReqs) > 0 {
 		for _, req := range writeIncReqs {
@@ -465,6 +562,26 @@ func executeBatch(file batchFile, filePath string, batch []fileRequest) {
 	}
 
 	// --- NOWE: obsługa read_inc ---
+	if len(writeAppendReqs) > 0 {
+		offset, err := file.Seek(0, io.SeekEnd)
+		if err != nil {
+			for _, req := range writeAppendReqs {
+				req.resp <- fileResponse{err: err}
+			}
+		} else {
+			for _, req := range writeAppendReqs {
+				req.startPtr = offset
+				req.endPtr = offset + int64(len(req.data))
+				if _, err := file.WriteAt(req.data, req.startPtr); err != nil {
+					req.resp <- fileResponse{err: err}
+					continue
+				}
+				offset = req.endPtr
+				req.resp <- fileResponse{startPtr: req.startPtr, endPtr: req.endPtr, err: nil}
+			}
+		}
+	}
+
 	for i := range batch {
 		req := &batch[i]
 		if req.op != "read_inc" {
@@ -563,6 +680,35 @@ func executeBatch(file batchFile, filePath string, batch []fileRequest) {
 				data:     buf,
 				startPtr: 0,
 				endPtr:   totalBytes,
+				err:      nil,
+			}
+
+		case 3: // range from bottom-based id (OLDEST -> NEWER)
+			startID := int64(req.inc_id)
+			n := int64(req.amount)
+			if n <= 0 || numRecords == 0 || startID >= numRecords {
+				req.resp <- fileResponse{data: []byte{}, err: nil}
+				continue
+			}
+			if startID < 0 {
+				req.resp <- fileResponse{err: errors.New("read_inc: range start out of range")}
+				continue
+			}
+			if startID+n > numRecords {
+				n = numRecords - startID
+			}
+			startOffset := startID * recordSize
+			totalBytes := n * recordSize
+			buf := make([]byte, totalBytes)
+			_, err := file.ReadAt(buf, startOffset)
+			if err != nil && err != io.EOF {
+				req.resp <- fileResponse{err: err}
+				continue
+			}
+			req.resp <- fileResponse{
+				data:     buf,
+				startPtr: startOffset,
+				endPtr:   startOffset + totalBytes,
 				err:      nil,
 			}
 

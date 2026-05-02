@@ -142,6 +142,39 @@ func TestSaveDataSequentialGrowth(t *testing.T) {
 	}
 }
 
+func TestSaveDataAppendIgnoresFreeBlocks(t *testing.T) {
+	setupDataManagerTest(t)
+
+	file := "append-log.dat"
+	first := []byte("first")
+	reused := []byte("reuse")
+	appended := []byte("append")
+
+	s1, e1, err := SaveDataToFileAsync(first, file)
+	if err != nil {
+		t.Fatalf("save first: %v", err)
+	}
+	if err := defrag.MarkAsFree("free-first", file, s1, e1); err != nil {
+		t.Fatalf("mark free: %v", err)
+	}
+
+	s2, e2, err := SaveDataAppendToFileAsync(appended, file)
+	if err != nil {
+		t.Fatalf("append: %v", err)
+	}
+	if s2 != e1 || e2 != e1+int64(len(appended)) {
+		t.Fatalf("append span=[%d,%d), want [%d,%d)", s2, e2, e1, e1+int64(len(appended)))
+	}
+
+	s3, e3, err := SaveDataToFileAsync(reused, file)
+	if err != nil {
+		t.Fatalf("save reused: %v", err)
+	}
+	if s3 != s1 || e3 != e1 {
+		t.Fatalf("regular save should still reuse free block: got [%d,%d), want [%d,%d)", s3, e3, s1, e1)
+	}
+}
+
 func TestIncTableAppendAndDelete(t *testing.T) {
 	setupDataManagerTest(t)
 

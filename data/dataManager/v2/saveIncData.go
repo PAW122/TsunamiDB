@@ -13,6 +13,7 @@ func SaveIncDataToFileAsync(data []byte, filePath string, entry_size uint64) (ui
 		op:        "write_inc",
 		data:      data,
 		entrySize: entry_size,
+		timeout:   dataTransferTimeout(int64(len(data))),
 		resp:      respChan,
 	}
 	resp := sendToFileWorker(filePath, req)
@@ -24,6 +25,33 @@ func SaveIncDataToFileAsync(data []byte, filePath string, entry_size uint64) (ui
 	}
 	id := binary.LittleEndian.Uint64(resp.data)
 	return id, nil
+}
+
+func SaveIncDataBatchToFileAsync(batch [][]byte, filePath string, entry_size uint64) ([]uint64, error) {
+	respChan := make(chan fileResponse, 1)
+	totalBytes := int64(0)
+	for _, data := range batch {
+		totalBytes += int64(len(data))
+	}
+	req := fileRequest{
+		op:        "write_inc_batch",
+		dataBatch: batch,
+		entrySize: entry_size,
+		timeout:   dataTransferTimeout(totalBytes),
+		resp:      respChan,
+	}
+	resp := sendToFileWorker(filePath, req)
+	if resp.err != nil {
+		return nil, resp.err
+	}
+	if len(resp.data)%8 != 0 {
+		return nil, errors.New("write_inc_batch: invalid ids in worker response")
+	}
+	ids := make([]uint64, len(resp.data)/8)
+	for i := range ids {
+		ids[i] = binary.LittleEndian.Uint64(resp.data[i*8 : (i+1)*8])
+	}
+	return ids, nil
 }
 
 // allows you to enter a new element anywhere in inc_table as long as it is not a new id
