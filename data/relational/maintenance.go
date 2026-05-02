@@ -22,6 +22,9 @@ func CompactTable(table string) (CompactionResult, error) {
 
 func compactTableLocked(schema Schema) (CompactionResult, error) {
 	paths := tablePaths(schema.Name)
+	if err := closeRowsFile(paths.rows); err != nil {
+		return CompactionResult{}, err
+	}
 	input, err := openFile(paths.rows, os.O_RDONLY, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

@@ -286,14 +286,13 @@ func buildEqualityIndexLocked(schema Schema, column Column) (equalityIndex, erro
 		Values: make(map[string][]uint64),
 	}
 
-	file, err := openFile(tablePaths(schema.Name).rows, os.O_RDONLY, 0o644)
+	file, err := openRowsFile(tablePaths(schema.Name).rows, os.O_RDWR, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return equalityIndex{}, ErrTableNotFound
 		}
 		return equalityIndex{}, err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -307,8 +306,9 @@ func buildEqualityIndexLocked(schema Schema, column Column) (equalityIndex, erro
 	rowCount := uint64(info.Size() / rowSize)
 	row := make([]byte, schema.RowSize)
 	for rowID := uint64(0); rowID < rowCount; rowID++ {
-		if _, err := io.ReadFull(file, row); err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		offset := int64(rowID * schema.RowSize)
+		if _, err := file.ReadAt(row, offset); err != nil {
+			if errors.Is(err, io.EOF) {
 				return equalityIndex{}, ErrCorruptRows
 			}
 			return equalityIndex{}, err
@@ -341,14 +341,13 @@ func buildTrigramIndexLocked(schema Schema, column Column) (trigramIndex, error)
 		Values: make(map[string][]uint64),
 	}
 
-	file, err := openFile(tablePaths(schema.Name).rows, os.O_RDONLY, 0o644)
+	file, err := openRowsFile(tablePaths(schema.Name).rows, os.O_RDWR, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return trigramIndex{}, ErrTableNotFound
 		}
 		return trigramIndex{}, err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -362,8 +361,9 @@ func buildTrigramIndexLocked(schema Schema, column Column) (trigramIndex, error)
 	rowCount := uint64(info.Size() / rowSize)
 	row := make([]byte, schema.RowSize)
 	for rowID := uint64(0); rowID < rowCount; rowID++ {
-		if _, err := io.ReadFull(file, row); err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		offset := int64(rowID * schema.RowSize)
+		if _, err := file.ReadAt(row, offset); err != nil {
+			if errors.Is(err, io.EOF) {
 				return trigramIndex{}, ErrCorruptRows
 			}
 			return trigramIndex{}, err

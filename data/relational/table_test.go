@@ -22,6 +22,7 @@ func withTempWorkingDir(t *testing.T) {
 		t.Fatalf("chdir temp: %v", err)
 	}
 	t.Cleanup(func() {
+		ResetForTests()
 		_ = os.Chdir(wd)
 	})
 }

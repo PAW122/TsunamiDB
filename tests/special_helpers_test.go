@@ -25,6 +25,7 @@ import (
 	defrag "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
+	"github.com/PAW122/TsunamiDB/data/relational"
 	TsuClient "github.com/PAW122/TsunamiDB/lib/dbclient"
 	export "github.com/PAW122/TsunamiDB/lib/export"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
@@ -67,6 +68,7 @@ func TestMain(m *testing.M) {
 	networkmanager.SetInstanceForTests(nil)
 	apimetrics.ResetForTests()
 	incindex.ResetForTests()
+	relational.ResetForTests()
 
 	_ = os.Chdir(specialOriginalWD)
 	_ = os.RemoveAll(tmpWD)
@@ -179,6 +181,7 @@ func resetSpecialStorage() {
 	defrag.ResetForTests()
 	apimetrics.ResetForTests()
 	incindex.ResetForTests()
+	relational.ResetForTests()
 	_ = os.RemoveAll("db")
 	dataManager_v2.EnsureDirsForTests()
 	networkmanager.SetInstanceForTests(&networkmanager.NetworkManager{ServerIP: "special-test"})

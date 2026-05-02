@@ -19,6 +19,8 @@ const (
 	defaultRelationalPerformanceDuration = 30 * time.Second
 	defaultRelationalPerformanceWorkers  = 1
 	defaultRelationalPerformanceRows     = 1_000
+	defaultRelationalReportDuration      = 10 * time.Second
+	relationalRelatedUserCount           = 64
 )
 
 type relationalPerformanceCounters struct {
@@ -26,11 +28,30 @@ type relationalPerformanceCounters struct {
 	reads           atomic.Int64
 	equalitySelects atomic.Int64
 	likeSelects     atomic.Int64
+	relatedSelects  atomic.Int64
 	rowsReturned    atomic.Int64
 }
 
+type relationalReportResult struct {
+	mode           string
+	setup          time.Duration
+	measured       time.Duration
+	workers        int
+	rows           int
+	actions        int64
+	inserts        int64
+	reads          int64
+	eqSelects      int64
+	likeSelects    int64
+	relatedSelects int64
+	rowsReturned   int64
+	diskBytes      int64
+	actionsPerSec  float64
+	rowsPerSec     float64
+}
+
 func (c *relationalPerformanceCounters) totalActions() int64 {
-	return c.inserts.Load() + c.reads.Load() + c.equalitySelects.Load() + c.likeSelects.Load()
+	return c.inserts.Load() + c.reads.Load() + c.equalitySelects.Load() + c.likeSelects.Load() + c.relatedSelects.Load()
 }
 
 func TestSpecialRelationalPerformance(t *testing.T) {
@@ -97,6 +118,7 @@ func TestSpecialRelationalPerformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	relational.ResetForTests()
 
 	seconds := math.Max(elapsed.Seconds(), 0.001)
 	t.Logf("relational performance setup=%s measured_duration=%s total=%s workers=%d seed_rows_per_worker=%d host_cpus=%d",
@@ -142,10 +164,12 @@ func TestSpecialRelationalSaturation(t *testing.T) {
 			return prepareRelationalReadTable(workerID, seedRows, true, false)
 		case "select-like":
 			return prepareRelationalReadTable(workerID, seedRows, false, true)
+		case "related-select":
+			return prepareRelationalRelatedTables(workerID, seedRows)
 		case "mixed":
 			return prepareRelationalPerformanceTables(workerID, seedRows)
 		default:
-			return fmt.Errorf("unsupported TSU_REL_SAT_MODE=%q; use read, insert, select-eq, select-like, or mixed", mode)
+			return fmt.Errorf("unsupported TSU_REL_SAT_MODE=%q; use read, insert, select-eq, select-like, related-select, or mixed", mode)
 		}
 	}); err != nil {
 		t.Fatal(err)
@@ -169,8 +193,101 @@ func TestSpecialRelationalSaturation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	relational.ResetForTests()
 
 	reportRelationalPerformance(t, "relational saturation", setupDuration, elapsed, workers, seedRows, counters)
+}
+
+func TestSpecialRelationalReport(t *testing.T) {
+	requireSpecialTests(t)
+
+	duration := durationFromEnv("TSU_REL_REPORT_DURATION", defaultRelationalReportDuration)
+	workers := intFromEnv("TSU_REL_REPORT_WORKERS", runtime.NumCPU())
+	seedRows := intFromEnv("TSU_REL_REPORT_ROWS", defaultRelationalPerformanceRows)
+	modes := relationalReportModes()
+
+	results := make([]relationalReportResult, 0, len(modes))
+	totalStart := time.Now()
+	for _, mode := range modes {
+		fmt.Fprintf(os.Stderr, "relational report: mode=%s workers=%d rows=%d duration=%s\n", mode, workers, seedRows, duration)
+		result, err := runRelationalReportProfile(mode, duration, workers, seedRows)
+		if err != nil {
+			t.Fatalf("relational report mode %s: %v", mode, err)
+		}
+		results = append(results, result)
+		fmt.Fprintf(os.Stderr, "relational report: mode=%s done throughput=%.2f/s setup=%s disk=%s\n",
+			mode,
+			result.actionsPerSec,
+			result.setup.Round(time.Millisecond),
+			formatBytes(result.diskBytes),
+		)
+	}
+
+	t.Logf("\n%s", formatRelationalPerformanceReport(results, time.Since(totalStart)))
+}
+
+func runRelationalReportProfile(mode string, duration time.Duration, workers int, seedRows int) (relationalReportResult, error) {
+	resetSpecialStorage()
+
+	setupStart := time.Now()
+	if err := setupRelationalSaturationMode(mode, workers, seedRows); err != nil {
+		return relationalReportResult{}, err
+	}
+	setupDuration := time.Since(setupStart)
+
+	ctx, cancel := context.WithTimeout(context.Background(), duration)
+	defer cancel()
+
+	counters := &relationalPerformanceCounters{}
+	start := time.Now()
+	err := runWorkers(ctx, workers, func(ctx context.Context, workerID int) error {
+		return runRelationalSaturationWorker(ctx, workerID, seedRows, mode, counters)
+	})
+	elapsed := time.Since(start)
+	relational.ResetForTests()
+	if err != nil {
+		return relationalReportResult{}, err
+	}
+
+	seconds := math.Max(elapsed.Seconds(), 0.001)
+	return relationalReportResult{
+		mode:           mode,
+		setup:          setupDuration,
+		measured:       elapsed,
+		workers:        workers,
+		rows:           seedRows,
+		actions:        counters.totalActions(),
+		inserts:        counters.inserts.Load(),
+		reads:          counters.reads.Load(),
+		eqSelects:      counters.equalitySelects.Load(),
+		likeSelects:    counters.likeSelects.Load(),
+		relatedSelects: counters.relatedSelects.Load(),
+		rowsReturned:   counters.rowsReturned.Load(),
+		diskBytes:      dirSize("db"),
+		actionsPerSec:  float64(counters.totalActions()) / seconds,
+		rowsPerSec:     float64(counters.rowsReturned.Load()) / seconds,
+	}, nil
+}
+
+func setupRelationalSaturationMode(mode string, workers int, seedRows int) error {
+	return runRelationalSetupWorkers(workers, func(workerID int) error {
+		switch mode {
+		case "insert":
+			return createRelationalInsertTable(relationalPerformanceInsertTable(workerID))
+		case "read":
+			return prepareRelationalReadTable(workerID, seedRows, false, false)
+		case "select-eq":
+			return prepareRelationalReadTable(workerID, seedRows, true, false)
+		case "select-like":
+			return prepareRelationalReadTable(workerID, seedRows, false, true)
+		case "related-select":
+			return prepareRelationalRelatedTables(workerID, seedRows)
+		case "mixed":
+			return prepareRelationalPerformanceTables(workerID, seedRows)
+		default:
+			return fmt.Errorf("unsupported relational saturation mode %q; use read, insert, select-eq, select-like, related-select, or mixed", mode)
+		}
+	})
 }
 
 func runRelationalSetupWorkers(workers int, fn func(workerID int) error) error {
@@ -230,7 +347,7 @@ func prepareRelationalReadTable(workerID int, rows int, equalityIndex bool, trig
 		if _, err := relational.InsertRow(readTable, relationalPerformanceValues(i)); err != nil {
 			return fmt.Errorf("seed %s row %d: %w", readTable, i, err)
 		}
-		if rows >= 10 && (i+1)%(rows/10) == 0 {
+		if relationalSetupProgressEnabled() && rows >= 10 && (i+1)%(rows/10) == 0 {
 			fmt.Fprintf(os.Stderr, "relational perf setup: worker=%d seeded %d/%d rows\n", workerID, i+1, rows)
 		}
 	}
@@ -267,9 +384,67 @@ func createRelationalInsertTable(table string) error {
 	return nil
 }
 
+func prepareRelationalRelatedTables(workerID int, orderRows int) error {
+	usersTable := relationalRelatedUsersTable(workerID)
+	ordersTable := relationalRelatedOrdersTable(workerID)
+
+	fmt.Fprintf(os.Stderr, "relational perf setup: worker=%d create %s\n", workerID, usersTable)
+	if _, err := relational.CreateTable(relational.Schema{
+		Name: usersTable,
+		Columns: []relational.Column{
+			{Name: "id", Type: relational.ColumnTypeUint64},
+			{Name: "name", Type: relational.ColumnTypeString, Size: 32},
+			{Name: "tier", Type: relational.ColumnTypeUint64},
+		},
+	}); err != nil {
+		return fmt.Errorf("CreateTable %s: %w", usersTable, err)
+	}
+	for i := 0; i < relationalRelatedUserCount; i++ {
+		if _, err := relational.InsertRow(usersTable, map[string]any{
+			"id":   uint64(i),
+			"name": fmt.Sprintf("user_%03d", i),
+			"tier": uint64(i % 4),
+		}); err != nil {
+			return fmt.Errorf("seed %s row %d: %w", usersTable, i, err)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "relational perf setup: worker=%d create %s\n", workerID, ordersTable)
+	if _, err := relational.CreateTable(relational.Schema{
+		Name: ordersTable,
+		Columns: []relational.Column{
+			{Name: "id", Type: relational.ColumnTypeUint64},
+			{Name: "user_id", Type: relational.ColumnTypeRowRef, RefTable: usersTable},
+			{Name: "total", Type: relational.ColumnTypeUint64},
+			{Name: "status", Type: relational.ColumnTypeString, Size: 16},
+		},
+	}); err != nil {
+		return fmt.Errorf("CreateTable %s: %w", ordersTable, err)
+	}
+	for i := 0; i < orderRows; i++ {
+		if _, err := relational.InsertRow(ordersTable, map[string]any{
+			"id":      uint64(i),
+			"user_id": uint64(i % relationalRelatedUserCount),
+			"total":   uint64(100 + i%900),
+			"status":  fmt.Sprintf("status_%02d", i%8),
+		}); err != nil {
+			return fmt.Errorf("seed %s row %d: %w", ordersTable, i, err)
+		}
+		if relationalSetupProgressEnabled() && orderRows >= 10 && (i+1)%(orderRows/10) == 0 {
+			fmt.Fprintf(os.Stderr, "relational perf setup: worker=%d seeded related %d/%d rows\n", workerID, i+1, orderRows)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "relational perf setup: worker=%d build %s.user_id index\n", workerID, ordersTable)
+	if err := relational.CreateIndex(ordersTable, "user_id"); err != nil {
+		return fmt.Errorf("CreateIndex %s.user_id: %w", ordersTable, err)
+	}
+	return nil
+}
+
 func runRelationalSaturationWorker(ctx context.Context, workerID int, seedRows int, mode string, counters *relationalPerformanceCounters) error {
 	table := relationalPerformanceReadTable(workerID)
 	insertTable := relationalPerformanceInsertTable(workerID)
+	relatedOrdersTable := relationalRelatedOrdersTable(workerID)
 	seq := 0
 	for ctx.Err() == nil {
 		switch mode {
@@ -323,6 +498,14 @@ func runRelationalSaturationWorker(ctx context.Context, workerID int, seedRows i
 				return fmt.Errorf("insert %s/%d: %w", insertTable, seq, err)
 			}
 			counters.inserts.Add(1)
+		case "related-select":
+			predicate := relational.Equal("user_id", uint64(seq%relationalRelatedUserCount))
+			rows, err := relational.JoinRowRef(relatedOrdersTable, "user_id", &predicate)
+			if err != nil {
+				return fmt.Errorf("related select %s: %w", relatedOrdersTable, err)
+			}
+			counters.relatedSelects.Add(1)
+			counters.rowsReturned.Add(int64(len(rows)))
 		}
 		seq++
 	}
@@ -335,6 +518,57 @@ func relationalSaturationMode() string {
 		return "read"
 	}
 	return mode
+}
+
+func relationalReportModes() []string {
+	raw := strings.TrimSpace(os.Getenv("TSU_REL_REPORT_MODES"))
+	if raw == "" {
+		return []string{"read", "insert", "select-eq", "select-like", "related-select", "mixed"}
+	}
+
+	parts := strings.Split(raw, ",")
+	modes := make([]string, 0, len(parts))
+	for _, part := range parts {
+		mode := strings.ToLower(strings.TrimSpace(part))
+		if mode != "" {
+			modes = append(modes, mode)
+		}
+	}
+	if len(modes) == 0 {
+		return []string{"read", "insert", "select-eq", "select-like", "related-select", "mixed"}
+	}
+	return modes
+}
+
+func relationalSetupProgressEnabled() bool {
+	return strings.TrimSpace(os.Getenv("TSU_REL_SETUP_PROGRESS")) != "0"
+}
+
+func formatRelationalPerformanceReport(results []relationalReportResult, total time.Duration) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Relational performance report\n")
+	fmt.Fprintf(&b, "  total: %s\n", total.Round(time.Millisecond))
+	fmt.Fprintf(&b, "  host_cpus: %d\n\n", runtime.NumCPU())
+	fmt.Fprintf(&b, "%-15s %7s %8s %9s %11s %11s %11s %11s %11s %12s %10s\n",
+		"mode", "workers", "rows", "setup", "actions/s", "reads/s", "inserts/s", "selects/s", "related/s", "rows/s", "disk")
+	for _, result := range results {
+		seconds := math.Max(result.measured.Seconds(), 0.001)
+		selects := result.eqSelects + result.likeSelects
+		fmt.Fprintf(&b, "%-15s %7d %8d %9s %11.2f %11.2f %11.2f %11.2f %11.2f %12.2f %10s\n",
+			result.mode,
+			result.workers,
+			result.rows,
+			result.setup.Round(time.Millisecond),
+			result.actionsPerSec,
+			float64(result.reads)/seconds,
+			float64(result.inserts)/seconds,
+			float64(selects)/seconds,
+			float64(result.relatedSelects)/seconds,
+			result.rowsPerSec,
+			formatBytes(result.diskBytes),
+		)
+	}
+	return b.String()
 }
 
 func reportRelationalPerformance(t *testing.T, name string, setupDuration time.Duration, elapsed time.Duration, workers int, seedRows int, counters *relationalPerformanceCounters) {
@@ -409,6 +643,14 @@ func relationalPerformanceReadTable(workerID int) string {
 
 func relationalPerformanceInsertTable(workerID int) string {
 	return fmt.Sprintf("rel_perf_insert_%02d", workerID)
+}
+
+func relationalRelatedUsersTable(workerID int) string {
+	return fmt.Sprintf("rel_perf_users_%02d", workerID)
+}
+
+func relationalRelatedOrdersTable(workerID int) string {
+	return fmt.Sprintf("rel_perf_orders_%02d", workerID)
 }
 
 func relationalPerformanceValues(i int) map[string]any {

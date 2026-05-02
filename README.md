@@ -124,6 +124,9 @@ $env:TSU_REL_PERF_WORKERS='12'
 $env:TSU_REL_SAT_DURATION='30s'
 $env:TSU_REL_SAT_WORKERS='12'
 $env:TSU_REL_SAT_ROWS='1000'
-$env:TSU_REL_SAT_MODE='read'        # read, insert, select-eq, select-like, mixed
+$env:TSU_REL_SAT_MODE='read'        # read, insert, select-eq, select-like, related-select, mixed
 go test ./tests -run TestSpecialRelationalSaturation -count=1 -v
+
+# one-command complex relational report
+powershell -ExecutionPolicy Bypass -File .\tools\relational-perf-report.ps1
 ```

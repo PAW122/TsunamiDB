@@ -5,14 +5,23 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+var schemaCache sync.Map // map[string]Schema
 
 func LoadSchema(table string) (*Schema, error) {
 	table = strings.TrimSpace(table)
 	if !safeNamePattern.MatchString(table) {
 		return nil, fmt.Errorf("%w: table name must match %s", ErrInvalidSchema, safeNamePattern.String())
+	}
+	cacheKey := schemaCacheKey(table)
+	if cached, ok := schemaCache.Load(cacheKey); ok {
+		schema := cached.(Schema)
+		return &schema, nil
 	}
 
 	data, err := readFile(tablePaths(table).schema)
@@ -46,6 +55,7 @@ func LoadSchema(table string) (*Schema, error) {
 			return nil, fmt.Errorf("%w: persisted column layout does not match calculated layout", ErrInvalidSchema)
 		}
 	}
+	schemaCache.Store(cacheKey, calculated)
 	return &calculated, nil
 }
 
@@ -65,7 +75,21 @@ func persistSchema(schema Schema) error {
 		_ = removeFile(tmp)
 		return err
 	}
+	schemaCache.Store(schemaCacheKey(schema.Name), schema)
 	return nil
+}
+
+func schemaCacheKey(table string) string {
+	path := tablePaths(table).schema
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return abs
+}
+
+func resetSchemaCacheForTests() {
+	schemaCache = sync.Map{}
 }
 
 func CalculateSchema(schema Schema) (Schema, error) {

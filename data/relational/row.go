@@ -29,11 +29,10 @@ func InsertRow(table string, values map[string]any) (uint64, error) {
 	defer lock.Unlock()
 
 	paths := tablePaths(schema.Name)
-	file, err := openFile(paths.rows, os.O_RDWR|os.O_CREATE, 0o644)
+	file, err := openRowsFile(paths.rows, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
 		return 0, err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -78,18 +77,17 @@ func ReadRow(table string, rowID uint64) (map[string]any, error) {
 	}
 
 	lock := tableLock(schema.Name)
-	lock.Lock()
-	defer lock.Unlock()
+	lock.RLock()
+	defer lock.RUnlock()
 
 	paths := tablePaths(schema.Name)
-	file, err := openFile(paths.rows, os.O_RDONLY, 0o644)
+	file, err := openRowsFile(paths.rows, os.O_RDWR, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrTableNotFound
 		}
 		return nil, err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -133,14 +131,13 @@ func UpdateRow(table string, rowID uint64, values map[string]any) error {
 	defer lock.Unlock()
 
 	paths := tablePaths(schema.Name)
-	file, err := openFile(paths.rows, os.O_RDWR, 0o644)
+	file, err := openRowsFile(paths.rows, os.O_RDWR, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrTableNotFound
 		}
 		return err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -199,14 +196,13 @@ func DeleteRow(table string, rowID uint64) error {
 	defer lock.Unlock()
 
 	paths := tablePaths(schema.Name)
-	file, err := openFile(paths.rows, os.O_RDWR, 0o644)
+	file, err := openRowsFile(paths.rows, os.O_RDWR, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return ErrTableNotFound
 		}
 		return err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -273,8 +269,8 @@ func ScanRows(table string, predicate RowPredicate) ([]ScannedRow, error) {
 	}
 
 	lock := tableLock(schema.Name)
-	lock.Lock()
-	defer lock.Unlock()
+	lock.RLock()
+	defer lock.RUnlock()
 
 	return scanRowsLocked(*schema, func(values map[string]any) (bool, error) {
 		if predicate == nil {
@@ -312,8 +308,8 @@ func SelectRows(table string, predicate Predicate) ([]ScannedRow, error) {
 		}
 
 		lock := tableLock(schema.Name)
-		lock.Lock()
-		defer lock.Unlock()
+		lock.RLock()
+		defer lock.RUnlock()
 
 		matchesPredicate := func(values map[string]any) (bool, error) {
 			key, err := indexKey(column, values[column.Name])
@@ -345,8 +341,8 @@ func SelectRows(table string, predicate Predicate) ([]ScannedRow, error) {
 		}
 
 		lock := tableLock(schema.Name)
-		lock.Lock()
-		defer lock.Unlock()
+		lock.RLock()
+		defer lock.RUnlock()
 
 		return selectLikeRowsLocked(*schema, column, pattern)
 	default:
@@ -411,14 +407,13 @@ func selectLikeRowsLocked(schema Schema, column Column, pattern string) ([]Scann
 
 func scanRowsLocked(schema Schema, predicate func(map[string]any) (bool, error)) ([]ScannedRow, error) {
 	paths := tablePaths(schema.Name)
-	file, err := openFile(paths.rows, os.O_RDONLY, 0o644)
+	file, err := openRowsFile(paths.rows, os.O_RDWR, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrTableNotFound
 		}
 		return nil, err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
@@ -433,8 +428,9 @@ func scanRowsLocked(schema Schema, predicate func(map[string]any) (bool, error))
 	matches := make([]ScannedRow, 0)
 	row := make([]byte, schema.RowSize)
 	for rowID := uint64(0); rowID < rowCount; rowID++ {
-		if _, err := io.ReadFull(file, row); err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		offset := int64(rowID * schema.RowSize)
+		if _, err := file.ReadAt(row, offset); err != nil {
+			if errors.Is(err, io.EOF) {
 				return nil, ErrCorruptRows
 			}
 			return nil, err
@@ -472,14 +468,13 @@ func readRowsByIDsLocked(schema Schema, rowIDs []uint64, predicate func(map[stri
 	}
 
 	paths := tablePaths(schema.Name)
-	file, err := openFile(paths.rows, os.O_RDONLY, 0o644)
+	file, err := openRowsFile(paths.rows, os.O_RDWR, 0o644)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrTableNotFound
 		}
 		return nil, err
 	}
-	defer file.Close()
 
 	info, err := file.Stat()
 	if err != nil {
