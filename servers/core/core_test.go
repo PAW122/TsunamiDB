@@ -13,14 +13,39 @@ func TestMain(m *testing.M) {
 }
 
 func TestRunCoreValidation(t *testing.T) {
-	deps := testCoreDeps(nil)
-	if err := runCore(deps); err == nil {
-		t.Fatalf("expected missing port error")
-	}
-
-	deps = testCoreDeps([]string{"bad"})
+	deps := testCoreDeps([]string{"bad"})
 	if err := runCore(deps); err == nil {
 		t.Fatalf("expected invalid port error")
+	}
+}
+
+func TestRunCoreWithoutNetworkManager(t *testing.T) {
+	var networkStarted bool
+	var wsPort string
+	var apiPort int
+
+	deps := testCoreDeps(nil)
+	deps.startNetworkManager = func(int, []string) {
+		networkStarted = true
+	}
+	wsDone := make(chan struct{}, 1)
+	deps.startWSServer = func(port string) error {
+		wsPort = port
+		wsDone <- struct{}{}
+		return nil
+	}
+	deps.runPublicAPI = func(port int) { apiPort = port }
+
+	if err := runCore(deps); err != nil {
+		t.Fatalf("runCore: %v", err)
+	}
+	<-wsDone
+
+	if networkStarted {
+		t.Fatal("network manager started without a port")
+	}
+	if wsPort != "5845" || apiPort != 5844 {
+		t.Fatalf("unexpected service ports: ws=%s api=%d", wsPort, apiPort)
 	}
 }
 

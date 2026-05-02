@@ -1,7 +1,6 @@
 package core
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -57,22 +56,22 @@ func runCore(deps coreDeps) error {
 	}
 
 	args := fs.Args()
-	if len(args) < 1 {
-		return errors.New("usage: go run main.go <port> [peer1] [peer2] ...")
-	}
+	if len(args) > 0 {
+		port, err := strconv.Atoi(args[0])
+		if err != nil {
+			return fmt.Errorf("invalid port: %w", err)
+		}
+		fmt.Println("Starting network manager on port: ", port)
 
-	port, err := strconv.Atoi(args[0])
-	if err != nil {
-		return fmt.Errorf("invalid port: %w", err)
-	}
-	fmt.Println("Starting network manager on port: ", port)
+		var knownPeers []string
+		if len(args) > 1 {
+			knownPeers = args[1:]
+		}
 
-	var knownPeers []string
-	if len(args) > 1 {
-		knownPeers = args[1:]
+		deps.startNetworkManager(port, knownPeers)
+	} else {
+		fmt.Println("Network manager disabled: no port provided")
 	}
-
-	deps.startNetworkManager(port, knownPeers)
 
 	fmt.Println("Starting sub Sever on port:", 5845)
 	go func() {

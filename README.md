@@ -12,10 +12,12 @@ go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.8.0
 + execute:
     go build -tags debug
 
-    - when starting 1'st server - ```./TsunamiDB.exe 5845```
-        > ./TsunamiDB <port for node's comunication>
-    - when starting secound server - ```./TsunamiDB-linux 5845 127.0.0.1:5845```
-        > ./TsunamiDB-linux <same port> <ip and port of other server>
+    - local server without P2P network manager - ```./TsunamiDB.exe```
+        > ./TsunamiDB
+    - server with P2P network manager - ```./TsunamiDB.exe 5845```
+        > ./TsunamiDB <port for node's communication>
+    - server joining another node - ```./TsunamiDB-linux 5845 127.0.0.1:5845```
+        > ./TsunamiDB-linux <port for node's communication> <ip and port of other server>
 
 + performance:
 + I5-10400f
