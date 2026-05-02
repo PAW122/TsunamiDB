@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Relational HTTP API</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">HTTP API</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./key-value.html">Key-Value</a>
+        <a class="nav-child" href="./encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./incremental.html">Incremental</a>
+        <a class="nav-child" href="./relational.html">Relational</a>
+        <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./meta.html">Meta</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="../examples/http-go.html">Overview</a>
+          <a class="nav-child" href="../examples/http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="../examples/http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="../examples/http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-health">Meta and Health</a>
+          <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Relational HTTP API</h1>
+      <p class="lead">The relational API exposes fixed-row tables through public-api v1 under <code>/rel/...</code>. It supports schemas, row CRUD, equality and LIKE selects, indexes and compaction.</p>
+
+      <div class="note">
+        Source files: <code>data/relational</code>, <code>servers/public-api/v1/routes/relational.go</code>, and route registration in <code>servers/public-api/v1/Api.go</code>.
+      </div>
+
+      <h2>Current Storage Model</h2>
+      <p>Each table is stored in <code>db/rel</code>. Rows are fixed-size records, so reading by row ID is a direct file offset lookup.</p>
+      <pre><code class="language-text">db/rel/{table}.schema
+db/rel/{table}.rows
+db/rel/{table}.free
+db/rel/{table}.index.{column}
+db/rel/{table}.index.{column}.trigram</code></pre>
+
+      <table>
+        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>.schema</code></td><td>Calculated schema, row size, column offsets and index flags.</td></tr>
+          <tr><td><code>.rows</code></td><td>Fixed-size encoded rows with active/deleted flag and row version.</td></tr>
+          <tr><td><code>.free</code></td><td>Deleted row IDs. Current inserts still append; reuse is not implemented yet.</td></tr>
+          <tr><td><code>.index.{column}</code></td><td>Equality index used by <code>op: "eq"</code>.</td></tr>
+          <tr><td><code>.index.{column}.trigram</code></td><td>Trigram index used by indexed <code>LIKE</code> searches.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Endpoint Index</h2>
+      <table>
+        <thead><tr><th>Method</th><th>Path</th><th>Use</th></tr></thead>
+        <tbody>
+          <tr><td>GET</td><td><code>/rel/schema/{table}</code></td><td>Load calculated schema.</td></tr>
+          <tr><td>POST</td><td><code>/rel/schema/{table}</code></td><td>Create table schema.</td></tr>
+          <tr><td>POST</td><td><code>/rel/{table}/insert</code></td><td>Insert one row.</td></tr>
+          <tr><td>GET</td><td><code>/rel/{table}/row/{rowID}</code></td><td>Read one active row.</td></tr>
+          <tr><td>PATCH</td><td><code>/rel/{table}/row/{rowID}</code></td><td>Update selected columns.</td></tr>
+          <tr><td>POST</td><td><code>/rel/{table}/row/{rowID}</code></td><td>Update selected columns; alias for clients without PATCH.</td></tr>
+          <tr><td>DELETE</td><td><code>/rel/{table}/row/{rowID}</code></td><td>Mark row as deleted.</td></tr>
+          <tr><td>POST</td><td><code>/rel/{table}/select</code></td><td>Select rows by equality or LIKE predicate.</td></tr>
+          <tr><td>POST</td><td><code>/rel/{table}/index/{column}</code></td><td>Create equality index.</td></tr>
+          <tr><td>POST</td><td><code>/rel/{table}/trigram-index/{column}</code></td><td>Create trigram index for string LIKE queries.</td></tr>
+          <tr><td>POST</td><td><code>/rel/{table}/compact</code></td><td>Remove deleted rows, rewrite row IDs and rebuild indexes.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Create Table</h2>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/schema/products \
+  -H "Content-Type: application/json" \
+  -d '{
+    "columns": [
+      {"name": "id", "type": "uint64", "indexed": true},
+      {"name": "name", "type": "string", "size": 32, "indexed": true, "trigram_indexed": true},
+      {"name": "price", "type": "uint64"},
+      {"name": "active", "type": "bool"}
+    ]
+  }'</code></pre>
+      <p>The schema <code>name</code> field can be omitted. If present, it must match the table name in the URL.</p>
+
+      <h2>Insert Row</h2>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/products/insert \
+  -H "Content-Type: application/json" \
+  -d '{
+    "values": {
+      "id": 1,
+      "name": "widget",
+      "price": 100,
+      "active": true
+    }
+  }'</code></pre>
+      <p>Response:</p>
+      <pre><code class="language-json">{
+  "row_id": 0
+}</code></pre>
+
+      <h2>Read Row</h2>
+      <pre><code class="language-bash">curl http://localhost:5844/rel/products/row/0</code></pre>
+      <p>Response:</p>
+      <pre><code class="language-json">{
+  "id": 1,
+  "name": "widget",
+  "price": 100,
+  "active": true
+}</code></pre>
+
+      <h2>Update Row</h2>
+      <pre><code class="language-bash">curl -X PATCH http://localhost:5844/rel/products/row/0 \
+  -H "Content-Type: application/json" \
+  -d '{
+    "values": {
+      "name": "bluewidget",
+      "price": 175
+    }
+  }'</code></pre>
+      <p>Only supplied columns are changed. The current implementation rewrites the row in place and rebuilds configured indexes.</p>
+
+      <h2>Delete Row</h2>
+      <pre><code class="language-bash">curl -X DELETE http://localhost:5844/rel/products/row/0</code></pre>
+      <p>The row is marked inactive and the row ID is appended to <code>{table}.free</code>.</p>
+
+      <h2>Select Rows</h2>
+      <p>Equality query:</p>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/products/select \
+  -H "Content-Type: application/json" \
+  -d '{"column":"name","op":"eq","value":"bluewidget"}'</code></pre>
+      <p>LIKE query:</p>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/products/select \
+  -H "Content-Type: application/json" \
+  -d '{"column":"name","op":"like","value":"%widget%"}'</code></pre>
+      <p>Response:</p>
+      <pre><code class="language-json">[
+  {
+    "row_id": 0,
+    "values": {
+      "id": 1,
+      "name": "bluewidget",
+      "price": 175,
+      "active": true
+    }
+  }
+]</code></pre>
+
+      <h2>Indexes and Compaction</h2>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/products/index/name
+curl -X POST http://localhost:5844/rel/products/trigram-index/name
+curl -X POST http://localhost:5844/rel/products/compact</code></pre>
+      <p>Compaction response contains <code>rows_before</code>, <code>rows_after</code>, <code>removed</code>, and a <code>row_id_map</code> from old row IDs to new row IDs.</p>
+
+      <h2>Supported Column Types</h2>
+      <table>
+        <thead><tr><th>Type</th><th>Size</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>uint64</code></td><td>8 bytes</td><td>Unsigned integer.</td></tr>
+          <tr><td><code>int64</code></td><td>8 bytes</td><td>Signed integer.</td></tr>
+          <tr><td><code>bool</code></td><td>1 byte</td><td>Stored inline.</td></tr>
+          <tr><td><code>float64</code></td><td>8 bytes</td><td>IEEE float64.</td></tr>
+          <tr><td><code>string</code> or <code>string[N]</code></td><td>N bytes</td><td>Fixed-size, zero padded. <code>string</code> requires <code>size</code>.</td></tr>
+          <tr><td><code>blob_ptr</code></td><td>8 bytes</td><td>Pointer-sized value for external data.</td></tr>
+          <tr><td><code>row_ref</code></td><td>8 bytes</td><td>Stores a target row ID. <code>ref_table</code> can declare the target table.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Status Codes</h2>
+      <table>
+        <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>200</code></td><td>Read, update, delete, select, index creation or compaction completed.</td></tr>
+          <tr><td><code>201</code></td><td>Schema or row created.</td></tr>
+          <tr><td><code>400</code></td><td>Invalid schema, row values, row ID, JSON or predicate.</td></tr>
+          <tr><td><code>404</code></td><td>Table or row not found.</td></tr>
+          <tr><td><code>405</code></td><td>Wrong HTTP method.</td></tr>
+          <tr><td><code>409</code></td><td>Table already exists.</td></tr>
+          <tr><td><code>500</code></td><td>Corrupt rows file or unexpected storage error.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Manual Testing Tool</h2>
+      <p>Open <code>tools/relational-admin.html</code> in a browser. Enter the public API host and port, then use the UI to create schemas, insert/read/update/delete rows, run selects, create indexes and compact tables.</p>
+
+      <h2>Current Limitations</h2>
+      <ul>
+        <li>Deleted row IDs are recorded in <code>.free</code>, but inserts do not reuse them yet.</li>
+        <li>Update and delete rebuild configured indexes instead of applying a minimal delta update.</li>
+        <li>Row-reference joins are currently available in the Go package, not through HTTP.</li>
+        <li>There is no SQL parser.</li>
+      </ul>
+
+      <div class="machine-block">ai_keywords: relational db, fixed rows, schema, CRUD, select, eq, like, trigram index, compaction, row_id
+source_files: data/relational/*.go, servers/public-api/v1/routes/relational.go, tools/relational-admin.html</div>
+    </main>
+  </div>
+  <script src="../assets/syntax-highlight.js"></script>
+</body>
+</html>

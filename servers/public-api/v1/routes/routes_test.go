@@ -106,6 +106,101 @@ func TestSaveAndReadEndpoints(t *testing.T) {
 	}
 }
 
+func TestRelationalEndpointsCRUD(t *testing.T) {
+	setupRoutesTest(t)
+
+	schemaBody := bytes.NewBufferString(`{
+		"columns": [
+			{"name":"id","type":"uint64","indexed":true},
+			{"name":"name","type":"string","size":16,"indexed":true,"trigram_indexed":true},
+			{"name":"price","type":"uint64"},
+			{"name":"active","type":"bool"}
+		]
+	}`)
+	create := perform(RelationalSchema, http.MethodPost, "/rel/schema/products", schemaBody, nil)
+	if create.Code != http.StatusCreated {
+		t.Fatalf("create schema status: %d body=%s", create.Code, create.Body.String())
+	}
+
+	insert := perform(Relational, http.MethodPost, "/rel/products/insert", bytes.NewBufferString(`{
+		"values": {"id": 1, "name": "widget", "price": 100, "active": true}
+	}`), nil)
+	if insert.Code != http.StatusCreated {
+		t.Fatalf("insert status: %d body=%s", insert.Code, insert.Body.String())
+	}
+	var inserted struct {
+		RowID uint64 `json:"row_id"`
+	}
+	if err := json.Unmarshal(insert.Body.Bytes(), &inserted); err != nil {
+		t.Fatalf("decode insert response: %v", err)
+	}
+	if inserted.RowID != 0 {
+		t.Fatalf("row_id = %d, want 0", inserted.RowID)
+	}
+
+	read := perform(Relational, http.MethodGet, "/rel/products/row/0", nil, nil)
+	if read.Code != http.StatusOK {
+		t.Fatalf("read status: %d body=%s", read.Code, read.Body.String())
+	}
+	var row map[string]any
+	if err := json.Unmarshal(read.Body.Bytes(), &row); err != nil {
+		t.Fatalf("decode read response: %v", err)
+	}
+	if row["name"] != "widget" || row["price"] != float64(100) || row["active"] != true {
+		t.Fatalf("read row = %+v, want inserted values", row)
+	}
+
+	update := perform(Relational, http.MethodPatch, "/rel/products/row/0", bytes.NewBufferString(`{
+		"values": {"name": "bluewidget", "price": 175}
+	}`), nil)
+	if update.Code != http.StatusOK {
+		t.Fatalf("update status: %d body=%s", update.Code, update.Body.String())
+	}
+
+	selected := perform(Relational, http.MethodPost, "/rel/products/select", bytes.NewBufferString(`{
+		"column": "name",
+		"op": "eq",
+		"value": "bluewidget"
+	}`), nil)
+	if selected.Code != http.StatusOK {
+		t.Fatalf("select status: %d body=%s", selected.Code, selected.Body.String())
+	}
+	var selectedRows []struct {
+		RowID  uint64         `json:"row_id"`
+		Values map[string]any `json:"values"`
+	}
+	if err := json.Unmarshal(selected.Body.Bytes(), &selectedRows); err != nil {
+		t.Fatalf("decode select response: %v", err)
+	}
+	if len(selectedRows) != 1 || selectedRows[0].RowID != 0 || selectedRows[0].Values["price"] != float64(175) {
+		t.Fatalf("selected rows = %+v, want updated row", selectedRows)
+	}
+
+	del := perform(Relational, http.MethodDelete, "/rel/products/row/0", nil, nil)
+	if del.Code != http.StatusOK {
+		t.Fatalf("delete status: %d body=%s", del.Code, del.Body.String())
+	}
+	missing := perform(Relational, http.MethodGet, "/rel/products/row/0", nil, nil)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("read deleted status = %d, want 404; body=%s", missing.Code, missing.Body.String())
+	}
+}
+
+func TestRelationalEndpointsAllowBrowserPreflight(t *testing.T) {
+	setupRoutesTest(t)
+
+	resp := perform(Relational, http.MethodOptions, "/rel/products/row/0", nil, nil)
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("OPTIONS status = %d, want 204", resp.Code)
+	}
+	if got := resp.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("allow origin = %q, want *", got)
+	}
+	if got := resp.Header().Get("Access-Control-Allow-Methods"); got == "" {
+		t.Fatal("Access-Control-Allow-Methods is empty")
+	}
+}
+
 func TestSaveValidation(t *testing.T) {
 	setupRoutesTest(t)
 	resp := perform(AsyncSave, http.MethodGet, "/save/table/key", nil, nil)

@@ -51,6 +51,12 @@ func TestNewMuxAndServer(t *testing.T) {
 		t.Fatalf("health through mux status: %d body=%s", rr.Code, rr.Body.String())
 	}
 
+	rel := httptest.NewRecorder()
+	mux.ServeHTTP(rel, httptest.NewRequest(http.MethodGet, "/rel/schema/missing", nil))
+	if rel.Code != http.StatusNotFound {
+		t.Fatalf("rel schema through mux status: %d body=%s", rel.Code, rel.Body.String())
+	}
+
 	server := newServer(1234, mux)
 	if server.Addr != ":1234" {
 		t.Fatalf("unexpected addr: %s", server.Addr)

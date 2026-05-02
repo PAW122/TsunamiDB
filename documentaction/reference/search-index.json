@@ -49,6 +49,14 @@
       "source": ["servers/public-api/v1/routes/inc_save.go", "servers/public-api/v1/routes/inc_read.go", "servers/public-api/v1/routes/inc_delete.go"]
     },
     {
+      "id": "relational",
+      "method": "POST/GET/PATCH/DELETE",
+      "path": "/rel/schema/{table}, /rel/{table}/insert, /rel/{table}/row/{rowID}, /rel/{table}/select, /rel/{table}/index/{column}, /rel/{table}/trigram-index/{column}, /rel/{table}/compact",
+      "page": "../http/relational.html",
+      "keywords": ["relational", "schema", "fixed rows", "row_id", "CRUD", "select", "eq", "like", "index", "trigram", "compact"],
+      "source": ["data/relational/*.go", "servers/public-api/v1/routes/relational.go", "tools/relational-admin.html"]
+    },
+    {
       "id": "subscriptions",
       "method": "POST/WS",
       "path": "/subscriptions/enable, /subscriptions/disable, ws://localhost:5845/sub",

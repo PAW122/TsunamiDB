@@ -22,9 +22,28 @@
 
     out = escapeHTML(out);
 
+    function resolveToken(index, resolving) {
+      if (resolving[index]) {
+        return tokens[index];
+      }
+
+      resolving[index] = true;
+      var rendered = tokens[index];
+      tokens.forEach(function (_, nestedIndex) {
+        var id = String.fromCharCode(0xE000 + nestedIndex);
+        if (rendered.indexOf(id) === -1) {
+          return;
+        }
+        rendered = rendered.split(id).join(resolveToken(nestedIndex, resolving));
+      });
+      resolving[index] = false;
+      tokens[index] = rendered;
+      return rendered;
+    }
+
     tokens.forEach(function (token, index) {
       var id = String.fromCharCode(0xE000 + index);
-      out = out.split(id).join(token);
+      out = out.split(id).join(resolveToken(index, {}));
     });
 
     return out;

@@ -50,6 +50,8 @@ func newMux() *http.ServeMux {
 	mux.HandleFunc("/read_inc/", withClient(routes.ReadIncremental))
 	mux.HandleFunc("/delete_inc/", withClient(routes.DeleteIncremental))
 	mux.HandleFunc("/key_by_regex/", withClient(routes.GetKeysByRegex))
+	mux.HandleFunc("/rel/schema/", withClient(routes.RelationalSchema))
+	mux.HandleFunc("/rel/", withClient(routes.Relational))
 	mux.HandleFunc("/health", withClient(routes.Health))
 
 	return mux

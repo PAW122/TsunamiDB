@@ -21,6 +21,7 @@
         <a class="nav-child" href="../http/key-value.html">Key-Value</a>
         <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
         <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/relational.html">Relational</a>
         <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
         <a class="nav-child" href="../http/meta.html">Meta</a>
         <p class="nav-group">Examples</p>
@@ -67,6 +68,7 @@ dll_status: not implemented as stable c-shared ABI</div>
           <tr><td>Nested JSON</td><td><code>mode: save_nested_json</code>, <code>read_nested</code>, <code>read_only_nested</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/nested.go</code></td></tr>
           <tr><td>Encrypted save/read</td><td><code>/save_encrypted</code>, <code>/read_encrypted</code></td><td><a href="../http/encrypted.html">Encrypted</a></td><td><code>routes/save_encrypted.go</code>, <code>routes/read_encrypted.go</code></td></tr>
           <tr><td>Incremental append/read/delete</td><td><code>/save_inc</code>, <code>/read_inc</code>, <code>/delete_inc</code></td><td><a href="../http/incremental.html">Incremental</a></td><td><code>routes/inc_*.go</code></td></tr>
+          <tr><td>Relational schema, CRUD and select</td><td><code>/rel/schema/{table}</code>, <code>/rel/{table}/row/{rowID}</code>, <code>/rel/{table}/select</code></td><td><a href="../http/relational.html">Relational</a></td><td><code>routes/relational.go</code>, <code>data/relational/*.go</code></td></tr>
           <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
           <tr><td>Regex key search</td><td><code>GET /key_by_regex/{table}?regex=...&amp;max=...</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/keyByRegex.go</code></td></tr>
           <tr><td>Health</td><td><code>GET /health</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/health.go</code></td></tr>

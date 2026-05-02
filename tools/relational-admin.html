@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Relational Admin</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fb;
+      --panel: #ffffff;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d9dde7;
+      --accent: #16745f;
+      --accent-strong: #0f5a49;
+      --danger: #b42318;
+      --warn: #b54708;
+      --code: #101828;
+      --shadow: 0 10px 28px rgba(16, 24, 40, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 340px minmax(0, 1fr);
+    }
+
+    aside {
+      background: #202733;
+      color: #f8fafc;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    main {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    h2 {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    aside label {
+      color: #b8c0cc;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 11px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      outline: none;
+    }
+
+    aside input {
+      border-color: #3a4556;
+      background: #111827;
+      color: #f8fafc;
+    }
+
+    textarea {
+      min-height: 136px;
+      resize: vertical;
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 12px;
+      color: var(--code);
+    }
+
+    button {
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 9px 12px;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      min-height: 38px;
+    }
+
+    button:hover {
+      background: var(--accent-strong);
+    }
+
+    button.secondary {
+      background: #fff;
+      color: var(--ink);
+      border-color: var(--line);
+    }
+
+    button.secondary:hover {
+      background: #f2f4f7;
+    }
+
+    button.danger {
+      background: var(--danger);
+    }
+
+    button.danger:hover {
+      background: #8f1d14;
+    }
+
+    .field {
+      margin-bottom: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 16px;
+    }
+
+    .sidebar-panel {
+      border: 1px solid #3a4556;
+      border-radius: 8px;
+      padding: 14px;
+      background: #151d29;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .toolbar,
+    .row-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+    }
+
+    .tab {
+      background: transparent;
+      color: var(--muted);
+      border: 0;
+      border-radius: 6px 6px 0 0;
+      min-height: 36px;
+      white-space: nowrap;
+    }
+
+    .tab:hover,
+    .tab.active {
+      color: var(--ink);
+      background: #e9edf5;
+    }
+
+    .tab-page {
+      display: none;
+      padding-top: 16px;
+    }
+
+    .tab-page.active {
+      display: block;
+    }
+
+    .status {
+      min-height: 42px;
+      border-radius: 6px;
+      padding: 10px 12px;
+      border: 1px solid #3a4556;
+      background: #111827;
+      color: #d1d5db;
+      word-break: break-word;
+    }
+
+    .status.ok {
+      border-color: #287a5a;
+      color: #d9f7eb;
+    }
+
+    .status.err {
+      border-color: #b42318;
+      color: #ffe4e0;
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    aside .small {
+      color: #b8c0cc;
+    }
+
+    .split-inputs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      max-height: 460px;
+    }
+
+    table {
+      width: 100%;
+      min-width: 640px;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: #f2f4f7;
+      z-index: 1;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #475467;
+    }
+
+    td code,
+    pre {
+      font-family: "Cascadia Mono", Consolas, monospace;
+      font-size: 12px;
+    }
+
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .output {
+      background: #101828;
+      color: #e4e7ec;
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 180px;
+      max-height: 460px;
+      overflow: auto;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: static;
+      }
+
+      .grid,
+      .split-inputs {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div>
+        <h1>TsunamiDB Rel Admin</h1>
+        <div class="small">Manual tester for the public relational API.</div>
+      </div>
+
+      <div class="sidebar-panel">
+        <div class="field">
+          <label for="host">Host</label>
+          <input id="host" value="http://localhost" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="port">Port</label>
+          <input id="port" value="8080" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="table">Table</label>
+          <input id="table" value="products" spellcheck="false">
+        </div>
+        <div class="toolbar">
+          <button id="saveConnection">Save</button>
+          <button class="secondary" id="loadSchema">Load Schema</button>
+        </div>
+      </div>
+
+      <div class="sidebar-panel">
+        <h3>Current Target</h3>
+        <p class="small" id="targetPreview"></p>
+        <div id="status" class="status">Ready.</div>
+      </div>
+    </aside>
+
+    <main>
+      <section class="panel">
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="schema">Schema</button>
+          <button class="tab" data-tab="crud">CRUD</button>
+          <button class="tab" data-tab="query">Query</button>
+          <button class="tab" data-tab="maintenance">Indexes</button>
+          <button class="tab" data-tab="result">Result</button>
+        </div>
+
+        <div id="schema" class="tab-page active">
+          <div class="grid">
+            <div>
+              <h2>Schema JSON</h2>
+              <p class="small">The name can be omitted; the table input is used.</p>
+              <textarea id="schemaJson" spellcheck="false">{
+  "columns": [
+    {"name": "id", "type": "uint64", "indexed": true},
+    {"name": "name", "type": "string", "size": 32, "indexed": true, "trigram_indexed": true},
+    {"name": "price", "type": "uint64"},
+    {"name": "active", "type": "bool"}
+  ]
+}</textarea>
+              <div class="toolbar">
+                <button id="createSchema">Create Table</button>
+                <button class="secondary" id="refreshSchema">Refresh</button>
+              </div>
+            </div>
+            <div>
+              <h2>Schema View</h2>
+              <div id="schemaView" class="table-wrap"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="crud" class="tab-page">
+          <div class="grid">
+            <div>
+              <h2>Create</h2>
+              <textarea id="insertJson" spellcheck="false">{
+  "id": 1,
+  "name": "widget",
+  "price": 100,
+  "active": true
+}</textarea>
+              <button id="insertRow">Insert Row</button>
+            </div>
+            <div>
+              <h2>Read, Update, Delete</h2>
+              <div class="field">
+                <label for="rowId">Row ID</label>
+                <input id="rowId" value="0" inputmode="numeric">
+              </div>
+              <textarea id="updateJson" spellcheck="false">{
+  "name": "bluewidget",
+  "price": 175
+}</textarea>
+              <div class="toolbar">
+                <button class="secondary" id="readRow">Read</button>
+                <button id="updateRow">Update</button>
+                <button class="danger" id="deleteRow">Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="query" class="tab-page">
+          <div class="grid">
+            <div>
+              <h2>Select</h2>
+              <div class="split-inputs">
+                <div>
+                  <label for="predicateColumn">Column</label>
+                  <input id="predicateColumn" value="name">
+                </div>
+                <div>
+                  <label for="predicateOp">Operator</label>
+                  <select id="predicateOp">
+                    <option value="eq">eq</option>
+                    <option value="like">like</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="predicateValue">Value</label>
+                  <input id="predicateValue" value="widget">
+                </div>
+              </div>
+              <div class="toolbar">
+                <button id="selectRows">Run Select</button>
+                <button class="secondary" id="selectLikeWidget">LIKE %widget%</button>
+              </div>
+            </div>
+            <div>
+              <h2>Raw Predicate</h2>
+              <textarea id="predicateJson" spellcheck="false">{
+  "column": "name",
+  "op": "eq",
+  "value": "widget"
+}</textarea>
+              <button class="secondary" id="selectRaw">Run Raw</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="maintenance" class="tab-page">
+          <div class="grid">
+            <div>
+              <h2>Indexes</h2>
+              <div class="field">
+                <label for="indexColumn">Column</label>
+                <input id="indexColumn" value="name">
+              </div>
+              <div class="toolbar">
+                <button id="createIndex">Equality Index</button>
+                <button id="createTrigram">Trigram Index</button>
+              </div>
+            </div>
+            <div>
+              <h2>Storage</h2>
+              <div class="toolbar">
+                <button class="secondary" id="compactTable">Compact Table</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="result" class="tab-page">
+          <h2>Raw Response</h2>
+          <div class="output"><pre id="rawOutput">{}</pre></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="toolbar">
+          <h2>Data View</h2>
+          <button class="secondary" id="clearView">Clear</button>
+        </div>
+        <div id="dataView" class="table-wrap"></div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const els = {
+      host: document.getElementById("host"),
+      port: document.getElementById("port"),
+      table: document.getElementById("table"),
+      status: document.getElementById("status"),
+      targetPreview: document.getElementById("targetPreview"),
+      schemaJson: document.getElementById("schemaJson"),
+      schemaView: document.getElementById("schemaView"),
+      insertJson: document.getElementById("insertJson"),
+      updateJson: document.getElementById("updateJson"),
+      rowId: document.getElementById("rowId"),
+      predicateColumn: document.getElementById("predicateColumn"),
+      predicateOp: document.getElementById("predicateOp"),
+      predicateValue: document.getElementById("predicateValue"),
+      predicateJson: document.getElementById("predicateJson"),
+      indexColumn: document.getElementById("indexColumn"),
+      rawOutput: document.getElementById("rawOutput"),
+      dataView: document.getElementById("dataView")
+    };
+
+    function baseURL() {
+      return `${els.host.value.replace(/\/$/, "")}:${els.port.value.trim()}`;
+    }
+
+    function tableName() {
+      return encodeURIComponent(els.table.value.trim());
+    }
+
+    function endpoint(path) {
+      return `${baseURL()}${path}`;
+    }
+
+    function updateTarget() {
+      els.targetPreview.textContent = `${baseURL()} / table: ${els.table.value.trim()}`;
+      localStorage.setItem("relAdminHost", els.host.value);
+      localStorage.setItem("relAdminPort", els.port.value);
+      localStorage.setItem("relAdminTable", els.table.value);
+    }
+
+    function restoreConnection() {
+      els.host.value = localStorage.getItem("relAdminHost") || els.host.value;
+      els.port.value = localStorage.getItem("relAdminPort") || els.port.value;
+      els.table.value = localStorage.getItem("relAdminTable") || els.table.value;
+      updateTarget();
+    }
+
+    function setStatus(message, ok = true) {
+      els.status.textContent = message;
+      els.status.className = `status ${ok ? "ok" : "err"}`;
+    }
+
+    function parseJSONInput(textarea) {
+      try {
+        return JSON.parse(textarea.value);
+      } catch (err) {
+        throw new Error(`Invalid JSON: ${err.message}`);
+      }
+    }
+
+    function parseValue(raw) {
+      const trimmed = raw.trim();
+      if (trimmed === "true") return true;
+      if (trimmed === "false") return false;
+      if (trimmed === "null") return null;
+      if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+      return raw;
+    }
+
+    async function request(path, options = {}) {
+      updateTarget();
+      const response = await fetch(endpoint(path), {
+        ...options,
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+      const text = await response.text();
+      let body = text;
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = text;
+      }
+      els.rawOutput.textContent = JSON.stringify(body, null, 2);
+      if (!response.ok) {
+        throw new Error(typeof body === "string" ? body : JSON.stringify(body));
+      }
+      return body;
+    }
+
+    function renderSchema(schema) {
+      if (!schema || !schema.columns) {
+        els.schemaView.innerHTML = "<div class=\"small\" style=\"padding: 12px;\">No schema loaded.</div>";
+        return;
+      }
+      const rows = schema.columns.map(column => `
+        <tr>
+          <td><code>${escapeHTML(column.name)}</code></td>
+          <td>${escapeHTML(column.type)}</td>
+          <td>${column.offset ?? ""}</td>
+          <td>${column.size ?? ""}</td>
+          <td>${column.indexed ? "yes" : ""}</td>
+          <td>${column.trigram_indexed ? "yes" : ""}</td>
+          <td>${escapeHTML(column.ref_table || "")}</td>
+        </tr>
+      `).join("");
+      els.schemaView.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>Type</th><th>Offset</th><th>Size</th>
+              <th>Index</th><th>Trigram</th><th>Ref</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderData(value) {
+      const rows = normalizeRows(value);
+      if (rows.length === 0) {
+        els.dataView.innerHTML = "<div class=\"small\" style=\"padding: 12px;\">No rows.</div>";
+        return;
+      }
+
+      const columns = Array.from(rows.reduce((set, row) => {
+        Object.keys(row).forEach(key => set.add(key));
+        return set;
+      }, new Set(["row_id"])));
+
+      const head = columns.map(column => `<th>${escapeHTML(column)}</th>`).join("") + "<th>Actions</th>";
+      const body = rows.map(row => {
+        const cells = columns.map(column => `<td>${formatCell(row[column])}</td>`).join("");
+        const actions = row.row_id === undefined ? "" : `
+          <button class="secondary row-read" data-row-id="${row.row_id}">Read</button>
+          <button class="danger row-delete" data-row-id="${row.row_id}">Delete</button>
+        `;
+        return `<tr>${cells}<td><div class="row-actions">${actions}</div></td></tr>`;
+      }).join("");
+
+      els.dataView.innerHTML = `
+        <table>
+          <thead><tr>${head}</tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      `;
+    }
+
+    function normalizeRows(value) {
+      if (Array.isArray(value)) {
+        return value.map(row => {
+          if (row && typeof row === "object" && "values" in row) {
+            return { row_id: row.row_id, ...row.values };
+          }
+          return row;
+        });
+      }
+      if (value && typeof value === "object" && "values" in value) {
+        return [{ row_id: value.row_id, ...value.values }];
+      }
+      if (value && typeof value === "object" && !("status" in value) && !("row_size" in value)) {
+        return [value];
+      }
+      return [];
+    }
+
+    function formatCell(value) {
+      if (value === undefined || value === null) return "";
+      if (typeof value === "object") return `<pre>${escapeHTML(JSON.stringify(value, null, 2))}</pre>`;
+      return escapeHTML(String(value));
+    }
+
+    function escapeHTML(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    async function run(label, fn) {
+      try {
+        setStatus(`${label}...`, true);
+        const result = await fn();
+        setStatus(`${label}: OK`, true);
+        return result;
+      } catch (err) {
+        setStatus(`${label}: ${err.message}`, false);
+      }
+    }
+
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(item => item.classList.remove("active"));
+        document.querySelectorAll(".tab-page").forEach(item => item.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
+    });
+
+    document.getElementById("saveConnection").addEventListener("click", updateTarget);
+    [els.host, els.port, els.table].forEach(input => input.addEventListener("input", updateTarget));
+
+    async function loadSchema() {
+      const schema = await request(`/rel/schema/${tableName()}`);
+      renderSchema(schema);
+      return schema;
+    }
+
+    document.getElementById("loadSchema").addEventListener("click", () => run("Load schema", loadSchema));
+    document.getElementById("refreshSchema").addEventListener("click", () => run("Refresh schema", loadSchema));
+
+    document.getElementById("createSchema").addEventListener("click", () => run("Create table", async () => {
+      const schema = parseJSONInput(els.schemaJson);
+      const result = await request(`/rel/schema/${tableName()}`, {
+        method: "POST",
+        body: JSON.stringify(schema)
+      });
+      renderSchema(result);
+      return result;
+    }));
+
+    document.getElementById("insertRow").addEventListener("click", () => run("Insert row", async () => {
+      const values = parseJSONInput(els.insertJson);
+      const result = await request(`/rel/${tableName()}/insert`, {
+        method: "POST",
+        body: JSON.stringify({ values })
+      });
+      renderData(result);
+      return result;
+    }));
+
+    async function readRow(rowID = els.rowId.value.trim()) {
+      const result = await request(`/rel/${tableName()}/row/${encodeURIComponent(rowID)}`);
+      renderData(result);
+      return result;
+    }
+
+    document.getElementById("readRow").addEventListener("click", () => run("Read row", () => readRow()));
+
+    document.getElementById("updateRow").addEventListener("click", () => run("Update row", async () => {
+      const values = parseJSONInput(els.updateJson);
+      const result = await request(`/rel/${tableName()}/row/${encodeURIComponent(els.rowId.value.trim())}`, {
+        method: "PATCH",
+        body: JSON.stringify({ values })
+      });
+      await readRow();
+      return result;
+    }));
+
+    async function deleteRow(rowID = els.rowId.value.trim()) {
+      const result = await request(`/rel/${tableName()}/row/${encodeURIComponent(rowID)}`, {
+        method: "DELETE"
+      });
+      renderData([]);
+      return result;
+    }
+
+    document.getElementById("deleteRow").addEventListener("click", () => run("Delete row", () => deleteRow()));
+
+    document.getElementById("selectRows").addEventListener("click", () => run("Select rows", async () => {
+      const predicate = {
+        column: els.predicateColumn.value.trim(),
+        op: els.predicateOp.value,
+        value: parseValue(els.predicateValue.value)
+      };
+      els.predicateJson.value = JSON.stringify(predicate, null, 2);
+      const result = await request(`/rel/${tableName()}/select`, {
+        method: "POST",
+        body: JSON.stringify(predicate)
+      });
+      renderData(result);
+      return result;
+    }));
+
+    document.getElementById("selectRaw").addEventListener("click", () => run("Raw select", async () => {
+      const predicate = parseJSONInput(els.predicateJson);
+      const result = await request(`/rel/${tableName()}/select`, {
+        method: "POST",
+        body: JSON.stringify(predicate)
+      });
+      renderData(result);
+      return result;
+    }));
+
+    document.getElementById("selectLikeWidget").addEventListener("click", () => {
+      els.predicateColumn.value = "name";
+      els.predicateOp.value = "like";
+      els.predicateValue.value = "%widget%";
+      document.getElementById("selectRows").click();
+    });
+
+    document.getElementById("createIndex").addEventListener("click", () => run("Create equality index", async () => {
+      const result = await request(`/rel/${tableName()}/index/${encodeURIComponent(els.indexColumn.value.trim())}`, {
+        method: "POST"
+      });
+      await loadSchema();
+      return result;
+    }));
+
+    document.getElementById("createTrigram").addEventListener("click", () => run("Create trigram index", async () => {
+      const result = await request(`/rel/${tableName()}/trigram-index/${encodeURIComponent(els.indexColumn.value.trim())}`, {
+        method: "POST"
+      });
+      await loadSchema();
+      return result;
+    }));
+
+    document.getElementById("compactTable").addEventListener("click", () => run("Compact table", async () => {
+      const result = await request(`/rel/${tableName()}/compact`, {
+        method: "POST"
+      });
+      renderData(result);
+      return result;
+    }));
+
+    document.getElementById("clearView").addEventListener("click", () => {
+      renderData([]);
+      els.rawOutput.textContent = "{}";
+    });
+
+    els.dataView.addEventListener("click", event => {
+      const read = event.target.closest(".row-read");
+      const del = event.target.closest(".row-delete");
+      if (read) {
+        els.rowId.value = read.dataset.rowId;
+        run("Read row", () => readRow(read.dataset.rowId));
+      }
+      if (del) {
+        els.rowId.value = del.dataset.rowId;
+        run("Delete row", () => deleteRow(del.dataset.rowId));
+      }
+    });
+
+    restoreConnection();
+    renderSchema(null);
+    renderData([]);
+  </script>
+</body>
+</html>
