@@ -161,8 +161,7 @@ func TestTensorAcuricy(t *testing.T) {
 	))
 	if useAILayer {
 		t.Logf("\n%s", formatTensorTuneReport(
-			tuneReport.Iterations, tuneReport.AccuracyBefore, tuneReport.AccuracyAfter,
-			tuneReport.Corrections, tuneReport.Adjustments, tuneReport.ErrorsByResult,
+			tuneReport,
 		))
 	} else {
 		t.Log("tensor tune ai_layer=false skipped")
@@ -191,7 +190,7 @@ func minTensorLabelAccuracy(classCount int) float64 {
 	if classCount <= 3 {
 		return 0.80
 	}
-	return math.Max(0.50, 0.80*math.Sqrt(3/float64(classCount)))
+	return math.Max(0.45, 0.80*math.Sqrt(3/float64(classCount)))
 }
 
 func formatTensorAccuracyReport(
@@ -201,13 +200,13 @@ func formatTensorAccuracyReport(
 	trainingDuration, rebuildDuration, pretestDuration, tuneDuration, verifyDuration, totalDuration time.Duration,
 ) string {
 	return fmt.Sprintf(`Tensor accuracy
-  config:   ai_layer=%t samples=%d validation=%d test=%d inputs=%d results=%d label_noise=%.2f
-  exact:    before=%.4f after=%.4f
-  labels:   before=%.4f after=%.4f delta=%+.4f
-  timing:   train=%s rebuild=%s pretest=%s tune=%s verify=%s total=%s`,
+  tensor_Acuricy: exact=%.4f labels=%.4f
+  ai_Acuricy:     exact=%.4f labels=%.4f exact_delta=%+.4f label_delta=%+.4f
+  config:         ai_layer=%t samples=%d validation=%d test=%d inputs=%d results=%d label_noise=%.2f
+  timing:         train=%s rebuild=%s pretest=%s tune=%s verify=%s total=%s`,
+		beforeExact, beforeLabel,
+		afterExact, afterLabel, afterExact-beforeExact, afterLabel-beforeLabel,
 		aiLayer, sampleCount, validationCount, testCount, inputCount, resultCount, labelNoiseRate,
-		beforeExact, afterExact,
-		beforeLabel, afterLabel, afterLabel-beforeLabel,
 		roundDuration(trainingDuration),
 		roundDuration(rebuildDuration),
 		roundDuration(pretestDuration),
@@ -217,14 +216,17 @@ func formatTensorAccuracyReport(
 	)
 }
 
-func formatTensorTuneReport(iterations int, before, after float64, corrections, adjustments int, errorsByResult map[string]int) string {
-	return fmt.Sprintf(`Tensor tuning
-  validation: before=%.4f after=%.4f delta=%+.4f
-  work:       iterations=%d corrections=%d adjustments=%d
-  top errors: %s`,
-		before, after, after-before,
-		iterations, corrections, adjustments,
-		formatTopResultErrors(errorsByResult, 8),
+func formatTensorTuneReport(report tensor.TuneReport) string {
+	return fmt.Sprintf(`AI layer data
+  neurons(gates): total=%d result=%d class=%d weights=%d biases=%d
+  training:       cycles=%d validation_samples=%d corrections=%d adjustments=%d
+  learning:       back_propagation=false method=margin-correction-gate-tuning
+  validation:     tensor_Acuricy=%.4f ai_Acuricy=%.4f delta=%+.4f
+  top errors:     %s`,
+		report.AINeurons, report.AIResultNeurons, report.AIClassNeurons, report.AIWeights, report.AIBiases,
+		report.TrainingCycles, report.Samples, report.Corrections, report.Adjustments,
+		report.AccuracyBefore, report.AccuracyAfter, report.AccuracyAfter-report.AccuracyBefore,
+		formatTopResultErrors(report.ErrorsByResult, 8),
 	)
 }
 

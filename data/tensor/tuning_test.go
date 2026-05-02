@@ -38,6 +38,9 @@ func TestTuneWeightsAdjustsAndStatsPayloadPreservesResultGates(t *testing.T) {
 	if report.Corrections == 0 || report.Adjustments == 0 {
 		t.Fatalf("unexpected tune report: %#v", report)
 	}
+	if report.TrainingCycles == 0 || report.AINeurons == 0 || report.AIWeights == 0 || report.AIBiases == 0 {
+		t.Fatalf("missing AI layer stats in tune report: %#v", report)
+	}
 
 	weight := table.stats.resultInputWeight("result", 0)
 	if weight >= 1 {

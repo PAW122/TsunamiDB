@@ -78,6 +78,12 @@ type TuneOptions struct {
 type TuneReport struct {
 	Samples            int                            `json:"samples"`
 	Iterations         int                            `json:"iterations"`
+	TrainingCycles     int                            `json:"training_cycles"`
+	AINeurons          int                            `json:"ai_neurons"`
+	AIResultNeurons    int                            `json:"ai_result_neurons"`
+	AIClassNeurons     int                            `json:"ai_class_neurons"`
+	AIWeights          int                            `json:"ai_weights"`
+	AIBiases           int                            `json:"ai_biases"`
 	AccuracyBefore     float64                        `json:"accuracy_before"`
 	AccuracyAfter      float64                        `json:"accuracy_after"`
 	Corrections        int                            `json:"corrections"`

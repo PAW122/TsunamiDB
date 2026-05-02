@@ -24,6 +24,7 @@ func (t *Table) TuneWeights(samples []Sample, options TuneOptions) (TuneReport, 
 	report := TuneReport{
 		Samples:        len(samples),
 		Iterations:     params.Iterations,
+		TrainingCycles: params.Iterations,
 		ErrorsByResult: make(map[string]int),
 	}
 	if len(samples) == 0 {
@@ -81,8 +82,36 @@ func (t *Table) TuneWeights(samples []Sample, options TuneOptions) (TuneReport, 
 	}
 	report.TopBoosted, report.TopSuppressed = t.gateWeightSummaries(t.stats.ResultGates, tuneSummaryLimit, false)
 	report.TopClassBoosted, report.TopClassSuppressed = t.gateWeightSummaries(t.stats.LabelGates, tuneSummaryLimit, true)
+	resultNeurons, resultWeights, resultBiases := countAIGates(t.stats.ResultGates)
+	classNeurons, classWeights, classBiases := countAIGates(t.stats.LabelGates)
+	report.AIResultNeurons = resultNeurons
+	report.AIClassNeurons = classNeurons
+	report.AINeurons = report.AIResultNeurons + report.AIClassNeurons
+	report.AIWeights = resultWeights + classWeights
+	report.AIBiases = resultBiases + classBiases
 	progress.finish()
 	return report, nil
+}
+
+func countAIGates(gates map[string]*resultGate) (neurons, weights, biases int) {
+	for _, gate := range gates {
+		if gate == nil {
+			continue
+		}
+		active := false
+		if len(gate.InputWeights) != 0 {
+			active = true
+			weights += len(gate.InputWeights)
+		}
+		if gate.Bias != 0 {
+			active = true
+			biases++
+		}
+		if active {
+			neurons++
+		}
+	}
+	return neurons, weights, biases
 }
 
 type tuneProgress struct {

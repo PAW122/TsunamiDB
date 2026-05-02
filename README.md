@@ -94,6 +94,6 @@ $env:TSU_STABILITY_MAX_PAYLOAD_BYTES='4096'
 ## Test Tensor System
 ```bash
 $env:TSU_TENSOR_ACCURACY_TEST='1'
-$TSU_TENSOR_KEEP_DIR='1'
+$env:TSU_TENSOR_KEEP_DIR='1'
 go test ./tests -run TestTensorAcuricy -count=1 -v
 ```
