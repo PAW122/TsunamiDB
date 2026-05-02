@@ -66,6 +66,32 @@ type Prediction struct {
 	Results []PredictedResult `json:"results"`
 }
 
+type TuneOptions struct {
+	Iterations     int     `json:"iterations,omitempty"`
+	LearningRate   float64 `json:"learning_rate,omitempty"`
+	Regularization float64 `json:"regularization,omitempty"`
+	MinWeight      float64 `json:"min_weight,omitempty"`
+	MaxWeight      float64 `json:"max_weight,omitempty"`
+}
+
+type TuneReport struct {
+	Samples        int                            `json:"samples"`
+	Iterations     int                            `json:"iterations"`
+	AccuracyBefore float64                        `json:"accuracy_before"`
+	AccuracyAfter  float64                        `json:"accuracy_after"`
+	Corrections    int                            `json:"corrections"`
+	Adjustments    int                            `json:"adjustments"`
+	ErrorsByResult map[string]int                 `json:"errors_by_result,omitempty"`
+	TopBoosted     map[string][]GateWeightSummary `json:"top_boosted,omitempty"`
+	TopSuppressed  map[string][]GateWeightSummary `json:"top_suppressed,omitempty"`
+}
+
+type GateWeightSummary struct {
+	Input  string  `json:"input"`
+	Index  int     `json:"index"`
+	Weight float64 `json:"weight"`
+}
+
 type PredictedResult struct {
 	Key         string      `json:"key"`
 	Value       string      `json:"value"`

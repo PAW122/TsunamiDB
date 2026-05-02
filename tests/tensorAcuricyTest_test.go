@@ -27,11 +27,12 @@ func TestTensorAcuricy(t *testing.T) {
 		inputCount     = 100 // amount of different parameters
 		resultCount    = 3
 		classCount     = 3
-		labelNoiseRate = 0.10
+		labelNoiseRate = 0.30
 	)
 
 	sampleCount := envInt("TSU_TENSOR_ACCURACY_SAMPLES", 100_000)
-	pretestCount := envInt("TSU_TENSOR_ACCURACY_PRETESTS", 1_000)
+	validationCount := envInt("TSU_TENSOR_ACCURACY_VALIDATION", envInt("TSU_TENSOR_ACCURACY_PRETESTS", 1_000))
+	testCount := envInt("TSU_TENSOR_ACCURACY_TEST_SAMPLES", validationCount)
 	chunkSize := envInt("TSU_TENSOR_ACCURACY_CHUNK", defaultTensorAccuracyChunk(inputCount, resultCount))
 
 	schema := tensor.Schema{
@@ -98,18 +99,94 @@ func TestTensorAcuricy(t *testing.T) {
 		t.Fatalf("OpenTable after rebuild: %v", err)
 	}
 
-	pretestRNG := rand.New(rand.NewSource(987654))
+	validationRNG := rand.New(rand.NewSource(987654))
+	validationSamples := make([]tensor.Sample, 0, validationCount)
+	for i := 0; i < validationCount; i++ {
+		validationSamples = append(validationSamples, fixture.sample(validationRNG, sampleCount+i))
+	}
+	testRNG := rand.New(rand.NewSource(654987))
+	testSamples := make([]tensor.Sample, 0, testCount)
+	for i := 0; i < testCount; i++ {
+		testSamples = append(testSamples, fixture.sample(testRNG, sampleCount+validationCount+i))
+	}
+
+	pretestStarted := time.Now()
+	beforeTune := evaluateTensorAccuracy(t, table, testSamples, resultCount, "pretest")
+	pretestDuration := time.Since(pretestStarted)
+
+	tuneStarted := time.Now()
+	tuneReport, err := table.TuneWeights(validationSamples, tensor.TuneOptions{})
+	if err != nil {
+		t.Fatalf("TuneWeights: %v", err)
+	}
+	tuneDuration := time.Since(tuneStarted)
+	if err := table.FlushStats(); err != nil {
+		t.Fatalf("FlushStats after tune: %v", err)
+	}
+	table, err = tensor.OpenTable("tensor_accuracy")
+	if err != nil {
+		t.Fatalf("OpenTable after tune: %v", err)
+	}
+
+	verifyStarted := time.Now()
+	afterTune := evaluateTensorAccuracy(t, table, testSamples, resultCount, "verify")
+	verifyDuration := time.Since(verifyStarted)
+	totalDuration := time.Since(totalStarted)
+
+	t.Logf("tensor accuracy samples=%d validation=%d test=%d inputs=%d result_labels=%d label_noise=%.2f before_exact=%.4f before_label=%.4f after_exact=%.4f after_label=%.4f",
+		sampleCount, validationCount, testCount, inputCount, resultCount, labelNoiseRate,
+		beforeTune.exactAccuracy, beforeTune.labelAccuracy,
+		afterTune.exactAccuracy, afterTune.labelAccuracy)
+	t.Logf("tensor tune iterations=%d validation_before=%.4f validation_after=%.4f corrections=%d adjustments=%d errors_by_result=%v",
+		tuneReport.Iterations, tuneReport.AccuracyBefore, tuneReport.AccuracyAfter,
+		tuneReport.Corrections, tuneReport.Adjustments, tuneReport.ErrorsByResult)
+	t.Logf("tensor gates boosted=%v suppressed=%v", tuneReport.TopBoosted, tuneReport.TopSuppressed)
+	t.Logf("tensor timing training=%s rebuild=%s pretest=%s tune=%s verify=%s total=%s",
+		trainingDuration.Round(time.Millisecond),
+		rebuildDuration.Round(time.Millisecond),
+		pretestDuration.Round(time.Millisecond),
+		tuneDuration.Round(time.Millisecond),
+		verifyDuration.Round(time.Millisecond),
+		totalDuration.Round(time.Millisecond))
+
+	exactAccuracyCeiling := math.Pow(0.995, float64(resultCount))
+	if afterTune.exactAccuracy > exactAccuracyCeiling {
+		t.Fatalf("exact accuracy %.4f is unrealistically high for noisy multi-label predictions with %d labels", afterTune.exactAccuracy, resultCount)
+	}
+	if afterTune.labelAccuracy < 0.80 {
+		t.Fatalf("label accuracy %.4f below expected threshold 0.80", afterTune.labelAccuracy)
+	}
+	if afterTune.labelAccuracy > 0.98 {
+		t.Fatalf("label accuracy %.4f is unrealistically high for the noisy fixture", afterTune.labelAccuracy)
+	}
+	if afterTune.labelAccuracy+0.02 < beforeTune.labelAccuracy {
+		t.Fatalf("tuned label accuracy %.4f regressed too far from baseline %.4f", afterTune.labelAccuracy, beforeTune.labelAccuracy)
+	}
+	if tuneReport.AccuracyAfter < tuneReport.AccuracyBefore {
+		t.Fatalf("tuning validation accuracy regressed from %.4f to %.4f", tuneReport.AccuracyBefore, tuneReport.AccuracyAfter)
+	}
+}
+
+type tensorAccuracyResult struct {
+	exactAccuracy float64
+	labelAccuracy float64
+}
+
+func evaluateTensorAccuracy(t *testing.T, table *tensor.Table, samples []tensor.Sample, resultCount int, stage string) tensorAccuracyResult {
+	t.Helper()
+	if len(samples) == 0 {
+		return tensorAccuracyResult{}
+	}
+
 	exactMatches := 0
 	labelMatches := 0
-	totalLabels := pretestCount * resultCount
-	pretestProgress := newTestProgress("pretest", pretestCount)
-	pretestProgress.Update(0)
-	pretestStarted := time.Now()
-	for i := 0; i < pretestCount; i++ {
-		sample := fixture.sample(pretestRNG, sampleCount+i)
+	totalLabels := len(samples) * resultCount
+	progress := newTestProgress(stage, len(samples))
+	progress.Update(0)
+	for i, sample := range samples {
 		prediction, err := table.Predict(sample.Input, resultCount)
 		if err != nil {
-			t.Fatalf("Predict pretest %d: %v", i, err)
+			t.Fatalf("Predict %s %d: %v", stage, i, err)
 		}
 
 		want := labelsSet(sample.Results)
@@ -124,55 +201,60 @@ func TestTensorAcuricy(t *testing.T) {
 		if matches == len(want) && len(got) == len(want) {
 			exactMatches++
 		}
-		pretestProgress.Update(i + 1)
+		progress.Update(i + 1)
 	}
-	pretestProgress.Finish()
-	pretestDuration := time.Since(pretestStarted)
-	totalDuration := time.Since(totalStarted)
-
-	exactAccuracy := float64(exactMatches) / float64(pretestCount)
-	labelAccuracy := float64(labelMatches) / float64(totalLabels)
-	t.Logf("tensor accuracy samples=%d inputs=%d result_labels=%d pretests=%d label_noise=%.2f exact_accuracy=%.4f label_accuracy=%.4f",
-		sampleCount, inputCount, resultCount, pretestCount, labelNoiseRate, exactAccuracy, labelAccuracy)
-	t.Logf("tensor timing training=%s rebuild=%s pretest=%s total=%s",
-		trainingDuration.Round(time.Millisecond),
-		rebuildDuration.Round(time.Millisecond),
-		pretestDuration.Round(time.Millisecond),
-		totalDuration.Round(time.Millisecond))
-
-	exactAccuracyCeiling := math.Pow(0.995, float64(resultCount))
-	if exactAccuracy > exactAccuracyCeiling {
-		t.Fatalf("exact accuracy %.4f is unrealistically high for noisy multi-label predictions with %d labels", exactAccuracy, resultCount)
-	}
-	if labelAccuracy < 0.85 {
-		t.Fatalf("label accuracy %.4f below expected threshold 0.85", labelAccuracy)
-	}
-	if labelAccuracy > 0.98 {
-		t.Fatalf("label accuracy %.4f is unrealistically high for the noisy fixture", labelAccuracy)
+	progress.Finish()
+	return tensorAccuracyResult{
+		exactAccuracy: float64(exactMatches) / float64(len(samples)),
+		labelAccuracy: float64(labelMatches) / float64(totalLabels),
 	}
 }
 
 type syntheticTensorFixture struct {
-	inputNames  []string
-	inputRanges []syntheticInputRange
-	resultKeys  []string
-	classValues []string
-	noiseRate   float64
+	inputNames     []string
+	inputRanges    []syntheticInputRange
+	resultKeys     []string
+	resultProfiles []syntheticResultProfile
+	classValues    []string
+	noiseRate      float64
 }
 
 type syntheticInputRange struct {
-	base  float64
-	step  float64
-	noise float64
+	base        float64
+	scale       float64
+	signal      float64
+	noise       float64
+	ambient     float64
+	load        float64
+	batch       float64
+	curve       float64
+	interaction float64
+	outlierRate float64
+	corruptRate float64
+}
+
+type syntheticResultProfile struct {
+	bias    float64
+	ambient float64
+	load    float64
+	batch   float64
+	noise   float64
+}
+
+type syntheticSampleContext struct {
+	ambient float64
+	load    float64
+	batch   float64
 }
 
 func newSyntheticTensorFixture(inputCount, resultCount, classCount int, noiseRate float64) syntheticTensorFixture {
 	fixture := syntheticTensorFixture{
-		inputNames:  make([]string, inputCount),
-		inputRanges: make([]syntheticInputRange, inputCount),
-		resultKeys:  make([]string, resultCount),
-		classValues: make([]string, classCount),
-		noiseRate:   noiseRate,
+		inputNames:     make([]string, inputCount),
+		inputRanges:    make([]syntheticInputRange, inputCount),
+		resultKeys:     make([]string, resultCount),
+		resultProfiles: make([]syntheticResultProfile, resultCount),
+		classValues:    make([]string, classCount),
+		noiseRate:      noiseRate,
 	}
 	for i := 0; i < inputCount; i++ {
 		fixture.inputNames[i] = fmt.Sprintf("p%03d", i)
@@ -180,6 +262,7 @@ func newSyntheticTensorFixture(inputCount, resultCount, classCount int, noiseRat
 	}
 	for i := 0; i < resultCount; i++ {
 		fixture.resultKeys[i] = fmt.Sprintf("result_%d", i)
+		fixture.resultProfiles[i] = syntheticProfileForResult(i)
 	}
 	for i := 0; i < classCount; i++ {
 		fixture.classValues[i] = fmt.Sprintf("class_%d", i)
@@ -191,15 +274,14 @@ func (f syntheticTensorFixture) sample(rng *rand.Rand, id int) tensor.Sample {
 	inputCount := len(f.inputNames)
 	resultCount := len(f.resultKeys)
 	classCount := len(f.classValues)
+	context := syntheticContext(rng, id)
 	classes := make([]int, resultCount)
-	signalClasses := make([]int, resultCount)
+	scores := make([]float64, resultCount)
 	results := make([]tensor.ResultLabel, resultCount)
 	for i := 0; i < resultCount; i++ {
-		classes[i] = rng.Intn(classCount)
-		signalClasses[i] = classes[i]
-		if rng.Float64() < f.noiseRate {
-			signalClasses[i] = neighboringSyntheticClass(rng, classes[i], classCount)
-		}
+		score := f.resultProfiles[i].score(context, rng)
+		classes[i] = syntheticClassFromScore(score, classCount)
+		scores[i] = score
 		results[i] = tensor.ResultLabel{
 			Key:   f.resultKeys[i],
 			Value: f.classValues[classes[i]],
@@ -210,8 +292,25 @@ func (f syntheticTensorFixture) sample(rng *rand.Rand, id int) tensor.Sample {
 	for i := 0; i < inputCount; i++ {
 		resultID := i % resultCount
 		inputRange := f.inputRanges[i]
-		center := inputRange.base + float64(signalClasses[resultID])*inputRange.step
-		input[f.inputNames[i]] = center + rng.NormFloat64()*inputRange.noise
+		signalScore := scores[resultID]
+		if rng.Float64() < f.noiseRate*inputRange.corruptRate {
+			signalScore = rng.NormFloat64()*2.8 + randomSign(rng)*0.85
+		}
+		signalClass := syntheticClassFromScore(signalScore, classCount)
+		position := syntheticClassPosition(signalClass, classCount)
+		scorePosition := math.Tanh(scores[resultID])
+		center := inputRange.base +
+			inputRange.scale*inputRange.signal*position +
+			inputRange.scale*inputRange.curve*(position*position-0.35) +
+			inputRange.scale*inputRange.interaction*scorePosition*context.load +
+			inputRange.scale*inputRange.ambient*context.ambient +
+			inputRange.scale*inputRange.load*context.load +
+			inputRange.scale*inputRange.batch*context.batch
+		value := center + rng.NormFloat64()*inputRange.noise
+		if rng.Float64() < inputRange.outlierRate {
+			value += randomSign(rng) * inputRange.scale * (1.5 + rng.Float64()*2.5)
+		}
+		input[f.inputNames[i]] = value
 	}
 
 	return tensor.Sample{
@@ -226,33 +325,111 @@ func (f syntheticTensorFixture) sample(rng *rand.Rand, id int) tensor.Sample {
 func syntheticRangeForInput(index int) syntheticInputRange {
 	magnitudes := [...]float64{0.05, 0.2, 1, 3.5, 12, 45, 160, 600}
 	magnitude := magnitudes[index%len(magnitudes)]
-	base := float64((index%37)-18)*magnitude*3.7 + float64(index%13)*0.01
-	step := magnitude * (0.7 + float64((index/11)%7)*0.11)
+	direction := 1.0
 	if (index/len(magnitudes))%2 == 1 {
-		step = -step
+		direction = -1
 	}
-	noise := math.Abs(step) * (0.08 + float64((index/17)%5)*0.025)
+	scale := magnitude * (0.8 + float64((index/11)%7)*0.17)
+	signal := direction * (0.24 + float64((index/5)%9)*0.035)
+	if index%19 == 0 {
+		signal *= 0.25
+	}
+	if index%23 == 0 {
+		signal *= -0.6
+	}
+	noise := scale * (0.34 + float64((index/17)%5)*0.08)
+	corruptRate := 0.18 + float64((index*7)%17)*0.16
+	if index%7 == 0 {
+		corruptRate += 1.15
+		signal *= 1.6
+	}
+	if index%11 == 0 {
+		corruptRate += 0.85
+		signal *= 1.35
+	}
 	return syntheticInputRange{
-		base:  base,
-		step:  step,
-		noise: noise,
+		base:        float64((index%37)-18)*magnitude*3.7 + float64(index%13)*0.01,
+		scale:       scale,
+		signal:      signal,
+		noise:       noise,
+		ambient:     signedSyntheticFactor(index, 3, 0.04, 0.18),
+		load:        signedSyntheticFactor(index, 5, 0.03, 0.16),
+		batch:       signedSyntheticFactor(index, 7, 0.02, 0.13),
+		curve:       signedSyntheticFactor(index, 11, 0.00, 0.12),
+		interaction: signedSyntheticFactor(index, 13, 0.00, 0.10),
+		outlierRate: 0.003 + float64(index%5)*0.0015,
+		corruptRate: corruptRate,
 	}
 }
 
-func neighboringSyntheticClass(rng *rand.Rand, current, classCount int) int {
+func syntheticProfileForResult(index int) syntheticResultProfile {
+	return syntheticResultProfile{
+		bias:    signedSyntheticFactor(index, 2, 0.00, 0.25),
+		ambient: signedSyntheticFactor(index, 3, 0.35, 0.95),
+		load:    signedSyntheticFactor(index, 5, 0.25, 0.80),
+		batch:   signedSyntheticFactor(index, 7, 0.15, 0.55),
+		noise:   0.38 + float64(index%5)*0.05,
+	}
+}
+
+func (p syntheticResultProfile) score(context syntheticSampleContext, rng *rand.Rand) float64 {
+	return p.bias +
+		p.ambient*context.ambient +
+		p.load*context.load +
+		p.batch*context.batch +
+		rng.NormFloat64()*p.noise
+}
+
+func syntheticContext(rng *rand.Rand, id int) syntheticSampleContext {
+	batchWave := math.Sin(float64(id)/97.0) * 0.45
+	return syntheticSampleContext{
+		ambient: rng.NormFloat64()*0.85 + batchWave,
+		load:    rng.Float64()*2 - 1,
+		batch:   batchWave + rng.NormFloat64()*0.18,
+	}
+}
+
+func syntheticClassFromScore(score float64, classCount int) int {
 	if classCount <= 1 {
-		return current
+		return 0
 	}
-	if current == 0 {
-		return 1
+	normalized := 0.5 + score/3.6
+	if normalized < 0 {
+		normalized = 0
 	}
-	if current == classCount-1 {
-		return classCount - 2
+	if normalized >= 1 {
+		normalized = math.Nextafter(1, 0)
 	}
+	return int(normalized * float64(classCount))
+}
+
+func syntheticClassPosition(class, classCount int) float64 {
+	if classCount <= 1 {
+		return 0
+	}
+	return float64(class)*2/float64(classCount-1) - 1
+}
+
+func signedSyntheticFactor(index, period int, min, spread float64) float64 {
+	sign := 1.0
+	if (index/period)%2 == 1 {
+		sign = -1
+	}
+	return sign * (min + float64(index%period)*spread/float64(maxInt(period-1, 1)))
+}
+
+func randomSign(rng *rand.Rand) float64 {
 	if rng.Intn(2) == 0 {
-		return current - 1
+		return -1
 	}
-	return current + 1
+	return 1
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func labelsSet(results []tensor.ResultLabel) map[string]bool {

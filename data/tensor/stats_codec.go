@@ -7,7 +7,11 @@ import (
 	"math"
 )
 
-var statsPayloadMagic = [4]byte{'T', 'S', 'T', '1'}
+var (
+	statsPayloadMagicV1 = [4]byte{'T', 'S', 'T', '1'}
+	statsPayloadMagicV2 = [4]byte{'T', 'S', 'T', '2'}
+	statsPayloadMagic   = [4]byte{'T', 'S', 'T', '3'}
+)
 
 func writeStatsSnapshot(key string, schema Schema, stats *statsSnapshot) error {
 	payload, err := encodeStatsPayload(schema, stats)
@@ -22,7 +26,10 @@ func readStatsSnapshot(key string, schema Schema, stats *statsSnapshot) error {
 	if err != nil {
 		return err
 	}
-	if len(payload) >= len(statsPayloadMagic) && bytes.Equal(payload[:4], statsPayloadMagic[:]) {
+	if len(payload) >= len(statsPayloadMagic) &&
+		(bytes.Equal(payload[:4], statsPayloadMagic[:]) ||
+			bytes.Equal(payload[:4], statsPayloadMagicV2[:]) ||
+			bytes.Equal(payload[:4], statsPayloadMagicV1[:])) {
 		decoded, err := decodeStatsPayload(schema, payload)
 		if err != nil {
 			return err
@@ -68,6 +75,26 @@ func encodeStatsPayload(schema Schema, stats *statsSnapshot) ([]byte, error) {
 				writeUvarint(&buf, count)
 			}
 		})
+
+		writeUvarint(&buf, uint64(len(label.Weights)))
+		for index, weight := range label.Weights {
+			writeUvarint(&buf, uint64(index+1))
+			writeFloat64(&buf, weight)
+		}
+	}
+
+	writeUvarint(&buf, uint64(len(stats.ResultGates)))
+	for key, gate := range stats.ResultGates {
+		writeIndexedString(&buf, key, resultIndexes)
+		if gate == nil {
+			writeUvarint(&buf, 0)
+			continue
+		}
+		writeUvarint(&buf, uint64(len(gate.InputWeights)))
+		for index, weight := range gate.InputWeights {
+			writeUvarint(&buf, uint64(index+1))
+			writeFloat64(&buf, weight)
+		}
 	}
 	return buf.Bytes(), nil
 }
@@ -78,7 +105,16 @@ func decodeStatsPayload(schema Schema, payload []byte) (*statsSnapshot, error) {
 	if _, err := reader.Read(magic[:]); err != nil {
 		return nil, err
 	}
-	if magic != statsPayloadMagic {
+	withWeights := false
+	withGates := false
+	switch magic {
+	case statsPayloadMagic:
+		withWeights = true
+		withGates = true
+	case statsPayloadMagicV2:
+		withWeights = true
+	case statsPayloadMagicV1:
+	default:
 		return nil, errors.New("tensor: invalid stats payload")
 	}
 
@@ -99,6 +135,8 @@ func decodeStatsPayload(schema Schema, payload []byte) (*statsSnapshot, error) {
 	stats.Table = table
 	stats.TotalCount = total
 	resultNames := resultKeyNames(schema)
+	legacyWeightSums := make(map[string]map[int]float64)
+	legacyWeightCounts := make(map[string]map[int]int)
 	for i := uint64(0); i < labelCount; i++ {
 		key, err := readIndexedString(reader, resultNames)
 		if err != nil {
@@ -183,9 +221,97 @@ func decodeStatsPayload(schema Schema, payload []byte) (*statsSnapshot, error) {
 			}
 			label.Categories[index] = stat
 		}
+		if withWeights {
+			weightCount, err := binary.ReadUvarint(reader)
+			if err != nil {
+				return nil, err
+			}
+			if weightCount != 0 {
+				label.Weights = make(map[int]float64, weightCount)
+			}
+			for j := uint64(0); j < weightCount; j++ {
+				index, err := readInputIndex(reader, len(schema.Inputs))
+				if err != nil {
+					return nil, err
+				}
+				weight, err := readFloat64(reader)
+				if err != nil {
+					return nil, err
+				}
+				label.Weights[index] = weight
+				if !withGates && !math.IsNaN(weight) && !math.IsInf(weight, 0) {
+					if legacyWeightSums[key] == nil {
+						legacyWeightSums[key] = make(map[int]float64)
+						legacyWeightCounts[key] = make(map[int]int)
+					}
+					legacyWeightSums[key][index] += weight
+					legacyWeightCounts[key][index]++
+				}
+			}
+		}
 		stats.LabelStats[labelID(ResultLabel{Key: key, Value: value})] = label
 	}
+	if withGates {
+		gateCount, err := binary.ReadUvarint(reader)
+		if err != nil {
+			return nil, err
+		}
+		for i := uint64(0); i < gateCount; i++ {
+			key, err := readIndexedString(reader, resultNames)
+			if err != nil {
+				return nil, err
+			}
+			weightCount, err := binary.ReadUvarint(reader)
+			if err != nil {
+				return nil, err
+			}
+			gate := &resultGate{}
+			if weightCount != 0 {
+				gate.InputWeights = make(map[int]float64, weightCount)
+			}
+			for j := uint64(0); j < weightCount; j++ {
+				index, err := readInputIndex(reader, len(schema.Inputs))
+				if err != nil {
+					return nil, err
+				}
+				weight, err := readFloat64(reader)
+				if err != nil {
+					return nil, err
+				}
+				gate.InputWeights[index] = weight
+			}
+			stats.ResultGates[key] = gate
+		}
+	} else {
+		seedResultGatesFromLegacyWeights(stats, legacyWeightSums, legacyWeightCounts)
+	}
 	return stats, nil
+}
+
+func seedResultGatesFromLegacyWeights(stats *statsSnapshot, sums map[string]map[int]float64, counts map[string]map[int]int) {
+	if stats == nil || len(sums) == 0 {
+		return
+	}
+	if stats.ResultGates == nil {
+		stats.ResultGates = make(map[string]*resultGate, len(sums))
+	}
+	for key, byInput := range sums {
+		gate := stats.ResultGates[key]
+		if gate == nil {
+			gate = &resultGate{InputWeights: make(map[int]float64, len(byInput))}
+			stats.ResultGates[key] = gate
+		}
+		if gate.InputWeights == nil {
+			gate.InputWeights = make(map[int]float64, len(byInput))
+		}
+		for index, sum := range byInput {
+			count := counts[key][index]
+			if count <= 0 {
+				continue
+			}
+			gate.InputWeights[index] = sum / float64(count)
+		}
+	}
 }
 
 func writeIndexedString(buf *bytes.Buffer, value string, indexes map[string]int) {

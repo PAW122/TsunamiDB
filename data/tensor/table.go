@@ -712,7 +712,7 @@ func (t *Table) scoreFloatLabelOnly(input []float64, label *labelStats) float64 
 		variance := stat.variance()
 		z := (input[idx] - stat.Mean) / math.Sqrt(variance)
 		impact := 1 / (1 + math.Abs(z))
-		score += math.Log(0.05 + impact)
+		score += t.stats.resultInputWeight(label.Key, idx) * math.Log(0.05+impact)
 	}
 	return score
 }
@@ -738,7 +738,7 @@ func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64
 			variance := stat.variance()
 			z := (numeric - stat.Mean) / math.Sqrt(variance)
 			impact := 1 / (1 + math.Abs(z))
-			score += math.Log(0.05 + impact)
+			score += t.stats.resultInputWeight(label.Key, idx) * math.Log(0.05+impact)
 			continue
 		}
 
@@ -748,7 +748,7 @@ func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64
 		}
 		category := categoryValue(value)
 		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
-		score += math.Log(frequency)
+		score += t.stats.resultInputWeight(label.Key, idx) * math.Log(frequency)
 	}
 	return score
 }
@@ -774,11 +774,12 @@ func (t *Table) scoreFloatLabel(input []float64, label *labelStats) PredictedRes
 		variance := stat.variance()
 		z := (input[idx] - stat.Mean) / math.Sqrt(variance)
 		impact := 1 / (1 + math.Abs(z))
-		score += math.Log(0.05 + impact)
+		weight := t.stats.resultInputWeight(label.Key, idx)
+		score += weight * math.Log(0.05+impact)
 		influences = append(influences, Influence{
 			Input:  field.Name,
-			Impact: impact,
-			Reason: fmt.Sprintf("numeric distance from mean %.4f", stat.Mean),
+			Impact: impact * weight,
+			Reason: fmt.Sprintf("numeric distance from mean %.4f, weight %.3f", stat.Mean, weight),
 		})
 	}
 
@@ -824,12 +825,13 @@ func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedRe
 			variance := stat.variance()
 			z := (numeric - stat.Mean) / math.Sqrt(variance)
 			impact := 1 / (1 + math.Abs(z))
-			contribution := math.Log(0.05 + impact)
+			weight := t.stats.resultInputWeight(label.Key, idx)
+			contribution := weight * math.Log(0.05+impact)
 			score += contribution
 			influences = append(influences, Influence{
 				Input:  field.Name,
-				Impact: impact,
-				Reason: fmt.Sprintf("numeric distance from mean %.4f", stat.Mean),
+				Impact: impact * weight,
+				Reason: fmt.Sprintf("numeric distance from mean %.4f, weight %.3f", stat.Mean, weight),
 			})
 			continue
 		}
@@ -840,11 +842,12 @@ func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedRe
 		}
 		category := categoryValue(value)
 		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
-		score += math.Log(frequency)
+		weight := t.stats.resultInputWeight(label.Key, idx)
+		score += weight * math.Log(frequency)
 		influences = append(influences, Influence{
 			Input:  field.Name,
-			Impact: frequency,
-			Reason: "categorical frequency matched learned cases",
+			Impact: frequency * weight,
+			Reason: fmt.Sprintf("categorical frequency matched learned cases, weight %.3f", weight),
 		})
 	}
 

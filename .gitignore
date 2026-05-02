@@ -16,3 +16,5 @@ config.json
 /servers/public-api/v1/db
 /servers/public-api/v1/routes/db
 relationalDB.md
+ai_layer.md
+x_tensor_tests.md
