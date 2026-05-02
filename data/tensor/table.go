@@ -463,7 +463,6 @@ func (t *Table) Predict(input map[string]any, topN int) (Prediction, error) {
 	if len(t.stats.LabelStats) == 0 {
 		return Prediction{}, ErrNoModelData
 	}
-
 	if topN >= len(t.schema.Results) && len(t.schema.Results) > 0 {
 		return t.predictBestPerResult(normalized)
 	}
@@ -696,6 +695,7 @@ func (t *Table) predictBestPerResult(input normalizedInput) (Prediction, error) 
 func (t *Table) scoreFloatLabelOnly(input []float64, label *labelStats) float64 {
 	denominator := float64(maxUint64(t.stats.TotalCount, 1))
 	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	score += t.stats.labelBias(label.Key, label.Value)
 	indexes := t.inputIndexesForResult(label.Key)
 	if len(label.inputIndexes) != 0 {
 		indexes = label.inputIndexes
@@ -709,10 +709,8 @@ func (t *Table) scoreFloatLabelOnly(input []float64, label *labelStats) float64 
 		if stat == nil || stat.Count == 0 {
 			continue
 		}
-		variance := stat.variance()
-		z := (input[idx] - stat.Mean) / math.Sqrt(variance)
-		impact := 1 / (1 + math.Abs(z))
-		score += t.stats.resultInputWeight(label.Key, idx) * math.Log(0.05+impact)
+		contribution := numericLogContribution(input[idx], stat)
+		score += t.stats.effectiveInputWeight(label, idx) * contribution
 	}
 	return score
 }
@@ -720,6 +718,7 @@ func (t *Table) scoreFloatLabelOnly(input []float64, label *labelStats) float64 
 func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64 {
 	denominator := float64(maxUint64(t.stats.TotalCount, 1))
 	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	score += t.stats.labelBias(label.Key, label.Value)
 	indexes := t.inputIndexesForResult(label.Key)
 	if len(label.inputIndexes) != 0 {
 		indexes = label.inputIndexes
@@ -735,10 +734,8 @@ func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64
 			if stat == nil || stat.Count == 0 {
 				continue
 			}
-			variance := stat.variance()
-			z := (numeric - stat.Mean) / math.Sqrt(variance)
-			impact := 1 / (1 + math.Abs(z))
-			score += t.stats.resultInputWeight(label.Key, idx) * math.Log(0.05+impact)
+			contribution := numericLogContribution(numeric, stat)
+			score += t.stats.effectiveInputWeight(label, idx) * contribution
 			continue
 		}
 
@@ -748,7 +745,7 @@ func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64
 		}
 		category := categoryValue(value)
 		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
-		score += t.stats.resultInputWeight(label.Key, idx) * math.Log(frequency)
+		score += t.stats.effectiveInputWeight(label, idx) * math.Log(frequency)
 	}
 	return score
 }
@@ -756,6 +753,7 @@ func (t *Table) scoreLabelOnly(input normalizedInput, label *labelStats) float64
 func (t *Table) scoreFloatLabel(input []float64, label *labelStats) PredictedResult {
 	denominator := float64(maxUint64(t.stats.TotalCount, 1))
 	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	score += t.stats.labelBias(label.Key, label.Value)
 	indexes := t.inputIndexesForResult(label.Key)
 	if len(label.inputIndexes) != 0 {
 		indexes = label.inputIndexes
@@ -771,11 +769,10 @@ func (t *Table) scoreFloatLabel(input []float64, label *labelStats) PredictedRes
 		if stat == nil || stat.Count == 0 {
 			continue
 		}
-		variance := stat.variance()
-		z := (input[idx] - stat.Mean) / math.Sqrt(variance)
-		impact := 1 / (1 + math.Abs(z))
-		weight := t.stats.resultInputWeight(label.Key, idx)
-		score += weight * math.Log(0.05+impact)
+		weight := t.stats.effectiveInputWeight(label, idx)
+		impact := numericImpact(input[idx], stat)
+		contribution := numericLogContribution(input[idx], stat)
+		score += weight * contribution
 		influences = append(influences, Influence{
 			Input:  field.Name,
 			Impact: impact * weight,
@@ -805,6 +802,7 @@ func (t *Table) scoreFloatLabel(input []float64, label *labelStats) PredictedRes
 func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedResult {
 	denominator := float64(maxUint64(t.stats.TotalCount, 1))
 	score := math.Log((float64(label.Count) + 1) / (denominator + float64(len(t.stats.LabelStats))))
+	score += t.stats.labelBias(label.Key, label.Value)
 	indexes := t.inputIndexesForResult(label.Key)
 	influences := make([]Influence, 0, len(indexes))
 
@@ -822,11 +820,9 @@ func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedRe
 			if stat == nil || stat.Count == 0 {
 				continue
 			}
-			variance := stat.variance()
-			z := (numeric - stat.Mean) / math.Sqrt(variance)
-			impact := 1 / (1 + math.Abs(z))
-			weight := t.stats.resultInputWeight(label.Key, idx)
-			contribution := weight * math.Log(0.05+impact)
+			weight := t.stats.effectiveInputWeight(label, idx)
+			impact := numericImpact(numeric, stat)
+			contribution := weight * numericLogContribution(numeric, stat)
 			score += contribution
 			influences = append(influences, Influence{
 				Input:  field.Name,
@@ -842,7 +838,7 @@ func (t *Table) scoreLabel(input normalizedInput, label *labelStats) PredictedRe
 		}
 		category := categoryValue(value)
 		frequency := float64(stat.Values[category]+1) / float64(stat.Count+uint64(len(stat.Values))+1)
-		weight := t.stats.resultInputWeight(label.Key, idx)
+		weight := t.stats.effectiveInputWeight(label, idx)
 		score += weight * math.Log(frequency)
 		influences = append(influences, Influence{
 			Input:  field.Name,

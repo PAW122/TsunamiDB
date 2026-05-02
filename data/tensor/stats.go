@@ -1,17 +1,22 @@
 package tensor
 
-import "math"
+import (
+	"math"
+	"strings"
+)
 
 type statsSnapshot struct {
 	Table       string                 `json:"table"`
 	TotalCount  uint64                 `json:"total_count"`
 	LabelStats  map[string]*labelStats `json:"label_stats"`
 	ResultGates map[string]*resultGate `json:"result_gates,omitempty"`
+	LabelGates  map[string]*resultGate `json:"label_gates,omitempty"`
 	IgnoreIndex map[string]bool        `json:"ignore_index,omitempty"`
 }
 
 type resultGate struct {
 	InputWeights map[int]float64 `json:"input_weights,omitempty"`
+	Bias         float64         `json:"bias,omitempty"`
 }
 
 type labelStats struct {
@@ -51,6 +56,7 @@ func newStats(schema Schema) *statsSnapshot {
 		Table:       schema.Name,
 		LabelStats:  make(map[string]*labelStats),
 		ResultGates: make(map[string]*resultGate),
+		LabelGates:  make(map[string]*resultGate),
 		IgnoreIndex: ignore,
 	}
 }
@@ -119,6 +125,7 @@ func (s *statsSnapshot) merge(other *statsSnapshot, indexesForResult func(string
 		target.merge(source)
 	}
 	s.mergeResultGates(other)
+	s.mergeLabelGates(other)
 }
 
 func newLabelStats(key, value string, indexes []int) *labelStats {
@@ -446,22 +453,49 @@ func (l *labelStats) mergeWeights(source *labelStats) {
 }
 
 func (s *statsSnapshot) mergeResultGates(source *statsSnapshot) {
-	if source == nil || len(source.ResultGates) == 0 {
+	if source == nil {
 		return
 	}
-	if s.ResultGates == nil {
-		s.ResultGates = make(map[string]*resultGate, len(source.ResultGates))
+	s.mergeGates(source.ResultGates, true)
+}
+
+func (s *statsSnapshot) mergeLabelGates(source *statsSnapshot) {
+	if source == nil {
+		return
 	}
-	for key, sourceGate := range source.ResultGates {
-		if sourceGate == nil || len(sourceGate.InputWeights) == 0 {
+	s.mergeGates(source.LabelGates, false)
+}
+
+func (s *statsSnapshot) mergeGates(source map[string]*resultGate, resultLevel bool) {
+	if len(source) == 0 {
+		return
+	}
+	targetGates := s.ResultGates
+	if !resultLevel {
+		targetGates = s.LabelGates
+	}
+	if targetGates == nil {
+		targetGates = make(map[string]*resultGate, len(source))
+		if resultLevel {
+			s.ResultGates = targetGates
+		} else {
+			s.LabelGates = targetGates
+		}
+	}
+	for key, sourceGate := range source {
+		if sourceGate == nil || (len(sourceGate.InputWeights) == 0 && sourceGate.Bias == 0) {
 			continue
 		}
-		target := s.ResultGates[key]
+		target := targetGates[key]
 		if target == nil {
-			target = &resultGate{InputWeights: make(map[int]float64, len(sourceGate.InputWeights))}
-			s.ResultGates[key] = target
+			target = &resultGate{}
+			if len(sourceGate.InputWeights) != 0 {
+				target.InputWeights = make(map[int]float64, len(sourceGate.InputWeights))
+			}
+			targetGates[key] = target
 		}
-		if target.InputWeights == nil {
+		target.Bias = sourceGate.Bias
+		if len(sourceGate.InputWeights) != 0 && target.InputWeights == nil {
 			target.InputWeights = make(map[int]float64, len(sourceGate.InputWeights))
 		}
 		for index, weight := range sourceGate.InputWeights {
@@ -470,11 +504,30 @@ func (s *statsSnapshot) mergeResultGates(source *statsSnapshot) {
 	}
 }
 
-func (s *statsSnapshot) resultInputWeight(resultKey string, index int) float64 {
-	if s == nil || len(s.ResultGates) == 0 {
+func (s *statsSnapshot) effectiveInputWeight(label *labelStats, index int) float64 {
+	if label == nil {
 		return 1
 	}
-	gate := s.ResultGates[resultKey]
+	return s.resultInputWeight(label.Key, index) * s.labelInputWeight(label.Key, label.Value, index)
+}
+
+func (s *statsSnapshot) resultInputWeight(resultKey string, index int) float64 {
+	return gateInputWeight(s.ResultGates, resultKey, index)
+}
+
+func (s *statsSnapshot) labelInputWeight(resultKey, value string, index int) float64 {
+	return gateInputWeight(s.LabelGates, labelID(ResultLabel{Key: resultKey, Value: value}), index)
+}
+
+func (s *statsSnapshot) labelBias(resultKey, value string) float64 {
+	return gateBias(s.LabelGates, labelID(ResultLabel{Key: resultKey, Value: value}))
+}
+
+func gateInputWeight(gates map[string]*resultGate, key string, index int) float64 {
+	if len(gates) == 0 {
+		return 1
+	}
+	gate := gates[key]
 	if gate == nil || len(gate.InputWeights) == 0 {
 		return 1
 	}
@@ -491,8 +544,37 @@ func (s *statsSnapshot) resultInputWeight(resultKey string, index int) float64 {
 	return weight
 }
 
+func gateBias(gates map[string]*resultGate, key string) float64 {
+	if len(gates) == 0 {
+		return 0
+	}
+	gate := gates[key]
+	if gate == nil || math.IsNaN(gate.Bias) || math.IsInf(gate.Bias, 0) {
+		return 0
+	}
+	return gate.Bias
+}
+
 func (s *statsSnapshot) adjustResultInputWeight(resultKey string, index int, delta, regularization, minWeight, maxWeight float64) bool {
-	if s == nil || resultKey == "" || index < 0 || math.IsNaN(delta) || math.IsInf(delta, 0) {
+	return s.adjustGateInputWeight(s.ResultGates, true, resultKey, index, delta, regularization, minWeight, maxWeight)
+}
+
+func (s *statsSnapshot) adjustLabelInputWeight(label *labelStats, index int, delta, regularization, minWeight, maxWeight float64) bool {
+	if label == nil {
+		return false
+	}
+	return s.adjustGateInputWeight(s.LabelGates, false, labelID(ResultLabel{Key: label.Key, Value: label.Value}), index, delta, regularization, minWeight, maxWeight)
+}
+
+func (s *statsSnapshot) adjustLabelBias(label *labelStats, delta, regularization, maxAbsBias float64) bool {
+	if label == nil {
+		return false
+	}
+	return s.adjustGateBias(s.LabelGates, false, labelID(ResultLabel{Key: label.Key, Value: label.Value}), delta, regularization, maxAbsBias)
+}
+
+func (s *statsSnapshot) adjustGateInputWeight(gates map[string]*resultGate, resultLevel bool, key string, index int, delta, regularization, minWeight, maxWeight float64) bool {
+	if s == nil || key == "" || index < 0 || math.IsNaN(delta) || math.IsInf(delta, 0) {
 		return false
 	}
 	if regularization <= 0 || regularization > 1 || math.IsNaN(regularization) || math.IsInf(regularization, 0) {
@@ -504,7 +586,7 @@ func (s *statsSnapshot) adjustResultInputWeight(resultKey string, index int, del
 	if maxWeight < minWeight {
 		maxWeight = minWeight
 	}
-	current := s.resultInputWeight(resultKey, index)
+	current := gateInputWeight(gates, key, index)
 	next := (current + delta) * regularization
 	if next < minWeight {
 		next = minWeight
@@ -515,18 +597,61 @@ func (s *statsSnapshot) adjustResultInputWeight(resultKey string, index int, del
 	if next == current {
 		return false
 	}
-	if s.ResultGates == nil {
-		s.ResultGates = make(map[string]*resultGate)
+	if gates == nil {
+		gates = make(map[string]*resultGate)
+		if resultLevel {
+			s.ResultGates = gates
+		} else {
+			s.LabelGates = gates
+		}
 	}
-	gate := s.ResultGates[resultKey]
+	gate := gates[key]
 	if gate == nil {
 		gate = &resultGate{}
-		s.ResultGates[resultKey] = gate
+		gates[key] = gate
 	}
 	if gate.InputWeights == nil {
 		gate.InputWeights = make(map[int]float64)
 	}
 	gate.InputWeights[index] = next
+	return true
+}
+
+func (s *statsSnapshot) adjustGateBias(gates map[string]*resultGate, resultLevel bool, key string, delta, regularization, maxAbsBias float64) bool {
+	if s == nil || key == "" || math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return false
+	}
+	if regularization <= 0 || regularization > 1 || math.IsNaN(regularization) || math.IsInf(regularization, 0) {
+		regularization = 1
+	}
+	if maxAbsBias <= 0 || math.IsNaN(maxAbsBias) || math.IsInf(maxAbsBias, 0) {
+		maxAbsBias = 1
+	}
+	current := gateBias(gates, key)
+	next := (current + delta) * regularization
+	if next < -maxAbsBias {
+		next = -maxAbsBias
+	}
+	if next > maxAbsBias {
+		next = maxAbsBias
+	}
+	if next == current {
+		return false
+	}
+	if gates == nil {
+		gates = make(map[string]*resultGate)
+		if resultLevel {
+			s.ResultGates = gates
+		} else {
+			s.LabelGates = gates
+		}
+	}
+	gate := gates[key]
+	if gate == nil {
+		gate = &resultGate{}
+		gates[key] = gate
+	}
+	gate.Bias = next
 	return true
 }
 
@@ -586,6 +711,30 @@ func (n numericStats) variance() float64 {
 	return v
 }
 
+func numericLogContribution(value float64, stat *numericStats) float64 {
+	if stat == nil || stat.Count == 0 {
+		return 0
+	}
+	return math.Log(0.05 + numericImpact(value, stat))
+}
+
+func numericImpact(value float64, stat *numericStats) float64 {
+	if stat == nil || stat.Count == 0 {
+		return 0
+	}
+	variance := stat.variance()
+	z := (value - stat.Mean) / math.Sqrt(variance)
+	return 1 / (1 + math.Abs(z))
+}
+
 func labelID(result ResultLabel) string {
 	return result.Key + "\x00" + result.Value
+}
+
+func splitLabelID(id string) (string, string) {
+	key, value, ok := strings.Cut(id, "\x00")
+	if !ok {
+		return id, ""
+	}
+	return key, value
 }

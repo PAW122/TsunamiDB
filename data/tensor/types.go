@@ -67,23 +67,26 @@ type Prediction struct {
 }
 
 type TuneOptions struct {
-	Iterations     int     `json:"iterations,omitempty"`
-	LearningRate   float64 `json:"learning_rate,omitempty"`
-	Regularization float64 `json:"regularization,omitempty"`
-	MinWeight      float64 `json:"min_weight,omitempty"`
-	MaxWeight      float64 `json:"max_weight,omitempty"`
+	Iterations     int                        `json:"iterations,omitempty"`
+	LearningRate   float64                    `json:"learning_rate,omitempty"`
+	Regularization float64                    `json:"regularization,omitempty"`
+	MinWeight      float64                    `json:"min_weight,omitempty"`
+	MaxWeight      float64                    `json:"max_weight,omitempty"`
+	Progress       func(completed, total int) `json:"-"`
 }
 
 type TuneReport struct {
-	Samples        int                            `json:"samples"`
-	Iterations     int                            `json:"iterations"`
-	AccuracyBefore float64                        `json:"accuracy_before"`
-	AccuracyAfter  float64                        `json:"accuracy_after"`
-	Corrections    int                            `json:"corrections"`
-	Adjustments    int                            `json:"adjustments"`
-	ErrorsByResult map[string]int                 `json:"errors_by_result,omitempty"`
-	TopBoosted     map[string][]GateWeightSummary `json:"top_boosted,omitempty"`
-	TopSuppressed  map[string][]GateWeightSummary `json:"top_suppressed,omitempty"`
+	Samples            int                            `json:"samples"`
+	Iterations         int                            `json:"iterations"`
+	AccuracyBefore     float64                        `json:"accuracy_before"`
+	AccuracyAfter      float64                        `json:"accuracy_after"`
+	Corrections        int                            `json:"corrections"`
+	Adjustments        int                            `json:"adjustments"`
+	ErrorsByResult     map[string]int                 `json:"errors_by_result,omitempty"`
+	TopBoosted         map[string][]GateWeightSummary `json:"top_boosted,omitempty"`
+	TopSuppressed      map[string][]GateWeightSummary `json:"top_suppressed,omitempty"`
+	TopClassBoosted    map[string][]GateWeightSummary `json:"top_class_boosted,omitempty"`
+	TopClassSuppressed map[string][]GateWeightSummary `json:"top_class_suppressed,omitempty"`
 }
 
 type GateWeightSummary struct {

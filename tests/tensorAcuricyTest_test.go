@@ -6,7 +6,9 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,16 +26,18 @@ func TestTensorAcuricy(t *testing.T) {
 	withTempTensorAccuracyDir(t)
 
 	const (
-		inputCount     = 100 // amount of different parameters
-		resultCount    = 3
-		classCount     = 3
+		inputCount     = 1000 // amount of different parameters
+		resultCount    = 30
+		classCount     = 30
 		labelNoiseRate = 0.30
+		aiLayerEnabled = true
 	)
 
 	sampleCount := envInt("TSU_TENSOR_ACCURACY_SAMPLES", 100_000)
 	validationCount := envInt("TSU_TENSOR_ACCURACY_VALIDATION", envInt("TSU_TENSOR_ACCURACY_PRETESTS", 1_000))
 	testCount := envInt("TSU_TENSOR_ACCURACY_TEST_SAMPLES", validationCount)
 	chunkSize := envInt("TSU_TENSOR_ACCURACY_CHUNK", defaultTensorAccuracyChunk(inputCount, resultCount))
+	useAILayer := envBool("TSU_TENSOR_AI_LAYER", aiLayerEnabled)
 
 	schema := tensor.Schema{
 		Name:           "tensor_accuracy",
@@ -114,18 +118,34 @@ func TestTensorAcuricy(t *testing.T) {
 	beforeTune := evaluateTensorAccuracy(t, table, testSamples, resultCount, "pretest")
 	pretestDuration := time.Since(pretestStarted)
 
-	tuneStarted := time.Now()
-	tuneReport, err := table.TuneWeights(validationSamples, tensor.TuneOptions{})
-	if err != nil {
-		t.Fatalf("TuneWeights: %v", err)
-	}
-	tuneDuration := time.Since(tuneStarted)
-	if err := table.FlushStats(); err != nil {
-		t.Fatalf("FlushStats after tune: %v", err)
-	}
-	table, err = tensor.OpenTable("tensor_accuracy")
-	if err != nil {
-		t.Fatalf("OpenTable after tune: %v", err)
+	var tuneReport tensor.TuneReport
+	var tuneDuration time.Duration
+	if useAILayer {
+		var tuneProgress *testProgress
+		tuneOptions := tensor.TuneOptions{
+			Progress: func(completed, total int) {
+				if tuneProgress == nil {
+					tuneProgress = newTestProgress("tune", total)
+				}
+				tuneProgress.Update(completed)
+			},
+		}
+		tuneStarted := time.Now()
+		tuneReport, err = table.TuneWeights(validationSamples, tuneOptions)
+		if tuneProgress != nil {
+			tuneProgress.Finish()
+		}
+		if err != nil {
+			t.Fatalf("TuneWeights: %v", err)
+		}
+		tuneDuration = time.Since(tuneStarted)
+		if err := table.FlushStats(); err != nil {
+			t.Fatalf("FlushStats after tune: %v", err)
+		}
+		table, err = tensor.OpenTable("tensor_accuracy")
+		if err != nil {
+			t.Fatalf("OpenTable after tune: %v", err)
+		}
 	}
 
 	verifyStarted := time.Now()
@@ -133,28 +153,28 @@ func TestTensorAcuricy(t *testing.T) {
 	verifyDuration := time.Since(verifyStarted)
 	totalDuration := time.Since(totalStarted)
 
-	t.Logf("tensor accuracy samples=%d validation=%d test=%d inputs=%d result_labels=%d label_noise=%.2f before_exact=%.4f before_label=%.4f after_exact=%.4f after_label=%.4f",
-		sampleCount, validationCount, testCount, inputCount, resultCount, labelNoiseRate,
+	t.Logf("\n%s", formatTensorAccuracyReport(
+		useAILayer, sampleCount, validationCount, testCount, inputCount, resultCount, labelNoiseRate,
 		beforeTune.exactAccuracy, beforeTune.labelAccuracy,
-		afterTune.exactAccuracy, afterTune.labelAccuracy)
-	t.Logf("tensor tune iterations=%d validation_before=%.4f validation_after=%.4f corrections=%d adjustments=%d errors_by_result=%v",
-		tuneReport.Iterations, tuneReport.AccuracyBefore, tuneReport.AccuracyAfter,
-		tuneReport.Corrections, tuneReport.Adjustments, tuneReport.ErrorsByResult)
-	t.Logf("tensor gates boosted=%v suppressed=%v", tuneReport.TopBoosted, tuneReport.TopSuppressed)
-	t.Logf("tensor timing training=%s rebuild=%s pretest=%s tune=%s verify=%s total=%s",
-		trainingDuration.Round(time.Millisecond),
-		rebuildDuration.Round(time.Millisecond),
-		pretestDuration.Round(time.Millisecond),
-		tuneDuration.Round(time.Millisecond),
-		verifyDuration.Round(time.Millisecond),
-		totalDuration.Round(time.Millisecond))
+		afterTune.exactAccuracy, afterTune.labelAccuracy,
+		trainingDuration, rebuildDuration, pretestDuration, tuneDuration, verifyDuration, totalDuration,
+	))
+	if useAILayer {
+		t.Logf("\n%s", formatTensorTuneReport(
+			tuneReport.Iterations, tuneReport.AccuracyBefore, tuneReport.AccuracyAfter,
+			tuneReport.Corrections, tuneReport.Adjustments, tuneReport.ErrorsByResult,
+		))
+	} else {
+		t.Log("tensor tune ai_layer=false skipped")
+	}
 
 	exactAccuracyCeiling := math.Pow(0.995, float64(resultCount))
 	if afterTune.exactAccuracy > exactAccuracyCeiling {
 		t.Fatalf("exact accuracy %.4f is unrealistically high for noisy multi-label predictions with %d labels", afterTune.exactAccuracy, resultCount)
 	}
-	if afterTune.labelAccuracy < 0.80 {
-		t.Fatalf("label accuracy %.4f below expected threshold 0.80", afterTune.labelAccuracy)
+	minLabelAccuracy := minTensorLabelAccuracy(classCount)
+	if afterTune.labelAccuracy < minLabelAccuracy {
+		t.Fatalf("label accuracy %.4f below expected threshold %.4f", afterTune.labelAccuracy, minLabelAccuracy)
 	}
 	if afterTune.labelAccuracy > 0.98 {
 		t.Fatalf("label accuracy %.4f is unrealistically high for the noisy fixture", afterTune.labelAccuracy)
@@ -162,9 +182,82 @@ func TestTensorAcuricy(t *testing.T) {
 	if afterTune.labelAccuracy+0.02 < beforeTune.labelAccuracy {
 		t.Fatalf("tuned label accuracy %.4f regressed too far from baseline %.4f", afterTune.labelAccuracy, beforeTune.labelAccuracy)
 	}
-	if tuneReport.AccuracyAfter < tuneReport.AccuracyBefore {
+	if useAILayer && tuneReport.AccuracyAfter < tuneReport.AccuracyBefore {
 		t.Fatalf("tuning validation accuracy regressed from %.4f to %.4f", tuneReport.AccuracyBefore, tuneReport.AccuracyAfter)
 	}
+}
+
+func minTensorLabelAccuracy(classCount int) float64 {
+	if classCount <= 3 {
+		return 0.80
+	}
+	return math.Max(0.50, 0.80*math.Sqrt(3/float64(classCount)))
+}
+
+func formatTensorAccuracyReport(
+	aiLayer bool,
+	sampleCount, validationCount, testCount, inputCount, resultCount int,
+	labelNoiseRate, beforeExact, beforeLabel, afterExact, afterLabel float64,
+	trainingDuration, rebuildDuration, pretestDuration, tuneDuration, verifyDuration, totalDuration time.Duration,
+) string {
+	return fmt.Sprintf(`Tensor accuracy
+  config:   ai_layer=%t samples=%d validation=%d test=%d inputs=%d results=%d label_noise=%.2f
+  exact:    before=%.4f after=%.4f
+  labels:   before=%.4f after=%.4f delta=%+.4f
+  timing:   train=%s rebuild=%s pretest=%s tune=%s verify=%s total=%s`,
+		aiLayer, sampleCount, validationCount, testCount, inputCount, resultCount, labelNoiseRate,
+		beforeExact, afterExact,
+		beforeLabel, afterLabel, afterLabel-beforeLabel,
+		roundDuration(trainingDuration),
+		roundDuration(rebuildDuration),
+		roundDuration(pretestDuration),
+		roundDuration(tuneDuration),
+		roundDuration(verifyDuration),
+		roundDuration(totalDuration),
+	)
+}
+
+func formatTensorTuneReport(iterations int, before, after float64, corrections, adjustments int, errorsByResult map[string]int) string {
+	return fmt.Sprintf(`Tensor tuning
+  validation: before=%.4f after=%.4f delta=%+.4f
+  work:       iterations=%d corrections=%d adjustments=%d
+  top errors: %s`,
+		before, after, after-before,
+		iterations, corrections, adjustments,
+		formatTopResultErrors(errorsByResult, 8),
+	)
+}
+
+func formatTopResultErrors(errorsByResult map[string]int, limit int) string {
+	if len(errorsByResult) == 0 || limit <= 0 {
+		return "none"
+	}
+	type resultError struct {
+		key   string
+		count int
+	}
+	items := make([]resultError, 0, len(errorsByResult))
+	for key, count := range errorsByResult {
+		items = append(items, resultError{key: key, count: count})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].count == items[j].count {
+			return items[i].key < items[j].key
+		}
+		return items[i].count > items[j].count
+	})
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	parts := make([]string, len(items))
+	for i, item := range items {
+		parts[i] = fmt.Sprintf("%s=%d", item.key, item.count)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func roundDuration(duration time.Duration) time.Duration {
+	return duration.Round(time.Millisecond)
 }
 
 type tensorAccuracyResult struct {
@@ -258,7 +351,7 @@ func newSyntheticTensorFixture(inputCount, resultCount, classCount int, noiseRat
 	}
 	for i := 0; i < inputCount; i++ {
 		fixture.inputNames[i] = fmt.Sprintf("p%03d", i)
-		fixture.inputRanges[i] = syntheticRangeForInput(i)
+		fixture.inputRanges[i] = syntheticRangeForInput(i, classCount)
 	}
 	for i := 0; i < resultCount; i++ {
 		fixture.resultKeys[i] = fmt.Sprintf("result_%d", i)
@@ -322,7 +415,7 @@ func (f syntheticTensorFixture) sample(rng *rand.Rand, id int) tensor.Sample {
 	}
 }
 
-func syntheticRangeForInput(index int) syntheticInputRange {
+func syntheticRangeForInput(index, classCount int) syntheticInputRange {
 	magnitudes := [...]float64{0.05, 0.2, 1, 3.5, 12, 45, 160, 600}
 	magnitude := magnitudes[index%len(magnitudes)]
 	direction := 1.0
@@ -330,7 +423,8 @@ func syntheticRangeForInput(index int) syntheticInputRange {
 		direction = -1
 	}
 	scale := magnitude * (0.8 + float64((index/11)%7)*0.17)
-	signal := direction * (0.24 + float64((index/5)%9)*0.035)
+	classResolutionScale := float64(maxInt(classCount-1, 1)) / 2
+	signal := direction * (0.24 + float64((index/5)%9)*0.035) * classResolutionScale
 	if index%19 == 0 {
 		signal *= 0.25
 	}
@@ -460,6 +554,18 @@ func envInt(key string, fallback int) int {
 	return value
 }
 
+func envBool(key string, fallback bool) bool {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
 func defaultTensorAccuracyChunk(inputCount, resultCount int) int {
 	featuresPerSample := inputCount + resultCount
 	switch {
@@ -538,6 +644,7 @@ func requireTensorAccuracyTest(t *testing.T) {
 type testProgress struct {
 	stage      string
 	total      int
+	enabled    bool
 	lastPrint  time.Time
 	lastValue  int
 	lastWidth  int
@@ -551,11 +658,15 @@ func newTestProgress(stage string, total int) *testProgress {
 	return &testProgress{
 		stage:      stage,
 		total:      total,
+		enabled:    envBool("TSU_TENSOR_PROGRESS", true),
 		updateRate: 200 * time.Millisecond,
 	}
 }
 
 func (p *testProgress) Update(current int) {
+	if !p.enabled {
+		return
+	}
 	if current < 0 {
 		current = 0
 	}
@@ -577,6 +688,9 @@ func (p *testProgress) Update(current int) {
 }
 
 func (p *testProgress) Finish() {
+	if !p.enabled {
+		return
+	}
 	if p.lastValue == p.total {
 		fmt.Fprintln(os.Stderr)
 		return

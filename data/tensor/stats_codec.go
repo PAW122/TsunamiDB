@@ -10,7 +10,9 @@ import (
 var (
 	statsPayloadMagicV1 = [4]byte{'T', 'S', 'T', '1'}
 	statsPayloadMagicV2 = [4]byte{'T', 'S', 'T', '2'}
-	statsPayloadMagic   = [4]byte{'T', 'S', 'T', '3'}
+	statsPayloadMagicV3 = [4]byte{'T', 'S', 'T', '3'}
+	statsPayloadMagicV4 = [4]byte{'T', 'S', 'T', '4'}
+	statsPayloadMagic   = [4]byte{'T', 'S', 'T', '5'}
 )
 
 func writeStatsSnapshot(key string, schema Schema, stats *statsSnapshot) error {
@@ -28,6 +30,8 @@ func readStatsSnapshot(key string, schema Schema, stats *statsSnapshot) error {
 	}
 	if len(payload) >= len(statsPayloadMagic) &&
 		(bytes.Equal(payload[:4], statsPayloadMagic[:]) ||
+			bytes.Equal(payload[:4], statsPayloadMagicV4[:]) ||
+			bytes.Equal(payload[:4], statsPayloadMagicV3[:]) ||
 			bytes.Equal(payload[:4], statsPayloadMagicV2[:]) ||
 			bytes.Equal(payload[:4], statsPayloadMagicV1[:])) {
 		decoded, err := decodeStatsPayload(schema, payload)
@@ -83,20 +87,41 @@ func encodeStatsPayload(schema Schema, stats *statsSnapshot) ([]byte, error) {
 		}
 	}
 
-	writeUvarint(&buf, uint64(len(stats.ResultGates)))
-	for key, gate := range stats.ResultGates {
-		writeIndexedString(&buf, key, resultIndexes)
-		if gate == nil {
-			writeUvarint(&buf, 0)
-			continue
-		}
-		writeUvarint(&buf, uint64(len(gate.InputWeights)))
-		for index, weight := range gate.InputWeights {
-			writeUvarint(&buf, uint64(index+1))
-			writeFloat64(&buf, weight)
-		}
-	}
+	writeGateSet(&buf, stats.ResultGates, resultIndexes)
+	writeLabelGateSet(&buf, stats.LabelGates, resultIndexes)
 	return buf.Bytes(), nil
+}
+
+func writeGateSet(buf *bytes.Buffer, gates map[string]*resultGate, resultIndexes map[string]int) {
+	writeUvarint(buf, uint64(len(gates)))
+	for key, gate := range gates {
+		writeIndexedString(buf, key, resultIndexes)
+		writeInputWeights(buf, gate)
+	}
+}
+
+func writeLabelGateSet(buf *bytes.Buffer, gates map[string]*resultGate, resultIndexes map[string]int) {
+	writeUvarint(buf, uint64(len(gates)))
+	for id, gate := range gates {
+		key, value := splitLabelID(id)
+		writeIndexedString(buf, key, resultIndexes)
+		writeString(buf, value)
+		writeInputWeights(buf, gate)
+	}
+}
+
+func writeInputWeights(buf *bytes.Buffer, gate *resultGate) {
+	if gate == nil {
+		writeUvarint(buf, 0)
+		writeFloat64(buf, 0)
+		return
+	}
+	writeUvarint(buf, uint64(len(gate.InputWeights)))
+	for index, weight := range gate.InputWeights {
+		writeUvarint(buf, uint64(index+1))
+		writeFloat64(buf, weight)
+	}
+	writeFloat64(buf, gate.Bias)
 }
 
 func decodeStatsPayload(schema Schema, payload []byte) (*statsSnapshot, error) {
@@ -107,8 +132,19 @@ func decodeStatsPayload(schema Schema, payload []byte) (*statsSnapshot, error) {
 	}
 	withWeights := false
 	withGates := false
+	withLabelGates := false
+	withGateBias := false
 	switch magic {
 	case statsPayloadMagic:
+		withWeights = true
+		withGates = true
+		withLabelGates = true
+		withGateBias = true
+	case statsPayloadMagicV4:
+		withWeights = true
+		withGates = true
+		withLabelGates = true
+	case statsPayloadMagicV3:
 		withWeights = true
 		withGates = true
 	case statsPayloadMagicV2:
@@ -252,40 +288,96 @@ func decodeStatsPayload(schema Schema, payload []byte) (*statsSnapshot, error) {
 		stats.LabelStats[labelID(ResultLabel{Key: key, Value: value})] = label
 	}
 	if withGates {
-		gateCount, err := binary.ReadUvarint(reader)
+		gates, err := readGateSet(reader, resultNames, len(schema.Inputs), withGateBias)
 		if err != nil {
 			return nil, err
 		}
-		for i := uint64(0); i < gateCount; i++ {
-			key, err := readIndexedString(reader, resultNames)
+		stats.ResultGates = gates
+		if withLabelGates {
+			labelGates, err := readLabelGateSet(reader, resultNames, len(schema.Inputs), withGateBias)
 			if err != nil {
 				return nil, err
 			}
-			weightCount, err := binary.ReadUvarint(reader)
-			if err != nil {
-				return nil, err
-			}
-			gate := &resultGate{}
-			if weightCount != 0 {
-				gate.InputWeights = make(map[int]float64, weightCount)
-			}
-			for j := uint64(0); j < weightCount; j++ {
-				index, err := readInputIndex(reader, len(schema.Inputs))
-				if err != nil {
-					return nil, err
-				}
-				weight, err := readFloat64(reader)
-				if err != nil {
-					return nil, err
-				}
-				gate.InputWeights[index] = weight
-			}
-			stats.ResultGates[key] = gate
+			stats.LabelGates = labelGates
 		}
 	} else {
 		seedResultGatesFromLegacyWeights(stats, legacyWeightSums, legacyWeightCounts)
 	}
 	return stats, nil
+}
+
+func readGateSet(reader *bytes.Reader, resultNames []string, inputCount int, withBias bool) (map[string]*resultGate, error) {
+	gateCount, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+	gates := make(map[string]*resultGate, gateCount)
+	for i := uint64(0); i < gateCount; i++ {
+		key, err := readIndexedString(reader, resultNames)
+		if err != nil {
+			return nil, err
+		}
+		gate, err := readInputWeights(reader, inputCount, withBias)
+		if err != nil {
+			return nil, err
+		}
+		gates[key] = gate
+	}
+	return gates, nil
+}
+
+func readLabelGateSet(reader *bytes.Reader, resultNames []string, inputCount int, withBias bool) (map[string]*resultGate, error) {
+	gateCount, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+	gates := make(map[string]*resultGate, gateCount)
+	for i := uint64(0); i < gateCount; i++ {
+		key, err := readIndexedString(reader, resultNames)
+		if err != nil {
+			return nil, err
+		}
+		value, err := readString(reader)
+		if err != nil {
+			return nil, err
+		}
+		gate, err := readInputWeights(reader, inputCount, withBias)
+		if err != nil {
+			return nil, err
+		}
+		gates[labelID(ResultLabel{Key: key, Value: value})] = gate
+	}
+	return gates, nil
+}
+
+func readInputWeights(reader *bytes.Reader, inputCount int, withBias bool) (*resultGate, error) {
+	weightCount, err := binary.ReadUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+	gate := &resultGate{}
+	if weightCount != 0 {
+		gate.InputWeights = make(map[int]float64, weightCount)
+	}
+	for j := uint64(0); j < weightCount; j++ {
+		index, err := readInputIndex(reader, inputCount)
+		if err != nil {
+			return nil, err
+		}
+		weight, err := readFloat64(reader)
+		if err != nil {
+			return nil, err
+		}
+		gate.InputWeights[index] = weight
+	}
+	if withBias {
+		bias, err := readFloat64(reader)
+		if err != nil {
+			return nil, err
+		}
+		gate.Bias = bias
+	}
+	return gate, nil
 }
 
 func seedResultGatesFromLegacyWeights(stats *statsSnapshot, sums map[string]map[int]float64, counts map[string]map[int]int) {

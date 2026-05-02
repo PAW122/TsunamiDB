@@ -6,29 +6,35 @@ import (
 )
 
 const (
-	defaultTuneIterations   = 3
-	defaultTuneLearningRate = 0.001
-	defaultTuneRegularize   = 1.0
+	defaultTuneIterations   = 12
+	defaultTuneLearningRate = 0.02
+	defaultTuneRegularize   = 0.999
 	defaultTuneMinWeight    = 0.0
 	defaultTuneMaxWeight    = 2.5
+	defaultClassLayerRate   = 0.02
+	defaultLabelBiasRate    = 4.0
+	defaultMaxLabelBias     = 8.0
 	tuneSummaryLimit        = 5
+	tuneSummaryGroupLimit   = 12
 )
 
 func (t *Table) TuneWeights(samples []Sample, options TuneOptions) (TuneReport, error) {
 	params := normalizeTuneOptions(options)
+	progress := newTuneProgress(len(samples), params)
 	report := TuneReport{
 		Samples:        len(samples),
 		Iterations:     params.Iterations,
 		ErrorsByResult: make(map[string]int),
 	}
 	if len(samples) == 0 {
+		progress.finish()
 		return report, nil
 	}
 	if len(t.stats.LabelStats) == 0 {
+		progress.finish()
 		return report, ErrNoModelData
 	}
-
-	accuracy, err := t.tuneAccuracy(samples)
+	accuracy, err := t.tuneAccuracy(samples, progress.add)
 	if err != nil {
 		return report, err
 	}
@@ -37,6 +43,7 @@ func (t *Table) TuneWeights(samples []Sample, options TuneOptions) (TuneReport, 
 
 	for iteration := 0; iteration < params.Iterations; iteration++ {
 		beforeGates := cloneResultGates(t.stats.ResultGates)
+		beforeLabelGates := cloneResultGates(t.stats.LabelGates)
 		epochErrors := make(map[string]int)
 		epochCorrections := 0
 		epochAdjustments := 0
@@ -52,14 +59,16 @@ func (t *Table) TuneWeights(samples []Sample, options TuneOptions) (TuneReport, 
 			}
 			epochCorrections += corrections
 			epochAdjustments += adjustments
+			progress.add(1)
 		}
 
-		nextAccuracy, err := t.tuneAccuracy(samples)
+		nextAccuracy, err := t.tuneAccuracy(samples, progress.add)
 		if err != nil {
 			return report, err
 		}
 		if nextAccuracy+1e-12 < report.AccuracyAfter {
 			t.stats.ResultGates = beforeGates
+			t.stats.LabelGates = beforeLabelGates
 			params.LearningRate *= 0.5
 			continue
 		}
@@ -70,8 +79,54 @@ func (t *Table) TuneWeights(samples []Sample, options TuneOptions) (TuneReport, 
 			report.ErrorsByResult[key] += count
 		}
 	}
-	report.TopBoosted, report.TopSuppressed = t.gateWeightSummaries(tuneSummaryLimit)
+	report.TopBoosted, report.TopSuppressed = t.gateWeightSummaries(t.stats.ResultGates, tuneSummaryLimit, false)
+	report.TopClassBoosted, report.TopClassSuppressed = t.gateWeightSummaries(t.stats.LabelGates, tuneSummaryLimit, true)
+	progress.finish()
 	return report, nil
+}
+
+type tuneProgress struct {
+	fn        func(completed, total int)
+	completed int
+	total     int
+}
+
+func newTuneProgress(samples int, options TuneOptions) tuneProgress {
+	total := samples * (1 + 2*options.Iterations)
+	if total < 1 {
+		total = 1
+	}
+	progress := tuneProgress{
+		fn:    options.Progress,
+		total: total,
+	}
+	progress.notify()
+	return progress
+}
+
+func (p *tuneProgress) add(delta int) {
+	if delta <= 0 {
+		return
+	}
+	p.completed += delta
+	if p.completed > p.total {
+		p.completed = p.total
+	}
+	p.notify()
+}
+
+func (p *tuneProgress) finish() {
+	if p.completed >= p.total {
+		return
+	}
+	p.completed = p.total
+	p.notify()
+}
+
+func (p tuneProgress) notify() {
+	if p.fn != nil {
+		p.fn(p.completed, p.total)
+	}
 }
 
 func normalizeTuneOptions(options TuneOptions) TuneOptions {
@@ -128,8 +183,9 @@ func (t *Table) tuneFloatRanks(input []float64, want []ResultLabel, ranks []labe
 		if !correct {
 			corrections++
 			errorsByResult[expected.Key]++
+			adjustments += t.tuneLabelBias(expectedLabel, wrongLabel, options)
 		}
-		adjustments += t.tuneFloatMargin(input, expectedLabel, wrongLabel, options)
+		adjustments += t.tuneFloatMargin(input, expectedLabel, wrongLabel, options, true, !correct)
 	}
 	return corrections, adjustments
 }
@@ -146,10 +202,23 @@ func (t *Table) tuneRanks(input normalizedInput, want []ResultLabel, ranks []lab
 		if !correct {
 			corrections++
 			errorsByResult[expected.Key]++
+			adjustments += t.tuneLabelBias(expectedLabel, wrongLabel, options)
 		}
-		adjustments += t.tuneMargin(input, expectedLabel, wrongLabel, options)
+		adjustments += t.tuneMargin(input, expectedLabel, wrongLabel, options, true, !correct)
 	}
 	return corrections, adjustments
+}
+
+func (t *Table) tuneLabelBias(expectedLabel, wrongLabel *labelStats, options TuneOptions) int {
+	adjustments := 0
+	delta := options.LearningRate * defaultLabelBiasRate
+	if t.stats.adjustLabelBias(expectedLabel, delta, options.Regularization, defaultMaxLabelBias) {
+		adjustments++
+	}
+	if t.stats.adjustLabelBias(wrongLabel, -delta, options.Regularization, defaultMaxLabelBias) {
+		adjustments++
+	}
+	return adjustments
 }
 
 func predictedResultsByKey(results []PredictedResult) map[string]PredictedResult {
@@ -235,7 +304,7 @@ func (t *Table) rankCompetitor(expected ResultLabel, ranks []labelRank) (*labelS
 	return rank.second, true
 }
 
-func (t *Table) tuneFloatMargin(input []float64, expectedLabel, wrongLabel *labelStats, options TuneOptions) int {
+func (t *Table) tuneFloatMargin(input []float64, expectedLabel, wrongLabel *labelStats, options TuneOptions, adjustResult, adjustClass bool) int {
 	adjustments := 0
 	indexes := t.inputIndexesForResult(expectedLabel.Key)
 	if len(expectedLabel.inputIndexes) != 0 {
@@ -245,20 +314,31 @@ func (t *Table) tuneFloatMargin(input []float64, expectedLabel, wrongLabel *labe
 		if idx < 0 || idx >= len(input) || idx >= len(t.schema.Inputs) {
 			continue
 		}
-		good, goodOK := floatLabelInputContribution(input[idx], expectedLabel, pos, idx)
-		bad, badOK := floatLabelInputContribution(input[idx], wrongLabel, pos, idx)
+		good, goodOK := floatLabelInputContribution(t.stats, input[idx], expectedLabel, pos, idx)
+		bad, badOK := floatLabelInputContribution(t.stats, input[idx], wrongLabel, pos, idx)
 		if !goodOK && !badOK {
 			continue
 		}
-		delta := options.LearningRate * (good - bad)
-		if t.stats.adjustResultInputWeight(expectedLabel.Key, idx, delta, options.Regularization, options.MinWeight, options.MaxWeight) {
-			adjustments++
+		if adjustResult {
+			delta := options.LearningRate * (good - bad)
+			if t.stats.adjustResultInputWeight(expectedLabel.Key, idx, delta, options.Regularization, options.MinWeight, options.MaxWeight) {
+				adjustments++
+			}
+		}
+		if adjustClass {
+			classRate := options.LearningRate * defaultClassLayerRate
+			if t.stats.adjustLabelInputWeight(expectedLabel, idx, classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+				adjustments++
+			}
+			if wrongLabel != nil && t.stats.adjustLabelInputWeight(wrongLabel, idx, -classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+				adjustments++
+			}
 		}
 	}
 	return adjustments
 }
 
-func (t *Table) tuneMargin(input normalizedInput, expectedLabel, wrongLabel *labelStats, options TuneOptions) int {
+func (t *Table) tuneMargin(input normalizedInput, expectedLabel, wrongLabel *labelStats, options TuneOptions, adjustResult, adjustClass bool) int {
 	adjustments := 0
 	indexes := t.inputIndexesForResult(expectedLabel.Key)
 	if len(expectedLabel.inputIndexes) != 0 {
@@ -268,25 +348,36 @@ func (t *Table) tuneMargin(input normalizedInput, expectedLabel, wrongLabel *lab
 		if idx < 0 || idx >= len(input) || idx >= len(t.schema.Inputs) {
 			continue
 		}
-		good, goodOK := labelInputContribution(input[idx], expectedLabel, pos, idx)
-		bad, badOK := labelInputContribution(input[idx], wrongLabel, pos, idx)
+		good, goodOK := labelInputContribution(t.stats, input[idx], expectedLabel, pos, idx)
+		bad, badOK := labelInputContribution(t.stats, input[idx], wrongLabel, pos, idx)
 		if !goodOK && !badOK {
 			continue
 		}
-		delta := options.LearningRate * (good - bad)
-		if t.stats.adjustResultInputWeight(expectedLabel.Key, idx, delta, options.Regularization, options.MinWeight, options.MaxWeight) {
-			adjustments++
+		if adjustResult {
+			delta := options.LearningRate * (good - bad)
+			if t.stats.adjustResultInputWeight(expectedLabel.Key, idx, delta, options.Regularization, options.MinWeight, options.MaxWeight) {
+				adjustments++
+			}
+		}
+		if adjustClass {
+			classRate := options.LearningRate * defaultClassLayerRate
+			if t.stats.adjustLabelInputWeight(expectedLabel, idx, classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+				adjustments++
+			}
+			if wrongLabel != nil && t.stats.adjustLabelInputWeight(wrongLabel, idx, -classRate*(good-bad), options.Regularization, options.MinWeight, options.MaxWeight) {
+				adjustments++
+			}
 		}
 	}
 	return adjustments
 }
 
-func labelInputContribution(value any, label *labelStats, pos, idx int) (float64, bool) {
+func labelInputContribution(stats *statsSnapshot, value any, label *labelStats, pos, idx int) (float64, bool) {
 	if label == nil {
 		return 0, false
 	}
 	if numeric, ok := numericValue(value); ok {
-		return floatLabelInputContribution(numeric, label, pos, idx)
+		return floatLabelInputContribution(stats, numeric, label, pos, idx)
 	}
 	stat := label.categoryAt(pos, idx)
 	if stat == nil || stat.Count == 0 {
@@ -297,7 +388,7 @@ func labelInputContribution(value any, label *labelStats, pos, idx int) (float64
 	return math.Log(frequency), true
 }
 
-func floatLabelInputContribution(value float64, label *labelStats, pos, idx int) (float64, bool) {
+func floatLabelInputContribution(stats *statsSnapshot, value float64, label *labelStats, pos, idx int) (float64, bool) {
 	if label == nil {
 		return 0, false
 	}
@@ -305,16 +396,13 @@ func floatLabelInputContribution(value float64, label *labelStats, pos, idx int)
 	if stat == nil || stat.Count == 0 {
 		return 0, false
 	}
+	if stats != nil {
+		return numericLogContribution(value, stat), true
+	}
 	return math.Log(0.05 + numericImpact(value, stat)), true
 }
 
-func numericImpact(value float64, stat *numericStats) float64 {
-	variance := stat.variance()
-	z := (value - stat.Mean) / math.Sqrt(variance)
-	return 1 / (1 + math.Abs(z))
-}
-
-func (t *Table) tuneAccuracy(samples []Sample) (float64, error) {
+func (t *Table) tuneAccuracy(samples []Sample, progress func(int)) (float64, error) {
 	correct := 0
 	total := 0
 	for i := range samples {
@@ -334,6 +422,9 @@ func (t *Table) tuneAccuracy(samples []Sample) (float64, error) {
 					correct++
 				}
 			}
+			if progress != nil {
+				progress(1)
+			}
 			continue
 		}
 		input, results, err := t.validateSample(samples[i])
@@ -350,6 +441,9 @@ func (t *Table) tuneAccuracy(samples []Sample) (float64, error) {
 			if result, ok := got[expected.Key]; ok && result.Value == expected.Value {
 				correct++
 			}
+		}
+		if progress != nil {
+			progress(1)
 		}
 	}
 	if total == 0 {
@@ -368,6 +462,7 @@ func cloneResultGates(source map[string]*resultGate) map[string]*resultGate {
 			continue
 		}
 		copied := &resultGate{}
+		copied.Bias = gate.Bias
 		if len(gate.InputWeights) != 0 {
 			copied.InputWeights = make(map[int]float64, len(gate.InputWeights))
 			for index, weight := range gate.InputWeights {
@@ -379,15 +474,23 @@ func cloneResultGates(source map[string]*resultGate) map[string]*resultGate {
 	return clone
 }
 
-func (t *Table) gateWeightSummaries(limit int) (map[string][]GateWeightSummary, map[string][]GateWeightSummary) {
-	if limit <= 0 || len(t.stats.ResultGates) == 0 {
+func (t *Table) gateWeightSummaries(gates map[string]*resultGate, limit int, labelLevel bool) (map[string][]GateWeightSummary, map[string][]GateWeightSummary) {
+	if limit <= 0 || len(gates) == 0 {
 		return nil, nil
 	}
 	boosted := make(map[string][]GateWeightSummary)
 	suppressed := make(map[string][]GateWeightSummary)
-	for resultKey, gate := range t.stats.ResultGates {
+	for gateKey, gate := range gates {
+		if labelLevel && len(boosted)+len(suppressed) >= tuneSummaryGroupLimit {
+			break
+		}
 		if gate == nil || len(gate.InputWeights) == 0 {
 			continue
+		}
+		reportKey := gateKey
+		if labelLevel {
+			key, value := splitLabelID(gateKey)
+			reportKey = key + "=" + value
 		}
 		items := make([]GateWeightSummary, 0, len(gate.InputWeights))
 		for index, weight := range gate.InputWeights {
@@ -410,8 +513,8 @@ func (t *Table) gateWeightSummaries(limit int) (map[string][]GateWeightSummary, 
 			if item.Weight <= 1 {
 				continue
 			}
-			boosted[resultKey] = append(boosted[resultKey], item)
-			if len(boosted[resultKey]) >= limit {
+			boosted[reportKey] = append(boosted[reportKey], item)
+			if len(boosted[reportKey]) >= limit {
 				break
 			}
 		}
@@ -425,16 +528,16 @@ func (t *Table) gateWeightSummaries(limit int) (map[string][]GateWeightSummary, 
 			if item.Weight >= 1 {
 				continue
 			}
-			suppressed[resultKey] = append(suppressed[resultKey], item)
-			if len(suppressed[resultKey]) >= limit {
+			suppressed[reportKey] = append(suppressed[reportKey], item)
+			if len(suppressed[reportKey]) >= limit {
 				break
 			}
 		}
-		if len(boosted[resultKey]) == 0 {
-			delete(boosted, resultKey)
+		if len(boosted[reportKey]) == 0 {
+			delete(boosted, reportKey)
 		}
-		if len(suppressed[resultKey]) == 0 {
-			delete(suppressed, resultKey)
+		if len(suppressed[reportKey]) == 0 {
+			delete(suppressed, reportKey)
 		}
 	}
 	if len(boosted) == 0 {
