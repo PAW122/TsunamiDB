@@ -94,6 +94,25 @@ func (s *statsSnapshot) add(input normalizedInput, results []ResultLabel, indexe
 	}
 }
 
+func (s *statsSnapshot) merge(other *statsSnapshot, indexesForResult func(string) []int) {
+	if other == nil {
+		return
+	}
+	s.TotalCount += other.TotalCount
+	for _, source := range other.LabelStats {
+		if source == nil {
+			continue
+		}
+		id := labelID(ResultLabel{Key: source.Key, Value: source.Value})
+		target := s.LabelStats[id]
+		if target == nil {
+			target = newLabelStats(source.Key, source.Value, indexesForResult(source.Key))
+			s.LabelStats[id] = target
+		}
+		target.merge(source)
+	}
+}
+
 func newLabelStats(key, value string, indexes []int) *labelStats {
 	label := &labelStats{
 		Key:   key,
@@ -105,6 +124,123 @@ func newLabelStats(key, value string, indexes []int) *labelStats {
 		label.Categories = make(map[int]*categoryStats)
 	}
 	return label
+}
+
+func (l *labelStats) merge(source *labelStats) {
+	if source == nil {
+		return
+	}
+	l.Count += source.Count
+	l.mergeNumerics(source)
+	l.mergeCategories(source)
+}
+
+func (l *labelStats) mergeNumerics(source *labelStats) {
+	if len(source.numericDense) != 0 {
+		wrote := false
+		for pos, stat := range source.numericDense {
+			if stat != nil && stat.Count != 0 {
+				wrote = true
+				l.mergeNumericAt(pos, source.inputIndexes[pos], stat)
+			}
+		}
+		if wrote || len(source.Numerics) == 0 {
+			return
+		}
+	}
+	for index, stat := range source.Numerics {
+		if stat != nil && stat.Count != 0 {
+			l.mergeNumericAt(-1, index, stat)
+		}
+	}
+}
+
+func (l *labelStats) mergeNumericAt(pos, index int, source *numericStats) {
+	if source == nil || source.Count == 0 {
+		return
+	}
+	if l.usesDenseOnly() {
+		if len(l.numericDense) == 0 && len(l.inputIndexes) != 0 {
+			l.numericDense = make([]*numericStats, len(l.inputIndexes))
+		}
+		targetPos := l.densePosition(pos, index)
+		if targetPos >= 0 {
+			if l.numericDense[targetPos] == nil {
+				l.numericDense[targetPos] = cloneNumericStats(source)
+				return
+			}
+			l.numericDense[targetPos].merge(source)
+			return
+		}
+	}
+	if l.Numerics == nil {
+		l.Numerics = make(map[int]*numericStats)
+	}
+	if l.Numerics[index] == nil {
+		l.Numerics[index] = cloneNumericStats(source)
+		return
+	}
+	l.Numerics[index].merge(source)
+}
+
+func (l *labelStats) mergeCategories(source *labelStats) {
+	if len(source.categoryDense) != 0 {
+		wrote := false
+		for pos, stat := range source.categoryDense {
+			if stat != nil && stat.Count != 0 {
+				wrote = true
+				l.mergeCategoryAt(pos, source.inputIndexes[pos], stat)
+			}
+		}
+		if wrote || len(source.Categories) == 0 {
+			return
+		}
+	}
+	for index, stat := range source.Categories {
+		if stat != nil && stat.Count != 0 {
+			l.mergeCategoryAt(-1, index, stat)
+		}
+	}
+}
+
+func (l *labelStats) mergeCategoryAt(pos, index int, source *categoryStats) {
+	if source == nil || source.Count == 0 {
+		return
+	}
+	if l.usesDenseOnly() {
+		if len(l.categoryDense) == 0 && len(l.inputIndexes) != 0 {
+			l.categoryDense = make([]*categoryStats, len(l.inputIndexes))
+		}
+		targetPos := l.densePosition(pos, index)
+		if targetPos >= 0 {
+			if l.categoryDense[targetPos] == nil {
+				l.categoryDense[targetPos] = cloneCategoryStats(source)
+				return
+			}
+			l.categoryDense[targetPos].merge(source)
+			return
+		}
+	}
+	if l.Categories == nil {
+		l.Categories = make(map[int]*categoryStats)
+	}
+	if l.Categories[index] == nil {
+		l.Categories[index] = cloneCategoryStats(source)
+		return
+	}
+	l.Categories[index].merge(source)
+}
+
+func (l *labelStats) densePosition(pos, index int) int {
+	if pos >= 0 && pos < len(l.inputIndexes) && l.inputIndexes[pos] == index {
+		return pos
+	}
+	for i, inputIndex := range l.inputIndexes {
+		if inputIndex == index {
+			return i
+		}
+	}
+	return -1
 }
 
 func (l *labelStats) prepareDense(indexes []int) {
@@ -161,6 +297,35 @@ func (n *numericStats) add(value float64) {
 	if value > n.Max {
 		n.Max = value
 	}
+}
+
+func (n *numericStats) merge(source *numericStats) {
+	if source == nil || source.Count == 0 {
+		return
+	}
+	if n.Count == 0 {
+		*n = *source
+		return
+	}
+	total := n.Count + source.Count
+	delta := source.Mean - n.Mean
+	n.Mean += delta * float64(source.Count) / float64(total)
+	n.M2 += source.M2 + delta*delta*float64(n.Count)*float64(source.Count)/float64(total)
+	n.Count = total
+	if source.Min < n.Min {
+		n.Min = source.Min
+	}
+	if source.Max > n.Max {
+		n.Max = source.Max
+	}
+}
+
+func cloneNumericStats(source *numericStats) *numericStats {
+	if source == nil {
+		return nil
+	}
+	clone := *source
+	return &clone
 }
 
 func (l *labelStats) numericAt(pos, index int) *numericStats {
@@ -230,6 +395,33 @@ func (l *labelStats) addCategory(index int, value string) {
 	}
 	stat.Count++
 	stat.Values[value]++
+}
+
+func (c *categoryStats) merge(source *categoryStats) {
+	if source == nil || source.Count == 0 {
+		return
+	}
+	if c.Values == nil {
+		c.Values = make(map[string]uint64, len(source.Values))
+	}
+	c.Count += source.Count
+	for value, count := range source.Values {
+		c.Values[value] += count
+	}
+}
+
+func cloneCategoryStats(source *categoryStats) *categoryStats {
+	if source == nil {
+		return nil
+	}
+	clone := &categoryStats{
+		Count:  source.Count,
+		Values: make(map[string]uint64, len(source.Values)),
+	}
+	for value, count := range source.Values {
+		clone.Values[value] = count
+	}
+	return clone
 }
 
 func (l *labelStats) categoryAt(pos, index int) *categoryStats {

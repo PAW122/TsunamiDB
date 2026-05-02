@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"runtime"
 	"sort"
+	"sync"
 
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 )
@@ -284,24 +286,50 @@ func (t *Table) AddSamples(samples []Sample) error {
 		input   normalizedInput
 		results []ResultLabel
 	}
+	type preparedSample struct {
+		input   normalizedInput
+		results []ResultLabel
+		frame   []byte
+		learn   bool
+	}
+	prepared := make([]preparedSample, len(samples))
+	if err := t.parallelForErr(len(samples), func(start, end int) error {
+		for i := start; i < end; i++ {
+			sample := samples[i]
+			input, results, err := t.validateSample(sample)
+			if err != nil {
+				return err
+			}
+			frame, err := encodeSampleFrame(t.schema, sample, input)
+			if err != nil {
+				return err
+			}
+			prepared[i] = preparedSample{
+				input:   input,
+				results: results,
+				frame:   frame,
+				learn:   t.shouldLearn(sample.LearningStatus),
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
 	var payload bytes.Buffer
 	frameSizes := make([]int, 0, len(samples))
 	learned := make([]learnedSample, 0, len(samples))
-
-	for _, sample := range samples {
-		input, results, err := t.validateSample(sample)
-		if err != nil {
-			return err
+	totalSize := 0
+	for _, sample := range prepared {
+		totalSize += len(sample.frame)
+	}
+	payload.Grow(totalSize)
+	for _, sample := range prepared {
+		if sample.learn {
+			learned = append(learned, learnedSample{input: sample.input, results: sample.results})
 		}
-		if t.shouldLearn(sample.LearningStatus) {
-			learned = append(learned, learnedSample{input: input, results: results})
-		}
-		frame, err := encodeSampleFrame(t.schema, sample, input)
-		if err != nil {
-			return err
-		}
-		frameSizes = append(frameSizes, len(frame))
-		payload.Write(frame)
+		frameSizes = append(frameSizes, len(sample.frame))
+		payload.Write(sample.frame)
 	}
 
 	startPtr, _, err := dataManager_v2.SaveDataAppendToFileAsync(payload.Bytes(), t.files.sampleData)
@@ -335,24 +363,50 @@ func (t *Table) addFloatSamples(samples []Sample) error {
 		input   []float64
 		results []ResultLabel
 	}
+	type preparedSample struct {
+		input   []float64
+		results []ResultLabel
+		frame   []byte
+		learn   bool
+	}
+	prepared := make([]preparedSample, len(samples))
+	if err := t.parallelForErr(len(samples), func(start, end int) error {
+		for i := start; i < end; i++ {
+			sample := samples[i]
+			input, results, err := t.validateFloatSample(sample)
+			if err != nil {
+				return err
+			}
+			frame, err := encodeFloatSampleFrame(t.schema, sample, input, t.resultIndexByKey)
+			if err != nil {
+				return err
+			}
+			prepared[i] = preparedSample{
+				input:   input,
+				results: results,
+				frame:   frame,
+				learn:   t.shouldLearn(sample.LearningStatus),
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
 	var payload bytes.Buffer
 	frameSizes := make([]int, 0, len(samples))
 	learned := make([]learnedSample, 0, len(samples))
-
-	for _, sample := range samples {
-		input, results, err := t.validateFloatSample(sample)
-		if err != nil {
-			return err
+	totalSize := 0
+	for _, sample := range prepared {
+		totalSize += len(sample.frame)
+	}
+	payload.Grow(totalSize)
+	for _, sample := range prepared {
+		if sample.learn {
+			learned = append(learned, learnedSample{input: sample.input, results: sample.results})
 		}
-		if t.shouldLearn(sample.LearningStatus) {
-			learned = append(learned, learnedSample{input: input, results: results})
-		}
-		frame, err := encodeFloatSampleFrame(t.schema, sample, input, t.resultIndexByKey)
-		if err != nil {
-			return err
-		}
-		frameSizes = append(frameSizes, len(frame))
-		payload.Write(frame)
+		frameSizes = append(frameSizes, len(sample.frame))
+		payload.Write(sample.frame)
 	}
 
 	startPtr, _, err := dataManager_v2.SaveDataAppendToFileAsync(payload.Bytes(), t.files.sampleData)
@@ -418,18 +472,22 @@ func (t *Table) Predict(input map[string]any, topN int) (Prediction, error) {
 		label  *labelStats
 		result PredictedResult
 	}
-	scored := make([]scoredLabel, 0, len(t.stats.LabelStats))
-	for _, label := range t.stats.LabelStats {
-		scored = append(scored, scoredLabel{
-			label: label,
-			result: PredictedResult{
-				Key:     label.Key,
-				Value:   label.Value,
-				Score:   t.scoreLabelOnly(normalized, label),
-				Samples: label.Count,
-			},
-		})
-	}
+	labels := t.snapshotLabels()
+	scored := make([]scoredLabel, len(labels))
+	t.parallelFor(len(labels), func(start, end int) {
+		for i := start; i < end; i++ {
+			label := labels[i]
+			scored[i] = scoredLabel{
+				label: label,
+				result: PredictedResult{
+					Key:     label.Key,
+					Value:   label.Value,
+					Score:   t.scoreLabelOnly(normalized, label),
+					Samples: label.Count,
+				},
+			}
+		}
+	})
 
 	sort.Slice(scored, func(i, j int) bool {
 		if scored[i].result.Score == scored[j].result.Score {
@@ -457,18 +515,22 @@ func (t *Table) predictFloatTopN(input []float64, topN int) (Prediction, error) 
 		label  *labelStats
 		result PredictedResult
 	}
-	scored := make([]scoredLabel, 0, len(t.stats.LabelStats))
-	for _, label := range t.stats.LabelStats {
-		scored = append(scored, scoredLabel{
-			label: label,
-			result: PredictedResult{
-				Key:     label.Key,
-				Value:   label.Value,
-				Score:   t.scoreFloatLabelOnly(input, label),
-				Samples: label.Count,
-			},
-		})
-	}
+	labels := t.snapshotLabels()
+	scored := make([]scoredLabel, len(labels))
+	t.parallelFor(len(labels), func(start, end int) {
+		for i := start; i < end; i++ {
+			label := labels[i]
+			scored[i] = scoredLabel{
+				label: label,
+				result: PredictedResult{
+					Key:     label.Key,
+					Value:   label.Value,
+					Score:   t.scoreFloatLabelOnly(input, label),
+					Samples: label.Count,
+				},
+			}
+		}
+	})
 	sort.Slice(scored, func(i, j int) bool {
 		if scored[i].result.Score == scored[j].result.Score {
 			if scored[i].result.Key == scored[j].result.Key {
@@ -490,23 +552,63 @@ func (t *Table) predictFloatTopN(input []float64, topN int) (Prediction, error) 
 }
 
 func (t *Table) predictFloatBestPerResult(input []float64) (Prediction, error) {
-	bestByResult := make([]*labelStats, len(t.schema.Results))
-	bestScores := make([]float64, len(t.schema.Results))
-	for i := range bestScores {
-		bestScores[i] = math.Inf(-1)
-	}
+	resultCount := len(t.schema.Results)
+	bestByResult := make([]*labelStats, resultCount)
+	bestScores := newNegativeInfSlice(resultCount)
+	labels := t.snapshotLabels()
+	workers := t.workerCount(len(labels))
 
-	for _, label := range t.stats.LabelStats {
-		resultIndex, ok := t.resultIndexByKey[label.Key]
-		if !ok || resultIndex < 0 || resultIndex >= len(bestByResult) {
-			continue
+	if workers == 1 {
+		for _, label := range labels {
+			resultIndex, ok := t.resultIndexByKey[label.Key]
+			if !ok || resultIndex < 0 || resultIndex >= len(bestByResult) {
+				continue
+			}
+			score := t.scoreFloatLabelOnly(input, label)
+			if betterLabel(label, score, bestByResult[resultIndex], bestScores[resultIndex]) {
+				bestByResult[resultIndex] = label
+				bestScores[resultIndex] = score
+			}
 		}
-		score := t.scoreFloatLabelOnly(input, label)
-		best := bestByResult[resultIndex]
-		if best == nil || score > bestScores[resultIndex] ||
-			(score == bestScores[resultIndex] && label.Value < best.Value) {
-			bestByResult[resultIndex] = label
-			bestScores[resultIndex] = score
+	} else {
+		localBest := make([][]*labelStats, workers)
+		localScores := make([][]float64, workers)
+		var wg sync.WaitGroup
+		for worker := 0; worker < workers; worker++ {
+			start, end := workerRange(len(labels), workers, worker)
+			localBest[worker] = make([]*labelStats, resultCount)
+			localScores[worker] = newNegativeInfSlice(resultCount)
+			wg.Add(1)
+			go func(worker, start, end int) {
+				defer wg.Done()
+				best := localBest[worker]
+				scores := localScores[worker]
+				for i := start; i < end; i++ {
+					label := labels[i]
+					resultIndex, ok := t.resultIndexByKey[label.Key]
+					if !ok || resultIndex < 0 || resultIndex >= len(best) {
+						continue
+					}
+					score := t.scoreFloatLabelOnly(input, label)
+					if betterLabel(label, score, best[resultIndex], scores[resultIndex]) {
+						best[resultIndex] = label
+						scores[resultIndex] = score
+					}
+				}
+			}(worker, start, end)
+		}
+		wg.Wait()
+		for worker := 0; worker < workers; worker++ {
+			for resultIndex, label := range localBest[worker] {
+				if label == nil {
+					continue
+				}
+				score := localScores[worker][resultIndex]
+				if betterLabel(label, score, bestByResult[resultIndex], bestScores[resultIndex]) {
+					bestByResult[resultIndex] = label
+					bestScores[resultIndex] = score
+				}
+			}
 		}
 	}
 
@@ -521,23 +623,63 @@ func (t *Table) predictFloatBestPerResult(input []float64) (Prediction, error) {
 }
 
 func (t *Table) predictBestPerResult(input normalizedInput) (Prediction, error) {
-	bestByResult := make([]*labelStats, len(t.schema.Results))
-	bestScores := make([]float64, len(t.schema.Results))
-	for i := range bestScores {
-		bestScores[i] = math.Inf(-1)
-	}
+	resultCount := len(t.schema.Results)
+	bestByResult := make([]*labelStats, resultCount)
+	bestScores := newNegativeInfSlice(resultCount)
+	labels := t.snapshotLabels()
+	workers := t.workerCount(len(labels))
 
-	for _, label := range t.stats.LabelStats {
-		resultIndex, ok := t.resultIndexByKey[label.Key]
-		if !ok || resultIndex < 0 || resultIndex >= len(bestByResult) {
-			continue
+	if workers == 1 {
+		for _, label := range labels {
+			resultIndex, ok := t.resultIndexByKey[label.Key]
+			if !ok || resultIndex < 0 || resultIndex >= len(bestByResult) {
+				continue
+			}
+			score := t.scoreLabelOnly(input, label)
+			if betterLabel(label, score, bestByResult[resultIndex], bestScores[resultIndex]) {
+				bestByResult[resultIndex] = label
+				bestScores[resultIndex] = score
+			}
 		}
-		score := t.scoreLabelOnly(input, label)
-		best := bestByResult[resultIndex]
-		if best == nil || score > bestScores[resultIndex] ||
-			(score == bestScores[resultIndex] && label.Value < best.Value) {
-			bestByResult[resultIndex] = label
-			bestScores[resultIndex] = score
+	} else {
+		localBest := make([][]*labelStats, workers)
+		localScores := make([][]float64, workers)
+		var wg sync.WaitGroup
+		for worker := 0; worker < workers; worker++ {
+			start, end := workerRange(len(labels), workers, worker)
+			localBest[worker] = make([]*labelStats, resultCount)
+			localScores[worker] = newNegativeInfSlice(resultCount)
+			wg.Add(1)
+			go func(worker, start, end int) {
+				defer wg.Done()
+				best := localBest[worker]
+				scores := localScores[worker]
+				for i := start; i < end; i++ {
+					label := labels[i]
+					resultIndex, ok := t.resultIndexByKey[label.Key]
+					if !ok || resultIndex < 0 || resultIndex >= len(best) {
+						continue
+					}
+					score := t.scoreLabelOnly(input, label)
+					if betterLabel(label, score, best[resultIndex], scores[resultIndex]) {
+						best[resultIndex] = label
+						scores[resultIndex] = score
+					}
+				}
+			}(worker, start, end)
+		}
+		wg.Wait()
+		for worker := 0; worker < workers; worker++ {
+			for resultIndex, label := range localBest[worker] {
+				if label == nil {
+					continue
+				}
+				score := localScores[worker][resultIndex]
+				if betterLabel(label, score, bestByResult[resultIndex], bestScores[resultIndex]) {
+					bestByResult[resultIndex] = label
+					bestScores[resultIndex] = score
+				}
+			}
 		}
 	}
 
@@ -852,6 +994,43 @@ type sampleSpan struct {
 }
 
 func (t *Table) rebuildStatsFromSpans(spans []sampleSpan) error {
+	workers := t.workerCount(len(spans))
+	if workers == 1 {
+		return t.rebuildStatsFromSpansSerial(spans)
+	}
+
+	localStats := make([]*statsSnapshot, workers)
+	var (
+		wg      sync.WaitGroup
+		errOnce sync.Once
+		first   error
+	)
+	for worker := 0; worker < workers; worker++ {
+		start, end := workerRange(len(spans), workers, worker)
+		local := newTable(t.schema, newStats(t.schema), t.files)
+		localStats[worker] = local.stats
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := local.rebuildStatsFromSpansSerial(spans[start:end]); err != nil {
+				errOnce.Do(func() {
+					first = err
+				})
+			}
+		}()
+	}
+	wg.Wait()
+	if first != nil {
+		return first
+	}
+	for _, stats := range localStats {
+		t.stats.merge(stats, t.inputIndexesForResult)
+	}
+	return nil
+}
+
+func (t *Table) rebuildStatsFromSpansSerial(spans []sampleSpan) error {
 	for i := 0; i < len(spans); {
 		groupStart := spans[i].start
 		groupEnd := spans[i].end
@@ -936,6 +1115,93 @@ func normalizeProbabilities(results []PredictedResult) {
 	for i := range results {
 		results[i].Probability /= sum
 	}
+}
+
+func (t *Table) snapshotLabels() []*labelStats {
+	labels := make([]*labelStats, 0, len(t.stats.LabelStats))
+	for _, label := range t.stats.LabelStats {
+		labels = append(labels, label)
+	}
+	return labels
+}
+
+func (t *Table) parallelFor(items int, fn func(start, end int)) {
+	workers := t.workerCount(items)
+	if workers == 1 {
+		fn(0, items)
+		return
+	}
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		start, end := workerRange(items, workers, worker)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			fn(start, end)
+		}()
+	}
+	wg.Wait()
+}
+
+func (t *Table) parallelForErr(items int, fn func(start, end int) error) error {
+	workers := t.workerCount(items)
+	if workers == 1 {
+		return fn(0, items)
+	}
+
+	var (
+		wg      sync.WaitGroup
+		errOnce sync.Once
+		first   error
+	)
+	for worker := 0; worker < workers; worker++ {
+		start, end := workerRange(items, workers, worker)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := fn(start, end); err != nil {
+				errOnce.Do(func() {
+					first = err
+				})
+			}
+		}()
+	}
+	wg.Wait()
+	return first
+}
+
+func (t *Table) workerCount(items int) int {
+	if items < 32 {
+		return 1
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 2 {
+		return 1
+	}
+	if workers > items {
+		workers = items
+	}
+	return workers
+}
+
+func workerRange(items, workers, worker int) (int, int) {
+	start := items * worker / workers
+	end := items * (worker + 1) / workers
+	return start, end
+}
+
+func newNegativeInfSlice(size int) []float64 {
+	values := make([]float64, size)
+	for i := range values {
+		values[i] = math.Inf(-1)
+	}
+	return values
+}
+
+func betterLabel(candidate *labelStats, candidateScore float64, current *labelStats, currentScore float64) bool {
+	return current == nil ||
+		candidateScore > currentScore ||
+		(candidateScore == currentScore && candidate.Value < current.Value)
 }
 
 func maxUint64(a, b uint64) uint64 {
