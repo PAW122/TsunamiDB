@@ -49,7 +49,6 @@ func newMux() *http.ServeMux {
 	mux.HandleFunc("/save_inc/", withClient(routes.SaveIncremental))
 	mux.HandleFunc("/read_inc/", withClient(routes.ReadIncremental))
 	mux.HandleFunc("/delete_inc/", withClient(routes.DeleteIncremental))
-	mux.HandleFunc("/sql", withClient(routes.SQL_api))
 	mux.HandleFunc("/key_by_regex/", withClient(routes.GetKeysByRegex))
 	mux.HandleFunc("/health", withClient(routes.Health))
 

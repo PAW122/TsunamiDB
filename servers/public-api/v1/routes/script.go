@@ -13,7 +13,6 @@ import "net/http"
 	-dane musiały by być zapisywane w spcjalnej tabeli systemowej np system.scripts
 	-free() usuwało by dane scriptu, ale save(key) (overwrite) już nie
 
-	*musiało by to być w czymś ala sql?
 	np:
 	OnDelete <delete(key) | save(key, data) | change_key_to(string) | ErraseData(key)>
 	OnReadEncrypted <ErraseData(key) | delete(key)> //oznacza że da się odczytać tylko 1 raz
@@ -40,7 +39,7 @@ import "net/http"
 
 	!zasada
 	skrypt nie może dodać wpisu który posiada inny skrypt
-	
+
 	można tego użyć też np do tworzenie kodów promocyjnych i tym podobnych.
 	klucze mogą się same usuwać z bazy danych po wykorzystaniu / odczytanie / redeme
 
@@ -49,11 +48,11 @@ import "net/http"
 	header{
 		script_exec: false
 	}
-	
+
 
 	przekładało by się to na coś takiego:
 	normal_table key_test_map: {... script: {ptr}}
-	
+
 	system.script : ptr =
 	{
 	Uint16 oznaczający akcje np OnDelete ....

@@ -22,7 +22,7 @@
         <a class="nav-child" href="./http/encrypted.html">Encrypted</a>
         <a class="nav-child" href="./http/incremental.html">Incremental Tables</a>
         <a class="nav-child" href="./http/subscriptions.html">Subscriptions</a>
-        <a class="nav-child" href="./http/meta.html">Meta, SQL, Health</a>
+        <a class="nav-child" href="./http/meta.html">Meta and Health</a>
         <p class="nav-group">Examples</p>
         <details class="nav-details">
           <summary>HTTP examples in Go</summary>
@@ -33,7 +33,7 @@
           <a class="nav-child" href="./examples/http-go.html#encrypted-values">Encrypted Values</a>
           <a class="nav-child" href="./examples/http-go.html#incremental-tables">Incremental Tables</a>
           <a class="nav-child" href="./examples/http-go.html#subscriptions-example">Subscriptions</a>
-          <a class="nav-child" href="./examples/http-go.html#meta-sql-health">Meta, SQL, Health</a>
+          <a class="nav-child" href="./examples/http-go.html#meta-health">Meta and Health</a>
           <a class="nav-child" href="./examples/http-go.html#minimal-demo">Minimal Demo</a>
         </details>
         <p class="nav-group">Downloads</p>
@@ -50,7 +50,7 @@
       <div class="grid">
         <section class="card">
           <h3>HTTP API</h3>
-          <p>Public API for any language over HTTP. Includes raw key-value operations, encrypted values, incremental tables, nested JSON, subscriptions, regex key lookup, SQL metadata and health.</p>
+          <p>Public API for any language over HTTP. Includes raw key-value operations, encrypted values, incremental tables, nested JSON, subscriptions, regex key lookup and health.</p>
           <a href="./http/overview.html">Open HTTP docs</a>
         </section>
         <section class="card">
@@ -79,7 +79,7 @@
       <table>
         <thead><tr><th>Service</th><th>Default</th><th>Purpose</th></tr></thead>
         <tbody>
-          <tr><td>HTTP Public API</td><td><code>http://localhost:5844</code></td><td>Application reads, writes, deletes, incremental tables, SQL metadata, health and subscription token endpoints.</td></tr>
+          <tr><td>HTTP Public API</td><td><code>http://localhost:5844</code></td><td>Application reads, writes, deletes, incremental tables, health and subscription token endpoints.</td></tr>
           <tr><td>WebSocket Subscriptions</td><td><code>ws://localhost:5845/sub</code></td><td>Client-side real-time events after a one-time auth key is minted.</td></tr>
           <tr><td>P2P Network Manager</td><td>CLI argument, for example <code>5845</code></td><td>Internal node-to-node WebSocket mesh used for distributed reads.</td></tr>
         </tbody>

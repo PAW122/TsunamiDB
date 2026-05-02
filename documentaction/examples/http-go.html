@@ -32,7 +32,7 @@
           <a class="nav-child" href="./http-go.html#encrypted-values">Encrypted Values</a>
           <a class="nav-child" href="./http-go.html#incremental-tables">Incremental Tables</a>
           <a class="nav-child" href="./http-go.html#subscriptions-example">Subscriptions</a>
-          <a class="nav-child" href="./http-go.html#meta-sql-health">Meta, SQL, Health</a>
+          <a class="nav-child" href="./http-go.html#meta-health">Meta and Health</a>
           <a class="nav-child" href="./http-go.html#minimal-demo">Minimal Demo</a>
         </details>
         <p class="nav-group">Downloads</p>
@@ -452,42 +452,8 @@ func ReadSubscriptionEvents(conn *websocket.Conn) error {
 	}
 }</code></pre>
 
-      <h2 id="meta-sql-health">Meta, SQL and Health</h2>
-      <pre><code class="language-go">type Column struct {
-	Name         string `json:"name"`
-	Type         string `json:"type"`
-	IsPrimaryKey bool   `json:"isPrimaryKey"`
-	Default      string `json:"default,omitempty"`
-	MaxByteSize  int    `json:"maxByteSize"`
-}
-
-type SQLRequest struct {
-	Query     string   `json:"query"`
-	TableName string   `json:"tableName"`
-	Columns   []Column `json:"columns"`
-}
-
-func CreateTable(name string, columns []Column) error {
-	payload, _ := json.Marshal(SQLRequest{
-		Query:     "create_table",
-		TableName: name,
-		Columns:   columns,
-	})
-
-	resp, err := http.Post(baseURL+"/sql", "application/json", bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("sql failed: %s: %s", resp.Status, string(body))
-	}
-	return nil
-}
-
-func KeysByRegex(table, pattern string, max int) ([]string, error) {
+      <h2 id="meta-health">Meta and Health</h2>
+      <pre><code class="language-go">func KeysByRegex(table, pattern string, max int) ([]string, error) {
 	url := fmt.Sprintf(
 		"%s/key_by_regex/%s?regex=%s&max=%d",
 		baseURL,
@@ -549,7 +515,7 @@ func FetchHealth() (map[string]any, error) {
 	}
 }</code></pre>
 
-      <div class="machine-block">ai_keywords: HTTP examples in Go net/http curl replacement save read free nested encrypted incremental subscriptions websocket sql health key_by_regex
+      <div class="machine-block">ai_keywords: HTTP examples in Go net/http curl replacement save read free nested encrypted incremental subscriptions websocket health key_by_regex
 source_docs: docs_api/kv.md, docs_api/encryption.md, docs_api/incremental.md, docs_api/subscriptions.md, docs_api/meta.md</div>
     </main>
   </div>

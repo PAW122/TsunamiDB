@@ -496,17 +496,8 @@ func TestKeyByRegexEndpoint(t *testing.T) {
 	}
 }
 
-func TestSQLEndpointAndScript(t *testing.T) {
+func TestScriptEndpoint(t *testing.T) {
 	setupRoutesTest(t)
-
-	method := perform(SQL_api, http.MethodGet, "/sql", nil, nil)
-	if method.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", method.Code)
-	}
-	resp := perform(SQL_api, http.MethodPost, "/sql", bytes.NewBufferString(`{"query":"noop"}`), nil)
-	if resp.Code != http.StatusOK {
-		t.Fatalf("sql status: %d body=%s", resp.Code, resp.Body.String())
-	}
 
 	rr := httptest.NewRecorder()
 	Script(rr, httptest.NewRequest(http.MethodGet, "/script", nil))

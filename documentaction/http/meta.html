@@ -32,7 +32,7 @@
           <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
           <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
           <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
-          <a class="nav-child" href="../examples/http-go.html#meta-sql-health">Meta, SQL, Health</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-health">Meta and Health</a>
           <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
         </details>
         <p class="nav-group">Downloads</p>
@@ -43,27 +43,8 @@
       </nav>
     </aside>
     <main class="content">
-      <h1>Meta, SQL and Health</h1>
-      <p class="lead">Utility endpoints for table metadata, key discovery and runtime status.</p>
-
-      <h2><span class="endpoint">POST</span> /sql</h2>
-      <p>The SQL endpoint is a prototype for table metadata. Current supported query in code is <code>create_table</code>. It writes JSON metadata under <code>./db/sql_map</code>; it does not execute SELECT/INSERT SQL.</p>
-      <pre><code class="language-json">{
-  "query": "create_table",
-  "tableName": "users",
-  "columns": [
-    {
-      "name": "id",
-      "type": "string",
-      "isPrimaryKey": true,
-      "default": "",
-      "maxByteSize": 64
-    }
-  ]
-}</code></pre>
-      <pre><code class="language-bash">curl -X POST http://localhost:5844/sql \
-  -H "Content-Type: application/json" \
-  --data-binary @table.json</code></pre>
+      <h1>Meta and Health</h1>
+      <p class="lead">Utility endpoints for key discovery and runtime status.</p>
 
       <h2><span class="endpoint">GET</span> /key_by_regex/{table}?regex=...&amp;max=...</h2>
       <p>Returns keys from one table matching a regular expression. <code>max</code> is optional; <code>0</code> means no explicit limit at the route level.</p>
@@ -97,8 +78,8 @@
   }
 }</code></pre>
 
-      <div class="machine-block">ai_keywords: sql create_table key_by_regex health metrics network subscriptions stats
-source_files: servers/public-api/v1/routes/sql.go, keyByRegex.go, health.go, types/sql.go</div>
+      <div class="machine-block">ai_keywords: key_by_regex health metrics network subscriptions stats
+source_files: servers/public-api/v1/routes/keyByRegex.go, health.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

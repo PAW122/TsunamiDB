@@ -32,7 +32,7 @@
           <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
           <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
           <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
-          <a class="nav-child" href="../examples/http-go.html#meta-sql-health">Meta, SQL, Health</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-health">Meta and Health</a>
           <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
         </details>
         <p class="nav-group">Downloads</p>
@@ -123,7 +123,7 @@ if err := TsuClient.DisableSubscription("user-1"); err != nil {
 
       <h2>Current Limitations</h2>
       <ul>
-        <li>The Go lib currently does not expose typed wrappers for <code>save_inc</code>, <code>read_inc</code>, nested JSON mode or <code>/sql</code>. Use HTTP for those features.</li>
+        <li>The Go lib currently does not expose typed wrappers for <code>save_inc</code>, <code>read_inc</code> or nested JSON mode. Use HTTP for those features.</li>
         <li><code>Read</code> returns an error when NetworkManager is not initialized.</li>
         <li>Public API and subscription server use goroutines; give them a short startup window before first request in tests or examples.</li>
       </ul>

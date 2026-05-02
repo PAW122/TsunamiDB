@@ -58,11 +58,11 @@
     },
     {
       "id": "meta",
-      "method": "POST/GET",
-      "path": "/sql, /key_by_regex/{table}, /health",
+      "method": "GET",
+      "path": "/key_by_regex/{table}, /health",
       "page": "../http/meta.html",
-      "keywords": ["sql", "create_table", "key_by_regex", "health", "metrics"],
-      "source": ["servers/public-api/v1/routes/sql.go", "servers/public-api/v1/routes/keyByRegex.go", "servers/public-api/v1/routes/health.go"]
+      "keywords": ["key_by_regex", "health", "metrics"],
+      "source": ["servers/public-api/v1/routes/keyByRegex.go", "servers/public-api/v1/routes/health.go"]
     },
     {
       "id": "http-go-examples",

@@ -2,7 +2,7 @@
 
 ![Version](https://img.shields.io/badge/version-0.8.0-brightgreen.svg)
 
-fast, simple non sql key-value db
+fast, simple key-value db
 
 install
 ```

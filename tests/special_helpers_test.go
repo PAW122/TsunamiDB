@@ -367,9 +367,6 @@ func exerciseHTTPRoutes(table, key string, payload []byte, rng *rand.Rand, count
 		return fmt.Errorf("api regex status=%d body=%s", resp.Code, resp.Body.String())
 	}
 
-	if resp := performRoute(routes.SQL_api, http.MethodPost, "/sql", strings.NewReader(`{"query":"noop"}`), nil); resp.Code != http.StatusOK {
-		return fmt.Errorf("api sql status=%d body=%s", resp.Code, resp.Body.String())
-	}
 	if resp := performRoute(func(w http.ResponseWriter, r *http.Request, _ *http.Client) {
 		routes.Health(w, r, http.DefaultClient)
 	}, http.MethodGet, "/health", nil, nil); resp.Code != http.StatusOK {
