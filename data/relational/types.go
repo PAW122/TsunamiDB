@@ -29,6 +29,7 @@ var (
 	ErrRowNotFound      = errors.New("relational: row not found")
 	ErrInvalidRow       = errors.New("relational: invalid row")
 	ErrInvalidPredicate = errors.New("relational: invalid predicate")
+	ErrInvalidSQL       = errors.New("relational: invalid sql")
 	ErrCorruptRows      = errors.New("relational: corrupt rows file")
 )
 
@@ -102,4 +103,13 @@ type CompactionResult struct {
 	RowsAfter  uint64            `json:"rows_after"`
 	Removed    uint64            `json:"removed"`
 	RowIDMap   map[uint64]uint64 `json:"row_id_map"`
+}
+
+type SQLResult struct {
+	Operation    string       `json:"operation"`
+	Table        string       `json:"table,omitempty"`
+	RowID        *uint64      `json:"row_id,omitempty"`
+	RowsAffected uint64       `json:"rows_affected,omitempty"`
+	Rows         []ScannedRow `json:"rows,omitempty"`
+	Schema       *Schema      `json:"schema,omitempty"`
 }

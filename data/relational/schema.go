@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -57,6 +58,42 @@ func LoadSchema(table string) (*Schema, error) {
 	}
 	schemaCache.Store(cacheKey, calculated)
 	return &calculated, nil
+}
+
+func ListTables() ([]Schema, error) {
+	entries, err := os.ReadDir(baseDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return []Schema{}, nil
+		}
+		return nil, err
+	}
+
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".schema") {
+			continue
+		}
+		table := strings.TrimSuffix(name, ".schema")
+		if safeNamePattern.MatchString(table) {
+			names = append(names, table)
+		}
+	}
+	sort.Strings(names)
+
+	tables := make([]Schema, 0, len(names))
+	for _, name := range names {
+		schema, err := LoadSchema(name)
+		if err != nil {
+			return nil, err
+		}
+		tables = append(tables, *schema)
+	}
+	return tables, nil
 }
 
 func persistSchema(schema Schema) error {

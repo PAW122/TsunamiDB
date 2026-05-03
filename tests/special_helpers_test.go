@@ -49,6 +49,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	_ = os.RemoveAll(filepath.Join(specialOriginalWD, "db"))
 
 	tmpWD, err := os.MkdirTemp("", "tsunamidb-special-tests-*")
 	if err != nil {
@@ -63,7 +64,7 @@ func TestMain(m *testing.M) {
 	resetSpecialStorage()
 	code := m.Run()
 	dataManager_v2.ShutdownWorkersForTests()
-	fileSystem_v1.ResetForTests()
+	fileSystem_v1.ShutdownForTests()
 	defrag.ResetForTests()
 	networkmanager.SetInstanceForTests(nil)
 	apimetrics.ResetForTests()
@@ -72,6 +73,7 @@ func TestMain(m *testing.M) {
 
 	_ = os.Chdir(specialOriginalWD)
 	_ = os.RemoveAll(tmpWD)
+	_ = os.RemoveAll(filepath.Join(specialOriginalWD, "db"))
 	os.Exit(code)
 }
 
@@ -177,7 +179,7 @@ func requireSpecialTests(t *testing.T) {
 
 func resetSpecialStorage() {
 	dataManager_v2.ShutdownWorkersForTests()
-	fileSystem_v1.ResetForTests()
+	fileSystem_v1.ShutdownForTests()
 	defrag.ResetForTests()
 	apimetrics.ResetForTests()
 	incindex.ResetForTests()

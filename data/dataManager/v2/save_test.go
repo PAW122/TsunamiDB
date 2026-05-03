@@ -10,6 +10,14 @@ import (
 	encoding_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 )
 
+func TestMain(m *testing.M) {
+	_ = os.RemoveAll("db")
+	code := m.Run()
+	shutdownFileWorkersForTests()
+	_ = os.RemoveAll("db")
+	os.Exit(code)
+}
+
 func setupDataManagerTest(t *testing.T) func() {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "tsunamidb-data-test-")

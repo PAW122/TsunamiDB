@@ -45,7 +45,7 @@
     </aside>
     <main class="content">
       <h1>Relational HTTP API</h1>
-      <p class="lead">The relational API exposes fixed-row tables through public-api v1 under <code>/rel/...</code>. It supports schemas, row CRUD, equality and LIKE selects, indexes and compaction.</p>
+      <p class="lead">The relational API exposes fixed-row tables through public-api v1 under <code>/rel/...</code>. It supports schemas, row CRUD, equality and LIKE selects, indexes, compaction and a compact SQL subset.</p>
 
       <div class="note">
         Source files: <code>data/relational</code>, <code>servers/public-api/v1/routes/relational.go</code>, and route registration in <code>servers/public-api/v1/Api.go</code>.
@@ -85,8 +85,62 @@ db/rel/{table}.index.{column}.trigram</code></pre>
           <tr><td>POST</td><td><code>/rel/{table}/index/{column}</code></td><td>Create equality index.</td></tr>
           <tr><td>POST</td><td><code>/rel/{table}/trigram-index/{column}</code></td><td>Create trigram index for string LIKE queries.</td></tr>
           <tr><td>POST</td><td><code>/rel/{table}/compact</code></td><td>Remove deleted rows, rewrite row IDs and rebuild indexes.</td></tr>
+          <tr><td>POST</td><td><code>/rel/sql</code></td><td>Execute one compact SQL statement and return <code>SQLResult</code>.</td></tr>
         </tbody>
       </table>
+
+      <h2>SQL Endpoint</h2>
+      <p><code>POST /rel/sql</code> accepts one SQL statement per request. The body can be raw SQL or JSON with a <code>query</code> field.</p>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/sql \
+  -H "Content-Type: text/plain" \
+  --data "SELECT row_id, name, price FROM products WHERE name LIKE '%wid%' ORDER BY price DESC"</code></pre>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/sql \
+  -H "Content-Type: application/json" \
+  -d '{"query":"SELECT * FROM products WHERE id = 1"}'</code></pre>
+
+      <h3>Supported SQL</h3>
+      <pre><code class="language-sql">SHOW TABLES;
+
+CREATE TABLE products (
+  id uint64 PRIMARY KEY,
+  name string(32) INDEXED TRIGRAM,
+  price uint64,
+  active bool
+);
+
+INSERT INTO products (id, name, price, active)
+VALUES (1, 'widget', 100, true);
+
+SELECT * FROM products;
+SELECT row_id, name, price FROM products WHERE id = 1;
+SELECT row_id, name, price FROM products WHERE name LIKE '%wid%';
+SELECT row_id, name, price FROM products ORDER BY price DESC;
+
+UPDATE products
+SET price = 175, name = 'bluewidget'
+WHERE row_id = 0;
+
+DELETE FROM products WHERE id = 1;
+
+CREATE INDEX products_price_idx ON products (price);
+CREATE TRIGRAM INDEX ON products (name);</code></pre>
+
+      <h3>SQL Result</h3>
+      <pre><code class="language-json">{
+  "operation": "select",
+  "table": "products",
+  "rows_affected": 1,
+  "rows": [
+    {
+      "row_id": 0,
+      "values": {
+        "name": "widget",
+        "price": 100
+      }
+    }
+  ]
+}</code></pre>
+      <p>Supported SQL column types are <code>uint64</code>, <code>int64</code>, <code>bool</code>, <code>float64</code>, <code>string(N)</code>, <code>string[N]</code>, <code>blob_ptr</code> and <code>row_ref</code>. <code>WHERE</code> supports one <code>=</code> or <code>LIKE</code> predicate, including the synthetic <code>row_id</code> column. <code>ORDER BY</code> supports <code>ASC</code> and <code>DESC</code>. Joins, ranges, aggregates, <code>ALTER TABLE</code>, <code>DROP TABLE</code> and multi-statement batches are not implemented.</p>
 
       <h2>Create Table</h2>
       <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/schema/products \
@@ -199,17 +253,17 @@ curl -X POST http://localhost:5844/rel/products/compact</code></pre>
       </table>
 
       <h2>Manual Testing Tool</h2>
-      <p>Open <code>tools/relational-admin.html</code> in a browser. Enter the public API host and port, then use the UI to create schemas, insert/read/update/delete rows, run selects, create indexes and compact tables.</p>
+      <p>Open <code>tools/relational-admin.html</code> in a browser. Enter the public API host and port, then use the UI to create schemas, insert/read/update/delete rows, run selects, execute SQL, create indexes and compact tables.</p>
 
       <h2>Current Limitations</h2>
       <ul>
         <li>Deleted row IDs are recorded in <code>.free</code>, but inserts do not reuse them yet.</li>
         <li>Update and delete rebuild configured indexes instead of applying a minimal delta update.</li>
         <li>Row-reference joins are currently available in the Go package, not through HTTP.</li>
-        <li>There is no SQL parser.</li>
+        <li>The SQL layer is intentionally compact: one statement per request, no joins, no aggregates and no multi-statement batches.</li>
       </ul>
 
-      <div class="machine-block">ai_keywords: relational db, fixed rows, schema, CRUD, select, eq, like, trigram index, compaction, row_id
+      <div class="machine-block">ai_keywords: relational db, fixed rows, schema, CRUD, select, sql, /rel/sql, eq, like, order by, trigram index, compaction, row_id
 source_files: data/relational/*.go, servers/public-api/v1/routes/relational.go, tools/relational-admin.html</div>
     </main>
   </div>

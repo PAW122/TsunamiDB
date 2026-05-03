@@ -130,3 +130,105 @@ go test ./tests -run TestSpecialRelationalSaturation -count=1 -v
 # one-command complex relational report
 powershell -ExecutionPolicy Bypass -File .\tools\relational-perf-report.ps1
 ```
+
+## Relational SQL
+The relational engine accepts a compact SQL subset through `POST /rel/sql`.
+The endpoint executes one statement per request and returns a JSON `SQLResult`.
+The request body can be raw SQL (`text/plain`) or JSON:
+
+```json
+{"query":"SELECT * FROM products"}
+```
+
+PowerShell example:
+
+```powershell
+$body = @{
+  query = "SELECT row_id, name, price FROM products WHERE name LIKE '%wid%' ORDER BY price DESC"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Method Post -Uri "http://localhost:5844/rel/sql" -ContentType "application/json" -Body $body
+```
+
+curl example:
+
+```bash
+curl -X POST http://localhost:5844/rel/sql \
+  -H "Content-Type: text/plain" \
+  --data "SELECT row_id, name, price FROM products WHERE name LIKE '%wid%'"
+```
+
+Supported column types:
+
+```text
+uint64, int64, bool, float64, string(N), string[N], blob_ptr, row_ref
+```
+
+Supported statements:
+
+```sql
+SHOW TABLES;
+
+CREATE TABLE products (
+  id uint64 PRIMARY KEY,
+  name string(32) INDEXED TRIGRAM,
+  price uint64,
+  active bool
+);
+
+INSERT INTO products (id, name, price, active)
+VALUES (1, 'widget', 100, true);
+
+INSERT INTO products (id, name, price, active)
+VALUES (2, 'gadget', 250, false);
+
+SELECT * FROM products;
+SELECT row_id, name, price FROM products WHERE id = 1;
+SELECT row_id, name, price FROM products WHERE name LIKE '%wid%';
+SELECT row_id, name, price FROM products ORDER BY price DESC;
+
+UPDATE products
+SET price = 175, name = 'bluewidget'
+WHERE row_id = 0;
+
+DELETE FROM products WHERE id = 2;
+
+CREATE INDEX products_price_idx ON products (price);
+CREATE TRIGRAM INDEX ON products (name);
+```
+
+Result examples:
+
+```json
+{
+  "operation": "insert",
+  "table": "products",
+  "row_id": 0,
+  "rows_affected": 1
+}
+```
+
+```json
+{
+  "operation": "select",
+  "table": "products",
+  "rows_affected": 1,
+  "rows": [
+    {
+      "row_id": 0,
+      "values": {
+        "name": "widget",
+        "price": 100
+      }
+    }
+  ]
+}
+```
+
+Current SQL limits:
+
+- `WHERE` supports one predicate with `=` or `LIKE`.
+- `row_id` is a synthetic column and can be used in `SELECT`, `WHERE`, and `ORDER BY`.
+- `ORDER BY` supports `ASC` and `DESC`; numbers sort numerically, and string values that match `YYYY-MM-DD`, `YYYY-MM-DD HH:MM[:SS]`, or RFC3339 sort as dates.
+- String literals use single quotes. Escape a quote by writing it twice, for example `'Bob''s item'`.
+- Joins, `AND`/`OR`, ranges, aggregates, `ALTER TABLE`, `DROP TABLE`, and multi-statement batches are not implemented.

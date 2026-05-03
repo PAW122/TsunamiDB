@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -17,6 +18,10 @@ type relationalInsertRequest struct {
 
 type relationalUpdateRequest struct {
 	Values map[string]any `json:"values"`
+}
+
+type relationalSQLRequest struct {
+	Query string `json:"query"`
 }
 
 type relationalStatusResponse struct {
@@ -103,6 +108,37 @@ func Relational(w http.ResponseWriter, r *http.Request, _ *http.Client) {
 	default:
 		http.Error(w, "unknown relational endpoint", http.StatusNotFound)
 	}
+}
+
+func RelationalSQL(w http.ResponseWriter, r *http.Request, _ *http.Client) {
+	relCORS(w)
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil || len(strings.TrimSpace(string(body))) == 0 {
+		http.Error(w, "invalid SQL body", http.StatusBadRequest)
+		return
+	}
+
+	query := string(body)
+	var req relationalSQLRequest
+	if err := json.Unmarshal(body, &req); err == nil && strings.TrimSpace(req.Query) != "" {
+		query = req.Query
+	}
+
+	result, err := relational.ExecuteSQL(query)
+	if err != nil {
+		relError(w, err)
+		return
+	}
+	writeRelJSON(w, http.StatusOK, result)
 }
 
 func relInsert(w http.ResponseWriter, r *http.Request, table string) {
@@ -264,7 +300,7 @@ func relError(w http.ResponseWriter, err error) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 	case errors.Is(err, relational.ErrTableExists):
 		http.Error(w, err.Error(), http.StatusConflict)
-	case errors.Is(err, relational.ErrInvalidSchema), errors.Is(err, relational.ErrInvalidRow), errors.Is(err, relational.ErrInvalidPredicate):
+	case errors.Is(err, relational.ErrInvalidSchema), errors.Is(err, relational.ErrInvalidRow), errors.Is(err, relational.ErrInvalidPredicate), errors.Is(err, relational.ErrInvalidSQL):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	case errors.Is(err, relational.ErrCorruptRows):
 		http.Error(w, err.Error(), http.StatusInternalServerError)

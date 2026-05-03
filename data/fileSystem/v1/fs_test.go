@@ -14,6 +14,14 @@ import (
 	"time"
 )
 
+func TestMain(m *testing.M) {
+	_ = os.RemoveAll("db")
+	code := m.Run()
+	ShutdownForTests()
+	_ = os.RemoveAll("db")
+	os.Exit(code)
+}
+
 type fakeDB struct {
 	mu      sync.Mutex
 	values  map[string]interface{}

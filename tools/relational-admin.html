@@ -109,6 +109,16 @@
       color: #f8fafc;
     }
 
+    aside button.secondary {
+      background: #263142;
+      color: #f8fafc;
+      border-color: #3a4556;
+    }
+
+    aside button.secondary:hover {
+      background: #303b4d;
+    }
+
     textarea {
       min-height: 136px;
       resize: vertical;
@@ -173,6 +183,12 @@
     .grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .stack {
+      display: flex;
+      flex-direction: column;
       gap: 18px;
     }
 
@@ -250,6 +266,140 @@
       gap: 10px;
     }
 
+    .sql-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 18px;
+    }
+
+    .sql-editor {
+      min-height: 260px;
+    }
+
+    .sql-examples {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .sql-examples button {
+      width: 100%;
+      text-align: left;
+    }
+
+    .table-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 260px;
+      overflow: auto;
+    }
+
+    .table-list button {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      text-align: left;
+    }
+
+    .table-list span {
+      color: #b8c0cc;
+      font-size: 12px;
+      font-weight: 400;
+    }
+
+    .schema-editor table {
+      min-width: 920px;
+    }
+
+    .schema-editor input,
+    .schema-editor select {
+      min-width: 96px;
+      padding: 7px 8px;
+    }
+
+    .schema-editor input[type="checkbox"] {
+      width: 18px;
+      min-width: 18px;
+      height: 18px;
+      padding: 0;
+    }
+
+    .schema-editor .schema-size {
+      min-width: 76px;
+    }
+
+    .crud-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 18px;
+    }
+
+    .record-form {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .record-field {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .record-field label {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .record-field span {
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: none;
+    }
+
+    .record-field input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 10px;
+      min-height: 62px;
+    }
+
+    .metric span {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 4px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .table-wrap {
       overflow: auto;
       border: 1px solid var(--line);
@@ -315,7 +465,11 @@
       }
 
       .grid,
-      .split-inputs {
+      .split-inputs,
+      .sql-layout,
+      .crud-layout,
+      .record-form,
+      .metrics {
         grid-template-columns: 1fr;
       }
     }
@@ -336,7 +490,7 @@
         </div>
         <div class="field">
           <label for="port">Port</label>
-          <input id="port" value="8080" inputmode="numeric">
+          <input id="port" value="5844" inputmode="numeric">
         </div>
         <div class="field">
           <label for="table">Table</label>
@@ -345,7 +499,15 @@
         <div class="toolbar">
           <button id="saveConnection">Save</button>
           <button class="secondary" id="loadSchema">Load Schema</button>
+          <button class="secondary" id="loadRows">Load Rows</button>
+          <button class="secondary" id="loadTables">Load Tables</button>
         </div>
+      </div>
+
+      <div class="sidebar-panel">
+        <h3>Tables</h3>
+        <p class="small">Loaded with SQL: <code>SHOW TABLES</code>.</p>
+        <div id="tableList" class="table-list"></div>
       </div>
 
       <div class="sidebar-panel">
@@ -361,12 +523,13 @@
           <button class="tab active" data-tab="schema">Schema</button>
           <button class="tab" data-tab="crud">CRUD</button>
           <button class="tab" data-tab="query">Query</button>
+          <button class="tab" data-tab="sql">SQL</button>
           <button class="tab" data-tab="maintenance">Indexes</button>
           <button class="tab" data-tab="result">Result</button>
         </div>
 
         <div id="schema" class="tab-page active">
-          <div class="grid">
+          <div class="stack">
             <div>
               <h2>Schema JSON</h2>
               <p class="small">The name can be omitted; the table input is used.</p>
@@ -385,15 +548,58 @@
             </div>
             <div>
               <h2>Schema View</h2>
+              <p class="small">Edit columns visually; changes are written back to Schema JSON.</p>
               <div id="schemaView" class="table-wrap"></div>
             </div>
           </div>
         </div>
 
         <div id="crud" class="tab-page">
-          <div class="grid">
+          <div class="stack">
             <div>
-              <h2>Create</h2>
+              <h2>Visual Record Editor</h2>
+              <p class="small">Choose a table, load its schema, then insert, read, update or delete rows using generated fields.</p>
+              <div class="crud-layout">
+                <div>
+                  <div class="split-inputs">
+                    <div>
+                      <label for="crudTable">Table</label>
+                      <select id="crudTable"></select>
+                    </div>
+                    <div>
+                      <label for="crudRowId">Row ID</label>
+                      <input id="crudRowId" value="0" inputmode="numeric">
+                    </div>
+                    <div>
+                      <label for="crudMode">Mode</label>
+                      <select id="crudMode">
+                        <option value="edit">edit existing row</option>
+                        <option value="insert">new row</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="toolbar">
+                    <button class="secondary" id="crudLoadTables">Load Tables</button>
+                    <button class="secondary" id="crudLoadSchema">Load Schema</button>
+                    <button class="secondary" id="crudLoadRows">Load Rows</button>
+                    <button class="secondary" id="crudClearForm">Clear Form</button>
+                  </div>
+                  <div id="crudFields" class="record-form"></div>
+                </div>
+                <div>
+                  <h3>Actions</h3>
+                  <p class="small">Read fills the form. Insert uses form values. Update writes all visible fields for the selected row ID.</p>
+                  <div class="stack">
+                    <button id="crudInsertVisual">Insert</button>
+                    <button id="crudReadVisual" class="secondary">Read Row</button>
+                    <button id="crudUpdateVisual">Update Row</button>
+                    <button id="crudDeleteVisual" class="danger">Delete Row</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h2>Raw Create</h2>
               <textarea id="insertJson" spellcheck="false">{
   "id": 1,
   "name": "widget",
@@ -403,7 +609,7 @@
               <button id="insertRow">Insert Row</button>
             </div>
             <div>
-              <h2>Read, Update, Delete</h2>
+              <h2>Raw Read, Update, Delete</h2>
               <div class="field">
                 <label for="rowId">Row ID</label>
                 <input id="rowId" value="0" inputmode="numeric">
@@ -459,6 +665,52 @@
           </div>
         </div>
 
+        <div id="sql" class="tab-page">
+          <div class="sql-layout">
+            <div>
+              <h2>SQL Editor</h2>
+              <textarea id="sqlEditor" class="sql-editor" spellcheck="false">SELECT row_id, name, price
+FROM products
+WHERE name LIKE '%widget%'
+ORDER BY price DESC;</textarea>
+              <div class="toolbar">
+                <button id="executeSql">Execute</button>
+                <button class="secondary" id="clearSqlResult">Clear Result</button>
+              </div>
+              <div id="sqlSummary" class="metrics">
+                <div class="metric"><span>Operation</span><strong>-</strong></div>
+                <div class="metric"><span>Table</span><strong>-</strong></div>
+                <div class="metric"><span>Rows</span><strong>-</strong></div>
+                <div class="metric"><span>Time</span><strong>-</strong></div>
+              </div>
+            </div>
+            <div>
+              <h2>Examples</h2>
+              <div class="sql-examples">
+                <button class="secondary sql-example" data-sql="CREATE TABLE products (
+  id uint64 INDEXED,
+  name string(32) INDEXED TRIGRAM,
+  price uint64,
+  active bool
+);">CREATE TABLE</button>
+                <button class="secondary sql-example" data-sql="INSERT INTO products (id, name, price, active)
+VALUES (1, 'widget', 100, true);">INSERT</button>
+                <button class="secondary sql-example" data-sql="SELECT row_id, name, price
+FROM products
+WHERE name LIKE '%wid%'
+ORDER BY price DESC;">SELECT LIKE</button>
+                <button class="secondary sql-example" data-sql="UPDATE products
+SET price = 175
+WHERE row_id = 0;">UPDATE</button>
+                <button class="secondary sql-example" data-sql="DELETE FROM products
+WHERE id = 1;">DELETE</button>
+                <button class="secondary sql-example" data-sql="CREATE INDEX products_price_idx ON products (price);">CREATE INDEX</button>
+                <button class="secondary sql-example" data-sql="CREATE TRIGRAM INDEX ON products (name);">TRIGRAM INDEX</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div id="maintenance" class="tab-page">
           <div class="grid">
             <div>
@@ -506,6 +758,10 @@
       targetPreview: document.getElementById("targetPreview"),
       schemaJson: document.getElementById("schemaJson"),
       schemaView: document.getElementById("schemaView"),
+      crudTable: document.getElementById("crudTable"),
+      crudRowId: document.getElementById("crudRowId"),
+      crudMode: document.getElementById("crudMode"),
+      crudFields: document.getElementById("crudFields"),
       insertJson: document.getElementById("insertJson"),
       updateJson: document.getElementById("updateJson"),
       rowId: document.getElementById("rowId"),
@@ -513,10 +769,15 @@
       predicateOp: document.getElementById("predicateOp"),
       predicateValue: document.getElementById("predicateValue"),
       predicateJson: document.getElementById("predicateJson"),
+      sqlEditor: document.getElementById("sqlEditor"),
+      sqlSummary: document.getElementById("sqlSummary"),
+      tableList: document.getElementById("tableList"),
       indexColumn: document.getElementById("indexColumn"),
       rawOutput: document.getElementById("rawOutput"),
       dataView: document.getElementById("dataView")
     };
+    let knownTables = [];
+    let currentSchema = null;
 
     function baseURL() {
       return `${els.host.value.replace(/\/$/, "")}:${els.port.value.trim()}`;
@@ -589,55 +850,310 @@
       return body;
     }
 
+    const schemaColumnTypes = ["uint64", "int64", "bool", "float64", "string", "blob_ptr", "row_ref"];
+
     function renderSchema(schema) {
-      if (!schema || !schema.columns) {
-        els.schemaView.innerHTML = "<div class=\"small\" style=\"padding: 12px;\">No schema loaded.</div>";
+      if (!schema || !Array.isArray(schema.columns)) {
+        renderSchemaEditor(schemaFromJSONInput());
         return;
       }
-      const rows = schema.columns.map(column => `
+
+      currentSchema = schema;
+      if (schema.row_size !== undefined) {
+        setSchemaJSON(schema);
+      }
+      renderSchemaEditor(schema);
+      renderCrudEditor(schema);
+    }
+
+    function schemaFromJSONInput() {
+      try {
+        const schema = JSON.parse(els.schemaJson.value);
+        if (schema && Array.isArray(schema.columns)) {
+          return schema;
+        }
+      } catch {
+      }
+      return { columns: [] };
+    }
+
+    function setSchemaJSON(schema) {
+      els.schemaJson.value = JSON.stringify(schemaForJSON(schema), null, 2);
+    }
+
+    function schemaForJSON(schema) {
+      const out = {};
+      out.columns = (schema?.columns || []).map(column => {
+        const next = {
+          name: column.name || "",
+          type: column.type || "uint64"
+        };
+        const size = Number(column.size || 0);
+        if (size > 0 && next.type === "string") {
+          next.size = size;
+        }
+        if (column.indexed) {
+          next.indexed = true;
+        }
+        if (column.trigram_indexed || column.TrigramIndexed) {
+          next.trigram_indexed = true;
+        }
+        if (column.ref_table) {
+          next.ref_table = column.ref_table;
+        }
+        return next;
+      });
+      return out;
+    }
+
+    function renderSchemaEditor(schema) {
+      const columns = Array.isArray(schema?.columns) ? schema.columns : [];
+      const rows = columns.map((column, index) => `
         <tr>
-          <td><code>${escapeHTML(column.name)}</code></td>
-          <td>${escapeHTML(column.type)}</td>
+          <td><input class="schema-input" data-field="name" value="${escapeHTML(column.name || "")}" spellcheck="false"></td>
+          <td>
+            <select class="schema-input" data-field="type">
+              ${schemaTypeOptions(column.type)}
+            </select>
+          </td>
+          <td><input class="schema-input schema-size" data-field="size" value="${column.size || ""}" inputmode="numeric"></td>
+          <td><input class="schema-input" data-field="indexed" type="checkbox" ${column.indexed ? "checked" : ""}></td>
+          <td><input class="schema-input" data-field="trigram_indexed" type="checkbox" ${column.trigram_indexed ? "checked" : ""}></td>
+          <td>
+            <select class="schema-input" data-field="ref_table">
+              ${schemaRefTableOptions(column.ref_table || "")}
+            </select>
+          </td>
           <td>${column.offset ?? ""}</td>
-          <td>${column.size ?? ""}</td>
-          <td>${column.indexed ? "yes" : ""}</td>
-          <td>${column.trigram_indexed ? "yes" : ""}</td>
-          <td>${escapeHTML(column.ref_table || "")}</td>
+          <td><button class="danger schema-remove-column" data-index="${index}">Remove</button></td>
         </tr>
       `).join("");
       els.schemaView.innerHTML = `
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th><th>Type</th><th>Offset</th><th>Size</th>
-              <th>Index</th><th>Trigram</th><th>Ref</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+        <div class="toolbar" style="margin-bottom: 10px;">
+          <button class="secondary" id="schemaAddColumn">Add Column</button>
+          <button class="secondary" id="schemaApplyJson">Apply to JSON</button>
+          <button class="secondary" id="schemaReloadJson">Reload from JSON</button>
+        </div>
+        <div class="schema-editor">
+          <table>
+            <thead>
+              <tr>
+                <th title="Column name. Use letters, numbers and underscores; it must start with a letter.">Name</th>
+                <th title="Stored column type: uint64, int64, bool, float64, string, blob_ptr or row_ref.">Type</th>
+                <th title="Fixed byte length. Required for string columns; leave empty for fixed numeric/bool/reference types.">Size</th>
+                <th title="Creates or marks an equality index for faster WHERE column = value queries.">Index</th>
+                <th title="Creates or marks a trigram index for string LIKE '%text%' queries. Only valid for string columns.">Trigram</th>
+                <th title="Target table name for row_ref columns. Leave empty for other column types.">Ref Table</th>
+                <th title="Calculated byte offset in the fixed row. Filled by the backend after schema creation/load.">Offset</th>
+                <th title="Remove this column from the visual editor and JSON schema.">Actions</th>
+              </tr>
+            </thead>
+            <tbody>${rows || "<tr><td colspan=\"8\" class=\"small\">No columns. Add a column or reload from JSON.</td></tr>"}</tbody>
+          </table>
+        </div>
       `;
     }
 
-    function renderData(value) {
+    function schemaTypeOptions(selected) {
+      const value = selected || "uint64";
+      const types = schemaColumnTypes.includes(value) ? schemaColumnTypes : [value, ...schemaColumnTypes];
+      return types.map(type => `<option value="${escapeHTML(type)}" ${type === value ? "selected" : ""}>${escapeHTML(type)}</option>`).join("");
+    }
+
+    function schemaRefTableOptions(selected) {
+      const value = selected || "";
+      const options = ["", ...knownTables.filter(table => table !== els.table.value.trim())];
+      if (value && !options.includes(value)) {
+        options.push(value);
+      }
+      return options.map(table => {
+        const label = table || "none";
+        return `<option value="${escapeHTML(table)}" ${table === value ? "selected" : ""}>${escapeHTML(label)}</option>`;
+      }).join("");
+    }
+
+    function schemaFromEditor() {
+      const schema = {};
+      schema.columns = Array.from(els.schemaView.querySelectorAll(".schema-editor tbody tr")).map(row => {
+        const column = {};
+        row.querySelectorAll(".schema-input").forEach(input => {
+          const field = input.dataset.field;
+          if (input.type === "checkbox") {
+            if (input.checked) {
+              column[field] = true;
+            }
+            return;
+          }
+          const value = input.value.trim();
+          if (!value) {
+            return;
+          }
+          if (field === "size") {
+            const parsed = Number(value);
+            if (Number.isFinite(parsed) && parsed > 0) {
+              column.size = parsed;
+            }
+            return;
+          }
+          column[field] = value;
+        });
+        return column;
+      }).filter(column => Object.keys(column).length > 0);
+      return schema;
+    }
+
+    function syncSchemaEditorToJSON() {
+      setSchemaJSON(schemaFromEditor());
+    }
+
+    function renderCrudTableOptions() {
+      const selected = els.table.value.trim();
+      const tables = knownTables.includes(selected) || !selected ? knownTables : [selected, ...knownTables];
+      els.crudTable.innerHTML = tables.map(table => `<option value="${escapeHTML(table)}" ${table === selected ? "selected" : ""}>${escapeHTML(table)}</option>`).join("");
+      if (tables.length === 0) {
+        els.crudTable.innerHTML = `<option value="${escapeHTML(selected)}">${escapeHTML(selected || "products")}</option>`;
+      }
+    }
+
+    function renderCrudEditor(schema = currentSchema) {
+      renderCrudTableOptions();
+      if (!schema || !Array.isArray(schema.columns) || schema.columns.length === 0) {
+        els.crudFields.innerHTML = "<div class=\"small\">Load a table schema to edit records visually.</div>";
+        return;
+      }
+
+      els.crudFields.innerHTML = schema.columns.map(column => {
+        const type = column.type || "string";
+        const label = `${type}${column.size ? `[${column.size}]` : ""}`;
+        const title = crudFieldTitle(column);
+        if (type === "bool") {
+          return `
+            <div class="record-field">
+              <label title="${escapeHTML(title)}">${escapeHTML(column.name)} <span>${escapeHTML(label)}</span></label>
+              <input class="crud-field" data-column="${escapeHTML(column.name)}" data-type="${escapeHTML(type)}" type="checkbox">
+            </div>
+          `;
+        }
+        const inputMode = ["uint64", "int64", "float64", "blob_ptr", "row_ref"].includes(type) ? "numeric" : "text";
+        return `
+          <div class="record-field">
+            <label title="${escapeHTML(title)}">${escapeHTML(column.name)} <span>${escapeHTML(label)}</span></label>
+            <input class="crud-field" data-column="${escapeHTML(column.name)}" data-type="${escapeHTML(type)}" inputmode="${inputMode}" spellcheck="false">
+          </div>
+        `;
+      }).join("");
+    }
+
+    function crudFieldTitle(column) {
+      switch (column.type) {
+      case "uint64":
+        return "Unsigned integer stored as 8 bytes.";
+      case "int64":
+        return "Signed integer stored as 8 bytes.";
+      case "bool":
+        return "Boolean value.";
+      case "float64":
+        return "Floating point number.";
+      case "string":
+        return `Fixed-size string${column.size ? `, max ${column.size} bytes` : ""}.`;
+      case "blob_ptr":
+        return "Numeric pointer to external blob data.";
+      case "row_ref":
+        return `Row ID reference${column.ref_table ? ` to table ${column.ref_table}` : ""}.`;
+      default:
+        return "Column value.";
+      }
+    }
+
+    function clearCrudForm() {
+      els.crudFields.querySelectorAll(".crud-field").forEach(input => {
+        if (input.type === "checkbox") {
+          input.checked = false;
+        } else {
+          input.value = "";
+        }
+      });
+      els.crudMode.value = "insert";
+    }
+
+    function populateCrudForm(values) {
+      els.crudFields.querySelectorAll(".crud-field").forEach(input => {
+        const value = values?.[input.dataset.column];
+        if (input.type === "checkbox") {
+          input.checked = Boolean(value);
+        } else {
+          input.value = value === undefined || value === null ? "" : String(value);
+        }
+      });
+      els.crudMode.value = "edit";
+    }
+
+    function collectCrudValues({ includeEmpty = false } = {}) {
+      if (!currentSchema || !Array.isArray(currentSchema.columns)) {
+        throw new Error("Load schema before using the visual editor");
+      }
+      const byName = new Map(currentSchema.columns.map(column => [column.name, column]));
+      const values = {};
+      els.crudFields.querySelectorAll(".crud-field").forEach(input => {
+        const column = byName.get(input.dataset.column);
+        if (!column) {
+          return;
+        }
+        if (input.type !== "checkbox" && input.value.trim() === "" && !includeEmpty) {
+          return;
+        }
+        values[column.name] = parseColumnInput(column, input);
+      });
+      return values;
+    }
+
+    function parseColumnInput(column, input) {
+      if (column.type === "bool") {
+        return input.checked;
+      }
+      const raw = input.value.trim();
+      if (column.type === "float64") {
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed)) {
+          throw new Error(`${column.name} requires a number`);
+        }
+        return parsed;
+      }
+      if (["uint64", "int64", "blob_ptr", "row_ref"].includes(column.type)) {
+        const parsed = Number(raw);
+        if (!Number.isInteger(parsed)) {
+          throw new Error(`${column.name} requires an integer`);
+        }
+        if (["uint64", "blob_ptr", "row_ref"].includes(column.type) && parsed < 0) {
+          throw new Error(`${column.name} cannot be negative`);
+        }
+        return parsed;
+      }
+      return input.value;
+    }
+
+    function renderData(value, options = {}) {
       const rows = normalizeRows(value);
       if (rows.length === 0) {
         els.dataView.innerHTML = "<div class=\"small\" style=\"padding: 12px;\">No rows.</div>";
         return;
       }
 
+      const showActions = options.rowActions !== false && rows.some(row => row.row_id !== undefined);
+      const seedColumns = rows.some(row => row.row_id !== undefined) ? ["row_id"] : [];
       const columns = Array.from(rows.reduce((set, row) => {
         Object.keys(row).forEach(key => set.add(key));
         return set;
-      }, new Set(["row_id"])));
+      }, new Set(seedColumns)));
 
-      const head = columns.map(column => `<th>${escapeHTML(column)}</th>`).join("") + "<th>Actions</th>";
+      const head = columns.map(column => `<th>${escapeHTML(column)}</th>`).join("") + (showActions ? "<th>Actions</th>" : "");
       const body = rows.map(row => {
         const cells = columns.map(column => `<td>${formatCell(row[column])}</td>`).join("");
-        const actions = row.row_id === undefined ? "" : `
+        const actions = !showActions || row.row_id === undefined ? "" : `
           <button class="secondary row-read" data-row-id="${row.row_id}">Read</button>
           <button class="danger row-delete" data-row-id="${row.row_id}">Delete</button>
         `;
-        return `<tr>${cells}<td><div class="row-actions">${actions}</div></td></tr>`;
+        return `<tr>${cells}${showActions ? `<td><div class="row-actions">${actions}</div></td>` : ""}</tr>`;
       }).join("");
 
       els.dataView.innerHTML = `
@@ -657,13 +1173,101 @@
           return row;
         });
       }
+      if (value && typeof value === "object" && Array.isArray(value.rows)) {
+        return normalizeRows(value.rows);
+      }
+      if (value && typeof value === "object" && value.schema) {
+        return normalizeRows(value.schema);
+      }
+      if (value && typeof value === "object" && Array.isArray(value.columns) && value.row_size !== undefined) {
+        return value.columns.map(column => ({
+          table: value.name,
+          column: column.name,
+          type: column.type,
+          offset: column.offset,
+          size: column.size,
+          indexed: Boolean(column.indexed),
+          trigram_indexed: Boolean(column.trigram_indexed),
+          ref_table: column.ref_table || ""
+        }));
+      }
       if (value && typeof value === "object" && "values" in value) {
         return [{ row_id: value.row_id, ...value.values }];
       }
-      if (value && typeof value === "object" && !("status" in value) && !("row_size" in value)) {
+      if (value && typeof value === "object") {
         return [value];
       }
       return [];
+    }
+
+    function renderTableList(result) {
+      const rows = normalizeRows(result).filter(row => row.table);
+      knownTables = rows.map(row => String(row.table)).sort();
+      renderCrudTableOptions();
+      if (rows.length === 0) {
+        els.tableList.innerHTML = "<div class=\"small\">No tables found.</div>";
+        renderSchemaEditor(schemaFromEditor());
+        return;
+      }
+      els.tableList.innerHTML = rows.map(row => `
+        <button class="secondary table-select" data-table="${escapeHTML(row.table)}">
+          <strong>${escapeHTML(row.table)}</strong>
+          <span>${escapeHTML(row.columns ?? 0)} cols</span>
+        </button>
+      `).join("");
+      renderSchemaEditor(schemaFromEditor());
+      renderCrudEditor(currentSchema);
+    }
+
+    function selectedSQL() {
+      const editor = els.sqlEditor;
+      const selected = editor.value.slice(editor.selectionStart, editor.selectionEnd).trim();
+      return selected || editor.value.trim();
+    }
+
+    function renderSQLSummary(result, elapsedMs) {
+      const hasResult = Boolean(result);
+      const values = {
+        Operation: result?.operation || "-",
+        Table: result?.table || "-",
+        Rows: result?.rows_affected ?? (Array.isArray(result?.rows) ? result.rows.length : "-"),
+        Time: hasResult && typeof elapsedMs === "number" ? `${elapsedMs.toFixed(1)} ms` : "-"
+      };
+      els.sqlSummary.innerHTML = Object.entries(values).map(([label, value]) => `
+        <div class="metric">
+          <span>${escapeHTML(label)}</span>
+          <strong title="${escapeHTML(value)}">${escapeHTML(value)}</strong>
+        </div>
+      `).join("");
+    }
+
+    function renderSQLResult(result, elapsedMs) {
+      renderSQLSummary(result, elapsedMs);
+      if (result?.schema) {
+        renderSchema(result.schema);
+      }
+      if (result?.operation === "show_tables") {
+        renderData(result.rows, { rowActions: false });
+        renderTableList(result);
+      } else if (Array.isArray(result?.rows)) {
+        renderData(result.rows);
+      } else if (result?.schema) {
+        renderData(result.schema, { rowActions: false });
+      } else if (result?.row_id !== undefined) {
+        renderData([{ row_id: result.row_id, rows_affected: result.rows_affected }]);
+      } else {
+        renderData(result, { rowActions: false });
+      }
+    }
+
+    async function executeSQLQuery(query) {
+      const started = performance.now();
+      const result = await request("/rel/sql", {
+        method: "POST",
+        body: JSON.stringify({ query })
+      });
+      renderSQLResult(result, performance.now() - started);
+      return result;
     }
 
     function formatCell(value) {
@@ -702,16 +1306,141 @@
     });
 
     document.getElementById("saveConnection").addEventListener("click", updateTarget);
-    [els.host, els.port, els.table].forEach(input => input.addEventListener("input", updateTarget));
+    [els.host, els.port, els.table].forEach(input => input.addEventListener("input", () => {
+      updateTarget();
+      if (input === els.table) {
+        currentSchema = null;
+        renderCrudEditor(null);
+      }
+      renderCrudTableOptions();
+    }));
 
     async function loadSchema() {
       const schema = await request(`/rel/schema/${tableName()}`);
       renderSchema(schema);
+      renderData(schema, { rowActions: false });
       return schema;
     }
 
     document.getElementById("loadSchema").addEventListener("click", () => run("Load schema", loadSchema));
     document.getElementById("refreshSchema").addEventListener("click", () => run("Refresh schema", loadSchema));
+    document.getElementById("loadTables").addEventListener("click", () => run("Load tables", async () => {
+      els.sqlEditor.value = "SHOW TABLES;";
+      return executeSQLQuery("SHOW TABLES");
+    }));
+    async function loadRowsForCurrentTable() {
+      const table = els.table.value.trim();
+      if (!table) {
+        throw new Error("Table name is empty");
+      }
+      const query = `SELECT * FROM ${table}`;
+      els.sqlEditor.value = `${query};`;
+      return executeSQLQuery(query);
+    }
+
+    document.getElementById("loadRows").addEventListener("click", () => run("Load rows", loadRowsForCurrentTable));
+    document.getElementById("crudLoadRows").addEventListener("click", () => run("Load rows", loadRowsForCurrentTable));
+    document.getElementById("crudLoadTables").addEventListener("click", () => document.getElementById("loadTables").click());
+    document.getElementById("crudLoadSchema").addEventListener("click", () => run("Load schema", loadSchema));
+    document.getElementById("crudClearForm").addEventListener("click", clearCrudForm);
+
+    els.crudTable.addEventListener("change", () => {
+      els.table.value = els.crudTable.value;
+      updateTarget();
+      currentSchema = null;
+      renderCrudEditor(null);
+      run("Load schema", loadSchema);
+    });
+
+    els.crudMode.addEventListener("change", () => {
+      if (els.crudMode.value === "insert") {
+        clearCrudForm();
+      }
+    });
+
+    document.getElementById("crudInsertVisual").addEventListener("click", () => run("Visual insert", async () => {
+      const values = collectCrudValues();
+      const result = await request(`/rel/${tableName()}/insert`, {
+        method: "POST",
+        body: JSON.stringify({ values })
+      });
+      renderData(result);
+      els.insertJson.value = JSON.stringify(values, null, 2);
+      if (result?.row_id !== undefined) {
+        els.crudRowId.value = result.row_id;
+        els.rowId.value = result.row_id;
+      }
+      return result;
+    }));
+
+    document.getElementById("crudReadVisual").addEventListener("click", () => run("Visual read", async () => {
+      const rowID = els.crudRowId.value.trim();
+      els.rowId.value = rowID;
+      const result = await readRow(rowID);
+      populateCrudForm(result);
+      return result;
+    }));
+
+    document.getElementById("crudUpdateVisual").addEventListener("click", () => run("Visual update", async () => {
+      const rowID = els.crudRowId.value.trim();
+      const values = collectCrudValues({ includeEmpty: true });
+      const result = await request(`/rel/${tableName()}/row/${encodeURIComponent(rowID)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ values })
+      });
+      els.updateJson.value = JSON.stringify(values, null, 2);
+      await readRow(rowID);
+      return result;
+    }));
+
+    document.getElementById("crudDeleteVisual").addEventListener("click", () => run("Visual delete", async () => {
+      const rowID = els.crudRowId.value.trim();
+      els.rowId.value = rowID;
+      return deleteRow(rowID);
+    }));
+
+    els.schemaView.addEventListener("input", event => {
+      if (event.target.closest(".schema-input")) {
+        syncSchemaEditorToJSON();
+      }
+    });
+
+    els.schemaView.addEventListener("change", event => {
+      if (event.target.closest(".schema-input")) {
+        syncSchemaEditorToJSON();
+      }
+    });
+
+    els.schemaView.addEventListener("click", event => {
+      const add = event.target.closest("#schemaAddColumn");
+      const apply = event.target.closest("#schemaApplyJson");
+      const reload = event.target.closest("#schemaReloadJson");
+      const remove = event.target.closest(".schema-remove-column");
+      if (add) {
+        const schema = schemaFromEditor();
+        schema.columns.push({ name: "new_column", type: "uint64" });
+        setSchemaJSON(schema);
+        renderSchemaEditor(schema);
+      }
+      if (apply) {
+        syncSchemaEditorToJSON();
+        setStatus("Schema JSON updated from visual editor.", true);
+      }
+      if (reload) {
+        try {
+          renderSchemaEditor(parseJSONInput(els.schemaJson));
+          setStatus("Visual schema editor reloaded from JSON.", true);
+        } catch (err) {
+          setStatus(err.message, false);
+        }
+      }
+      if (remove) {
+        const schema = schemaFromEditor();
+        schema.columns.splice(Number(remove.dataset.index), 1);
+        setSchemaJSON(schema);
+        renderSchemaEditor(schema);
+      }
+    });
 
     document.getElementById("createSchema").addEventListener("click", () => run("Create table", async () => {
       const schema = parseJSONInput(els.schemaJson);
@@ -720,6 +1449,7 @@
         body: JSON.stringify(schema)
       });
       renderSchema(result);
+      renderData(result, { rowActions: false });
       return result;
     }));
 
@@ -735,7 +1465,9 @@
 
     async function readRow(rowID = els.rowId.value.trim()) {
       const result = await request(`/rel/${tableName()}/row/${encodeURIComponent(rowID)}`);
-      renderData(result);
+      renderData({ row_id: Number(rowID), ...result });
+      els.crudRowId.value = rowID;
+      populateCrudForm(result);
       return result;
     }
 
@@ -755,7 +1487,7 @@
       const result = await request(`/rel/${tableName()}/row/${encodeURIComponent(rowID)}`, {
         method: "DELETE"
       });
-      renderData([]);
+      renderData({ row_id: Number(rowID), ...result });
       return result;
     }
 
@@ -791,6 +1523,34 @@
       els.predicateOp.value = "like";
       els.predicateValue.value = "%widget%";
       document.getElementById("selectRows").click();
+    });
+
+    document.getElementById("executeSql").addEventListener("click", () => run("Execute SQL", async () => {
+      const query = selectedSQL();
+      if (!query) {
+        throw new Error("SQL query is empty");
+      }
+      return executeSQLQuery(query);
+    }));
+
+    els.sqlEditor.addEventListener("keydown", event => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        document.getElementById("executeSql").click();
+      }
+    });
+
+    document.querySelectorAll(".sql-example").forEach(button => {
+      button.addEventListener("click", () => {
+        els.sqlEditor.value = button.dataset.sql;
+        els.sqlEditor.focus();
+      });
+    });
+
+    document.getElementById("clearSqlResult").addEventListener("click", () => {
+      renderSQLSummary(null);
+      renderData([]);
+      els.rawOutput.textContent = "{}";
     });
 
     document.getElementById("createIndex").addEventListener("click", () => run("Create equality index", async () => {
@@ -835,9 +1595,22 @@
       }
     });
 
+    els.tableList.addEventListener("click", event => {
+      const selected = event.target.closest(".table-select");
+      if (!selected) {
+        return;
+      }
+      els.table.value = selected.dataset.table;
+      updateTarget();
+      renderCrudTableOptions();
+      run("Load schema", loadSchema);
+    });
+
     restoreConnection();
     renderSchema(null);
+    renderCrudEditor(null);
     renderData([]);
+    renderTableList([]);
   </script>
 </body>
 </html>

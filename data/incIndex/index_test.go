@@ -18,6 +18,14 @@ var (
 	defaultMarshalJSON = marshalJSON
 )
 
+func TestMain(m *testing.M) {
+	_ = os.RemoveAll("db")
+	code := m.Run()
+	ResetForTests()
+	_ = os.RemoveAll("db")
+	os.Exit(code)
+}
+
 func resetState(t *testing.T) {
 	t.Helper()
 	restoreHooks()

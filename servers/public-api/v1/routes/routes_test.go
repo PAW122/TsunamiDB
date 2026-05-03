@@ -15,6 +15,7 @@ import (
 	defrag "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
+	relationalData "github.com/PAW122/TsunamiDB/data/relational"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	metrics "github.com/PAW122/TsunamiDB/servers/public-api/v1/metrics"
 	types "github.com/PAW122/TsunamiDB/types"
@@ -24,7 +25,8 @@ func TestMain(m *testing.M) {
 	_ = os.RemoveAll("./db")
 	code := m.Run()
 	dataManager_v2.ShutdownWorkersForTests()
-	fileSystem_v1.ResetForTests()
+	fileSystem_v1.ShutdownForTests()
+	relationalData.ResetForTests()
 	defrag.ResetForTests()
 	networkmanager.SetInstanceForTests(nil)
 	metrics.ResetForTests()
@@ -40,7 +42,8 @@ func setupRoutesTest(t *testing.T) {
 	release := acquireDBTestLock(t)
 	t.Cleanup(release)
 	dataManager_v2.ShutdownWorkersForTests()
-	fileSystem_v1.ResetForTests()
+	fileSystem_v1.ShutdownForTests()
+	relationalData.ResetForTests()
 	defrag.ResetForTests()
 	_ = os.RemoveAll("./db")
 	dataManager_v2.EnsureDirsForTests()
@@ -49,7 +52,8 @@ func setupRoutesTest(t *testing.T) {
 	incindex.ResetForTests()
 	t.Cleanup(func() {
 		dataManager_v2.ShutdownWorkersForTests()
-		fileSystem_v1.ResetForTests()
+		fileSystem_v1.ShutdownForTests()
+		relationalData.ResetForTests()
 		defrag.ResetForTests()
 		networkmanager.SetInstanceForTests(nil)
 		metrics.ResetForTests()
@@ -198,6 +202,54 @@ func TestRelationalEndpointsAllowBrowserPreflight(t *testing.T) {
 	}
 	if got := resp.Header().Get("Access-Control-Allow-Methods"); got == "" {
 		t.Fatal("Access-Control-Allow-Methods is empty")
+	}
+}
+
+func TestRelationalSQLEndpoint(t *testing.T) {
+	setupRoutesTest(t)
+
+	create := perform(RelationalSQL, http.MethodPost, "/rel/sql", bytes.NewBufferString(`{
+		"query": "CREATE TABLE products (id uint64 INDEXED, name string(16), price uint64, active bool)"
+	}`), nil)
+	if create.Code != http.StatusOK {
+		t.Fatalf("create SQL status: %d body=%s", create.Code, create.Body.String())
+	}
+
+	insert := perform(RelationalSQL, http.MethodPost, "/rel/sql", bytes.NewBufferString("INSERT INTO products (id, name, price, active) VALUES (1, 'widget', 100, true)"), nil)
+	if insert.Code != http.StatusOK {
+		t.Fatalf("insert SQL status: %d body=%s", insert.Code, insert.Body.String())
+	}
+
+	selected := perform(RelationalSQL, http.MethodPost, "/rel/sql", bytes.NewBufferString("SELECT row_id, name FROM products WHERE id = 1"), nil)
+	if selected.Code != http.StatusOK {
+		t.Fatalf("select SQL status: %d body=%s", selected.Code, selected.Body.String())
+	}
+	var result relationalData.SQLResult
+	if err := json.Unmarshal(selected.Body.Bytes(), &result); err != nil {
+		t.Fatalf("decode SQL response: %v", err)
+	}
+	if result.Operation != "select" || result.RowsAffected != 1 || len(result.Rows) != 1 {
+		t.Fatalf("SQL result = %+v, want one selected row", result)
+	}
+	if result.Rows[0].Values["name"] != "widget" || result.Rows[0].Values["row_id"] != float64(0) {
+		t.Fatalf("SQL row values = %+v, want projected row_id and name", result.Rows[0].Values)
+	}
+
+	tables := perform(RelationalSQL, http.MethodPost, "/rel/sql", bytes.NewBufferString("SHOW TABLES"), nil)
+	if tables.Code != http.StatusOK {
+		t.Fatalf("show tables SQL status: %d body=%s", tables.Code, tables.Body.String())
+	}
+	var tableResult relationalData.SQLResult
+	if err := json.Unmarshal(tables.Body.Bytes(), &tableResult); err != nil {
+		t.Fatalf("decode SHOW TABLES response: %v", err)
+	}
+	if tableResult.Operation != "show_tables" || tableResult.RowsAffected != 1 || tableResult.Rows[0].Values["table"] != "products" {
+		t.Fatalf("SHOW TABLES result = %+v, want products table", tableResult)
+	}
+
+	bad := perform(RelationalSQL, http.MethodPost, "/rel/sql", bytes.NewBufferString("DROP TABLE products"), nil)
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("bad SQL status = %d, want 400; body=%s", bad.Code, bad.Body.String())
 	}
 }
 
