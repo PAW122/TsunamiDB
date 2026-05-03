@@ -9,6 +9,19 @@ install
 go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.8.0
 ``` 
 
+## DLL wrapper
+Native DLL/shared-library wrapper is available in `lib/dll`.
+
+```powershell
+# Windows DLL + generated C header
+go build -buildmode=c-shared -o .dist\tsunamidb.dll .\lib\dll
+
+# or
+.\lib\dll\build.bat
+```
+
+The wrapper exports the key-value, encrypted, network manager, public API, subscription and regex-key functions from `lib/dbclient`.
+
 + execute:
     go build -tags debug
 

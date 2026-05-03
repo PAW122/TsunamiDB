@@ -9,6 +9,7 @@ TsunamiDB.exe
 TsunamiDB-linux
 config.json
 /_build
+/.dist
 /lib/dbclient/db
 /servers/core/db
 /servers/network-manager/db

@@ -101,10 +101,10 @@
     "source": ["lib/dbclient/client.go", "lib/export/*.go"]
   },
   "dll_lib": {
-    "status": "not implemented as stable c-shared ABI in current repository",
+    "status": "implemented as c-shared wrapper in lib/dll",
     "page": "../dll-lib/overview.html",
-    "keywords": ["dll", "c-shared", "cgo", "ABI", "native bindings"],
-    "source_checked": ["lib/export/*.go", "build.bat"]
+    "keywords": ["dll", "c-shared", "cgo", "ABI", "native bindings", "Save", "Read", "FreeBuf"],
+    "source_checked": ["lib/dll/main.go", "lib/dll/build.bat", "lib/dbclient/client.go"]
   },
   "downloads": {
     "page": "../downloads/index.html",

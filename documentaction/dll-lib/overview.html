@@ -44,54 +44,53 @@
     </aside>
     <main class="content">
       <h1>DLL Lib</h1>
-      <p class="lead">This page documents the current DLL status and the recommended ABI shape for future native bindings.</p>
+      <p class="lead">This page documents the cgo DLL/shared-library wrapper for native bindings.</p>
 
-      <div class="warning">Current repository state: there are no <code>//export</code> cgo functions and no committed <code>-buildmode=c-shared</code> DLL entrypoint. The existing <code>lib/export</code> package is a Go package, not a stable C ABI. Treat this page as implementation guidance until the DLL layer is added.</div>
+      <div class="note">Current repository state: <code>lib/dll</code> exposes <code>//export</code> cgo functions over <code>github.com/PAW122/TsunamiDB/lib/dbclient</code>.</div>
 
-      <h2>Recommended Build Shape</h2>
-      <p>A Go DLL/shared library should be built from a dedicated <code>package main</code> file using cgo exports. Keep this separate from <code>lib/export</code> so the C ABI can stay stable while Go internals change.</p>
+      <h2>Build</h2>
+      <p>The DLL/shared library is built from a dedicated <code>package main</code> file using cgo exports. It is separate from <code>lib/export</code> so native bindings do not import Go internals directly.</p>
       <pre><code class="language-bash"># Windows DLL
-go build -buildmode=c-shared -o tsunamidb.dll ./lib/dll
+go build -buildmode=c-shared -o .dist/tsunamidb.dll ./lib/dll
 
 # Linux shared object
-go build -buildmode=c-shared -o libtsunamidb.so ./lib/dll</code></pre>
+go build -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll</code></pre>
 
-      <h2>Proposed ABI</h2>
+      <h2>Current ABI</h2>
       <table>
         <thead><tr><th>C function</th><th>Purpose</th><th>Maps to Go</th></tr></thead>
         <tbody>
-          <tr><td><code>TsuInitNetworkManager(port, peersJson)</code></td><td>Start P2P network manager.</td><td><code>dbclient.InitNetworkManager</code></td></tr>
-          <tr><td><code>TsuInitPublicApi(port)</code></td><td>Start HTTP API.</td><td><code>dbclient.InitPublicApi</code></td></tr>
-          <tr><td><code>TsuSave(key, table, data, dataLen)</code></td><td>Save bytes.</td><td><code>dbclient.Save</code></td></tr>
-          <tr><td><code>TsuRead(key, table)</code></td><td>Read bytes and return allocated buffer.</td><td><code>dbclient.Read</code></td></tr>
-          <tr><td><code>TsuFree(key, table)</code></td><td>Delete key.</td><td><code>dbclient.Free</code></td></tr>
-          <tr><td><code>TsuSaveEncrypted(key, table, encryptionKey, data, dataLen)</code></td><td>Save encrypted bytes.</td><td><code>dbclient.SaveEncrypted</code></td></tr>
-          <tr><td><code>TsuReadEncrypted(key, table, encryptionKey)</code></td><td>Read and decrypt bytes.</td><td><code>dbclient.ReadEncrypted</code></td></tr>
-          <tr><td><code>TsuGetKeysByRegex(table, regex, max)</code></td><td>Return JSON array of keys.</td><td><code>dbclient.GetKeysByRegex</code></td></tr>
-          <tr><td><code>TsuLastError()</code></td><td>Return last error message for the calling process/thread model.</td><td>Error bridge</td></tr>
-          <tr><td><code>TsuFreeBuffer(ptr)</code></td><td>Free memory allocated by DLL for returned data.</td><td>C allocator/free wrapper</td></tr>
+          <tr><td><code>InitNetworkManager(port, peers, count)</code></td><td>Start P2P network manager.</td><td><code>dbclient.InitNetworkManager</code></td></tr>
+          <tr><td><code>InitPublicApi(port)</code></td><td>Start HTTP API.</td><td><code>dbclient.InitPublicApi</code></td></tr>
+          <tr><td><code>Save(key, table, data, length)</code></td><td>Save bytes.</td><td><code>dbclient.Save</code></td></tr>
+          <tr><td><code>Read(key, table, out, outLen)</code></td><td>Read bytes and return allocated buffer.</td><td><code>dbclient.Read</code></td></tr>
+          <tr><td><code>Free(key, table)</code></td><td>Delete key.</td><td><code>dbclient.Free</code></td></tr>
+          <tr><td><code>SaveEncrypted(key, table, encryptionKey, data, length)</code></td><td>Save encrypted bytes.</td><td><code>dbclient.SaveEncrypted</code></td></tr>
+          <tr><td><code>ReadEncrypted(key, table, encryptionKey, out, outLen)</code></td><td>Read and decrypt bytes.</td><td><code>dbclient.ReadEncrypted</code></td></tr>
+          <tr><td><code>GetKeysByRegex(table, regex, max, result, count)</code></td><td>Return matching keys as an allocated C string array.</td><td><code>dbclient.GetKeysByRegex</code></td></tr>
+          <tr><td><code>FreeBuf(ptr)</code></td><td>Free memory allocated by DLL for returned data.</td><td>C allocator/free wrapper</td></tr>
+          <tr><td><code>FreeKeysArray(array, count)</code></td><td>Free key arrays returned by regex lookup.</td><td>C allocator/free wrapper</td></tr>
         </tbody>
       </table>
 
       <h2>ABI Rules</h2>
       <ul>
-        <li>Do not return Go pointers to C callers. Return C-allocated memory and provide <code>TsuFreeBuffer</code>.</li>
+        <li>Do not return Go pointers to C callers. Return C-allocated memory and provide <code>FreeBuf</code> or <code>FreeKeysArray</code>.</li>
         <li>Use explicit byte lengths for binary input/output. Do not rely on null-terminated strings for data payloads.</li>
-        <li>Return integer status codes for write operations, for example <code>0</code> success and non-zero failure; expose details through <code>TsuLastError</code>.</li>
-        <li>For arrays such as regex key results, return UTF-8 JSON to keep ABI simple for C#, Python, Rust, C and C++ callers.</li>
+        <li>Return integer status codes for write operations: <code>0</code> success and <code>-1</code> failure.</li>
         <li>Document ownership of every returned pointer next to the function signature.</li>
       </ul>
 
       <h2>Example Consumer Contract</h2>
-      <pre><code class="language-c">int TsuSave(const char* key, const char* table, const unsigned char* data, int dataLen);
-TsuBuffer TsuRead(const char* key, const char* table);
-void TsuFreeBuffer(void* ptr);</code></pre>
+      <pre><code class="language-c">int Save(const char* key, const char* table, const char* data, int dataLen);
+int Read(const char* key, const char* table, char** out, int* outLen);
+void FreeBuf(char* ptr);</code></pre>
 
-      <p>Until this layer exists, use the HTTP API for non-Go languages. It is stable today and covers more features than the current Go lib wrappers.</p>
+      <p><code>Read</code> and <code>ReadEncrypted</code> use the Go library behavior and require <code>InitNetworkManager</code> before reads, even for single-node local usage.</p>
 
-      <div class="machine-block">ai_keywords: dll lib c-shared cgo export ABI native bindings TsuSave TsuRead TsuFreeBuffer
-current_status: not implemented in repository
-source_files_checked: lib/export/*.go, build.bat, rg //export</div>
+      <div class="machine-block">ai_keywords: dll lib c-shared cgo export ABI native bindings Save Read FreeBuf
+current_status: implemented in lib/dll
+source_files_checked: lib/dll/main.go, lib/dll/build.bat, lib/dbclient/client.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>
