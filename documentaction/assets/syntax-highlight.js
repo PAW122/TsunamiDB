@@ -1,4 +1,77 @@
 (function () {
+  var themeStorageKey = "tsunamidb-docs-theme";
+
+  function readStoredTheme() {
+    try {
+      return window.localStorage.getItem(themeStorageKey);
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  function writeStoredTheme(theme) {
+    try {
+      window.localStorage.setItem(themeStorageKey, theme);
+    } catch (_error) {
+      // Ignore storage errors so local file previews and strict browsers still work.
+    }
+  }
+
+  function normalizeTheme(theme) {
+    return theme === "light" ? "light" : "dark";
+  }
+
+  function applyTheme(theme) {
+    var normalized = normalizeTheme(theme);
+    document.documentElement.setAttribute("data-theme", normalized);
+    return normalized;
+  }
+
+  function initThemeSwitch() {
+    var sidebar = document.querySelector(".sidebar");
+
+    if (!sidebar || sidebar.querySelector(".theme-switch")) {
+      return;
+    }
+
+    var brand = sidebar.querySelector(".brand");
+
+    if (!brand) {
+      return;
+    }
+
+    var currentTheme = normalizeTheme(document.documentElement.getAttribute("data-theme"));
+    var brandRow = document.createElement("div");
+    var switchRoot = document.createElement("div");
+    var button = document.createElement("button");
+
+    function render(theme) {
+      var isDark = theme === "dark";
+      button.setAttribute("aria-pressed", String(isDark));
+      button.setAttribute("aria-label", isDark ? "Switch to light theme" : "Switch to dark theme");
+      button.title = isDark ? "Switch to light theme" : "Switch to dark theme";
+    }
+
+    brandRow.className = "brand-row";
+    switchRoot.className = "theme-switch";
+
+    button.className = "theme-switch-button";
+    button.type = "button";
+    button.addEventListener("click", function () {
+      currentTheme = applyTheme(currentTheme === "dark" ? "light" : "dark");
+      writeStoredTheme(currentTheme);
+      render(currentTheme);
+    });
+
+    render(currentTheme);
+    switchRoot.appendChild(button);
+    sidebar.insertBefore(brandRow, brand);
+    brandRow.appendChild(brand);
+    brandRow.appendChild(switchRoot);
+  }
+
+  applyTheme(readStoredTheme());
+
   function escapeHTML(value) {
     return value
       .replace(/&/g, "&amp;")
@@ -117,6 +190,8 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    initThemeSwitch();
+
     document.querySelectorAll("pre code").forEach(function (block) {
       var lang = languageOf(block);
       var source = block.textContent;
