@@ -9,8 +9,14 @@ import (
 	"testing"
 )
 
-const dllConsumerC = `
+const sharedLibraryConsumerC = `
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#include <pthread.h>
+#include <unistd.h>
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -20,6 +26,8 @@ typedef void (*FreeBufFn)(char*);
 typedef int  (*FreeFn)(char*, char*);
 typedef int  (*SaveEncryptedFn)(char*, char*, char*, char*, int);
 typedef int  (*ReadEncryptedFn)(char*, char*, char*, char**, int*);
+typedef int  (*SaveIncFn)(char*, char*, char*, int, unsigned long long, unsigned long long, int, char*, char*, char*, unsigned long long*);
+typedef int  (*ReadIncFn)(char*, char*, char*, unsigned long long, char*, unsigned long long, char**, int*);
 typedef int  (*RelationalSQLFn)(char*, char**, int*);
 typedef void (*InitNetworkManagerFn)(int, char**, int);
 typedef void (*InitPublicApiFn)(int);
@@ -30,13 +38,25 @@ typedef int  (*GetKeysByRegexFn)(char*, char*, int, char***, int*);
 typedef void (*FreeKeysArrayFn)(char**, int);
 
 static InitSubscriptionServerFn g_init_subscription_server = NULL;
+static volatile int g_subscription_returned = 0;
 
+#ifdef _WIN32
 static DWORD WINAPI subscription_thread(LPVOID arg) {
 	(void)arg;
 	int rc = g_init_subscription_server("0");
 	fprintf(stderr, "InitSubscriptionServer returned unexpectedly: %d\n", rc);
+	g_subscription_returned = 1;
 	return (DWORD)(rc == 0 ? 0 : 1);
 }
+#else
+static void* subscription_thread(void* arg) {
+	(void)arg;
+	int rc = g_init_subscription_server("0");
+	fprintf(stderr, "InitSubscriptionServer returned unexpectedly: %d\n", rc);
+	g_subscription_returned = 1;
+	return (void*)(long)(rc == 0 ? 0 : 1);
+}
+#endif
 
 #define CHECK(cond, msg) do { \
 	if (!(cond)) { \
@@ -45,9 +65,15 @@ static DWORD WINAPI subscription_thread(LPVOID arg) {
 	} \
 } while (0)
 
+#ifdef _WIN32
 #define LOAD_FN(type, name) \
-	type name = (type)GetProcAddress(dll, #name); \
+	type name = (type)GetProcAddress(lib, #name); \
 	CHECK(name != NULL, "missing export " #name)
+#else
+#define LOAD_FN(type, name) \
+	type name = (type)dlsym(lib, #name); \
+	CHECK(name != NULL, "missing export " #name)
+#endif
 
 static int read_exact(ReadFn read_fn, FreeBufFn free_buf, char* key, char* table, const char* want, int want_len) {
 	char* out = NULL;
@@ -101,13 +127,21 @@ static int contains_key(char** keys, int count, const char* want) {
 }
 
 int main(int argc, char** argv) {
-	CHECK(argc == 2, "usage: consumer.exe <dll-path>");
+	CHECK(argc == 2, "usage: consumer <shared-library-path>");
 
-	HMODULE dll = LoadLibraryA(argv[1]);
-	if (dll == NULL) {
+#ifdef _WIN32
+	HMODULE lib = LoadLibraryA(argv[1]);
+	if (lib == NULL) {
 		fprintf(stderr, "LoadLibraryA failed: %lu\n", GetLastError());
 		return 1;
 	}
+#else
+	void* lib = dlopen(argv[1], RTLD_NOW | RTLD_LOCAL);
+	if (lib == NULL) {
+		fprintf(stderr, "dlopen failed: %s\n", dlerror());
+		return 1;
+	}
+#endif
 
 	LOAD_FN(SaveFn, Save);
 	LOAD_FN(ReadFn, Read);
@@ -115,6 +149,8 @@ int main(int argc, char** argv) {
 	LOAD_FN(FreeFn, Free);
 	LOAD_FN(SaveEncryptedFn, SaveEncrypted);
 	LOAD_FN(ReadEncryptedFn, ReadEncrypted);
+	LOAD_FN(SaveIncFn, SaveInc);
+	LOAD_FN(ReadIncFn, ReadInc);
 	LOAD_FN(RelationalSQLFn, RelationalSQL);
 	LOAD_FN(InitNetworkManagerFn, InitNetworkManager);
 	LOAD_FN(InitPublicApiFn, InitPublicApi);
@@ -133,19 +169,46 @@ int main(int argc, char** argv) {
 	InitNetworkManager(0, NULL, 0);
 	InitPublicApi(0);
 	g_init_subscription_server = InitSubscriptionServer;
+#ifdef _WIN32
 	HANDLE sub_thread = CreateThread(NULL, 0, subscription_thread, NULL, 0, NULL);
 	CHECK(sub_thread != NULL, "InitSubscriptionServer thread");
 	Sleep(200);
-	DWORD sub_code = 0;
-	CHECK(GetExitCodeThread(sub_thread, &sub_code), "GetExitCodeThread");
-	CHECK(sub_code == STILL_ACTIVE, "InitSubscriptionServer should keep serving");
+	CHECK(!g_subscription_returned, "InitSubscriptionServer should keep serving");
 	CloseHandle(sub_thread);
+#else
+	pthread_t sub_thread;
+	CHECK(pthread_create(&sub_thread, NULL, subscription_thread, NULL) == 0, "InitSubscriptionServer thread");
+	usleep(200000);
+	CHECK(!g_subscription_returned, "InitSubscriptionServer should keep serving");
+	CHECK(pthread_detach(sub_thread) == 0, "detach InitSubscriptionServer thread");
+#endif
 
 	CHECK(Save("dll_plain_key", table, plain, (int)sizeof(plain)) == 0, "Save plain");
 	CHECK(read_exact(Read, FreeBuf, "dll_plain_key", table, plain, (int)sizeof(plain)) == 0, "Read plain data");
 
 	CHECK(SaveEncrypted("dll_encrypted_key", table, enc_key, encrypted, (int)strlen(encrypted)) == 0, "SaveEncrypted");
 	CHECK(read_encrypted_exact(ReadEncrypted, FreeBuf, "dll_encrypted_key", table, enc_key, encrypted, (int)strlen(encrypted)) == 0, "ReadEncrypted data");
+
+	unsigned long long inc_id = 999;
+	CHECK(SaveInc("dll_inc_key", table, "first", 5, 16, 0, 0, "append", "top", "first-key", &inc_id) == 0, "SaveInc first");
+	CHECK(inc_id == 0, "SaveInc first id");
+	CHECK(SaveInc("dll_inc_key", table, "second", 6, 16, 0, 0, "append", "top", "second-key", &inc_id) == 0, "SaveInc second");
+	CHECK(inc_id == 1, "SaveInc second id");
+
+	char* inc_out = NULL;
+	int inc_len = -1;
+	CHECK(ReadInc("dll_inc_key", table, "by_key", 0, "second-key", 0, &inc_out, &inc_len) == 0, "ReadInc by_key");
+	CHECK(inc_out != NULL && inc_len > 0, "ReadInc returns JSON");
+	CHECK(strstr(inc_out, "\"id\":1") != NULL, "ReadInc by_key id");
+	CHECK(strstr(inc_out, "\"data\":\"second\"") != NULL, "ReadInc by_key data");
+	FreeBuf(inc_out);
+
+	inc_out = NULL;
+	inc_len = -1;
+	CHECK(ReadInc("dll_inc_key", table, "first_entries", 0, NULL, 2, &inc_out, &inc_len) == 0, "ReadInc first_entries");
+	CHECK(inc_out != NULL && strstr(inc_out, "\"data\":\"first\"") != NULL, "ReadInc first data");
+	CHECK(strstr(inc_out, "\"data\":\"second\"") != NULL, "ReadInc second data");
+	FreeBuf(inc_out);
 
 	char* sql_out = NULL;
 	int sql_len = -1;
@@ -211,16 +274,20 @@ int main(int argc, char** argv) {
 
 	FreeBuf(NULL);
 	FreeKeysArray(NULL, 0);
+#ifdef _WIN32
 	Sleep(300);
+#else
+	usleep(300000);
+#endif
 
-	printf("dll integration smoke passed\n");
+	printf("shared library integration smoke passed\n");
 	return 0;
 }
 `
 
-func TestDLLBuildImportAndABI(t *testing.T) {
-	if runtime.GOOS != "windows" {
-		t.Skip("DLL import smoke test uses Windows LoadLibrary/GetProcAddress")
+func TestSharedLibraryBuildImportAndABI(t *testing.T) {
+	if runtime.GOOS != "windows" && runtime.GOOS != "linux" {
+		t.Skip("shared library import smoke test only supports Windows and Linux")
 	}
 
 	packageDir, err := os.Getwd()
@@ -229,12 +296,19 @@ func TestDLLBuildImportAndABI(t *testing.T) {
 	}
 
 	tmpDir := t.TempDir()
-	dllPath := filepath.Join(tmpDir, "tsunamidb.dll")
-	build := exec.Command("go", "build", "-buildmode=c-shared", "-o", dllPath, ".")
+	libraryName := "tsunamidb.dll"
+	executableName := "dll_consumer.exe"
+	if runtime.GOOS == "linux" {
+		libraryName = "libtsunamidb.so"
+		executableName = "so_consumer"
+	}
+
+	libraryPath := filepath.Join(tmpDir, libraryName)
+	build := exec.Command("go", "build", "-buildvcs=false", "-buildmode=c-shared", "-o", libraryPath, ".")
 	build.Dir = packageDir
-	build.Env = append(os.Environ(), "CGO_ENABLED=1", "GOOS=windows", "GOARCH=amd64")
+	build.Env = append(os.Environ(), "CGO_ENABLED=1", "GOOS="+runtime.GOOS, "GOARCH="+runtime.GOARCH)
 	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build DLL failed: %v\n%s", err, out)
+		t.Fatalf("build shared library failed: %v\n%s", err, out)
 	}
 
 	ccBytes, err := exec.Command("go", "env", "CC").Output()
@@ -246,15 +320,19 @@ func TestDLLBuildImportAndABI(t *testing.T) {
 		t.Fatal("go env CC returned an empty compiler")
 	}
 
-	consumerPath := filepath.Join(tmpDir, "dll_consumer.c")
-	if err := os.WriteFile(consumerPath, []byte(dllConsumerC), 0644); err != nil {
+	consumerPath := filepath.Join(tmpDir, "shared_library_consumer.c")
+	if err := os.WriteFile(consumerPath, []byte(sharedLibraryConsumerC), 0644); err != nil {
 		t.Fatal(err)
 	}
 
-	exePath := filepath.Join(tmpDir, "dll_consumer.exe")
-	compile := exec.Command(cc, "-Wall", "-Wextra", "-o", exePath, consumerPath)
+	exePath := filepath.Join(tmpDir, executableName)
+	compileArgs := []string{"-Wall", "-Wextra", "-o", exePath, consumerPath}
+	if runtime.GOOS == "linux" {
+		compileArgs = append(compileArgs, "-ldl", "-pthread")
+	}
+	compile := exec.Command(cc, compileArgs...)
 	if out, err := compile.CombinedOutput(); err != nil {
-		t.Fatalf("compile DLL consumer failed: %v\n%s", err, out)
+		t.Fatalf("compile shared library consumer failed: %v\n%s", err, out)
 	}
 
 	dbWorkDir := filepath.Join(tmpDir, "db-work")
@@ -262,10 +340,10 @@ func TestDLLBuildImportAndABI(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	run := exec.Command(exePath, dllPath)
+	run := exec.Command(exePath, libraryPath)
 	run.Dir = dbWorkDir
 	if out, err := run.CombinedOutput(); err != nil {
-		t.Fatalf("DLL consumer failed: %v\n%s", err, out)
+		t.Fatalf("shared library consumer failed: %v\n%s", err, out)
 	} else {
 		t.Logf("%s", out)
 	}

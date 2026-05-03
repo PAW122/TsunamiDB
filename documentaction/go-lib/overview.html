@@ -61,9 +61,9 @@ import (
 )
 
 func main() {
-	TsuClient.InitNetworkManager(5843, []string{})
-	TsuClient.InitPublicApi(5844)
-	_ = TsuClient.InitSubscriptionServer("5845")
+	TsuClient.InitNetworkManager(5843, []string{})  // optional
+	TsuClient.InitPublicApi(5844)                   // optional
+	_ = TsuClient.InitSubscriptionServer("5845")    // optional
 
 	time.Sleep(500 * time.Millisecond)
 
@@ -88,6 +88,8 @@ func main() {
           <tr><td><code>Free</code></td><td><code>Free(key, table string) error</code></td><td>Deletes key metadata and marks storage span as free.</td></tr>
           <tr><td><code>SaveEncrypted</code></td><td><code>SaveEncrypted(key, table, encryption_key string, data []byte) error</code></td><td>Encrypts bytes before saving.</td></tr>
           <tr><td><code>ReadEncrypted</code></td><td><code>ReadEncrypted(key, table, encryption_key string) ([]byte, error)</code></td><td>Reads encrypted data and decrypts it. Requires NetworkManager.</td></tr>
+          <tr><td><code>SaveInc</code></td><td><code>SaveInc(key, table string, data []byte, options SaveIncOptions) (SaveIncResult, error)</code></td><td>Appends, inserts or overwrites an incremental-table entry. New tables require <code>MaxEntrySize</code>.</td></tr>
+          <tr><td><code>ReadInc</code></td><td><code>ReadInc(key, table string, options ReadIncOptions) ([]IncEntry, error)</code></td><td>Reads incremental entries by id, entry key, first N or last N.</td></tr>
           <tr><td><code>GetKeysByRegex</code></td><td><code>GetKeysByRegex(table, regex string, max int) ([]string, error)</code></td><td>Returns keys matching regex in one table.</td></tr>
           <tr><td><code>InitNetworkManager</code></td><td><code>InitNetworkManager(port int, knownPeers []string)</code></td><td>Starts P2P network manager in a goroutine.</td></tr>
           <tr><td><code>InitPublicApi</code></td><td><code>InitPublicApi(port int)</code></td><td>Starts HTTP public API in a goroutine.</td></tr>
@@ -109,6 +111,25 @@ if err != nil {
 	panic(err)
 }</code></pre>
 
+      <h2>Incremental Example</h2>
+      <pre><code class="language-go">saved, err := TsuClient.SaveInc("activity", "events", []byte("first"), TsuClient.SaveIncOptions{
+	MaxEntrySize: 128,
+	EntryKey:     "evt-1",
+})
+if err != nil {
+	panic(err)
+}
+
+entries, err := TsuClient.ReadInc("activity", "events", TsuClient.ReadIncOptions{
+	Type: TsuClient.ReadIncByID,
+	ID:   saved.ID,
+})
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(entries[0].Data))</code></pre>
+
       <h2>Subscriptions Example</h2>
       <pre><code class="language-go">authKey, err := TsuClient.EnableSubscription([]string{"user-1"})
 if err != nil {
@@ -123,12 +144,12 @@ if err := TsuClient.DisableSubscription("user-1"); err != nil {
 
       <h2>Current Limitations</h2>
       <ul>
-        <li>The Go lib currently does not expose typed wrappers for <code>save_inc</code>, <code>read_inc</code> or nested JSON mode. Use HTTP for those features.</li>
+        <li>The Go lib currently does not expose typed wrappers for nested JSON mode. Use HTTP for that feature.</li>
         <li><code>Read</code> returns an error when NetworkManager is not initialized.</li>
         <li>Public API and subscription server use goroutines; give them a short startup window before first request in tests or examples.</li>
       </ul>
 
-      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Free SaveEncrypted ReadEncrypted InitNetworkManager InitPublicApi subscriptions
+      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Free SaveEncrypted ReadEncrypted SaveInc ReadInc InitNetworkManager InitPublicApi subscriptions
 source_files: lib/dbclient/client.go, lib/export/*.go, lib/dbclient/client_test.go</div>
     </main>
   </div>

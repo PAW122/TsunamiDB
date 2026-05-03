@@ -5,6 +5,7 @@ package main
 */
 import "C"
 import (
+	"encoding/json"
 	"unsafe"
 
 	db "github.com/PAW122/TsunamiDB/lib/dbclient"
@@ -94,6 +95,72 @@ func ReadEncrypted(key, table, encryptionKey *C.char, out **C.char, outLen *C.in
 		return -1
 	}
 	*outLen = C.int(len(data))
+	*out = buf
+	return 0
+}
+
+//export SaveInc
+func SaveInc(key, table *C.char, data *C.char, length C.int, maxEntrySize C.ulonglong, id C.ulonglong, hasID C.int, mode, countFrom, entryKey *C.char, outID *C.ulonglong) C.int {
+	if key == nil || table == nil || outID == nil || length < 0 || (length > 0 && data == nil) {
+		return -1
+	}
+	*outID = 0
+
+	options := db.SaveIncOptions{
+		MaxEntrySize: uint64(maxEntrySize),
+		Mode:         db.SaveIncMode(cStringOrEmpty(mode)),
+		CountFrom:    db.IncCountFrom(cStringOrEmpty(countFrom)),
+		EntryKey:     cStringOrEmpty(entryKey),
+	}
+	if hasID != 0 {
+		goID := uint64(id)
+		options.ID = &goID
+	}
+
+	result, err := db.SaveInc(C.GoString(key), C.GoString(table), C.GoBytes(unsafe.Pointer(data), length), options)
+	if err != nil {
+		return -1
+	}
+	*outID = C.ulonglong(result.ID)
+	return 0
+}
+
+//export ReadInc
+func ReadInc(key, table, readType *C.char, id C.ulonglong, entryKey *C.char, amount C.ulonglong, out **C.char, outLen *C.int) C.int {
+	if key == nil || table == nil || out == nil || outLen == nil {
+		return -1
+	}
+	*out = nil
+	*outLen = 0
+
+	entries, err := db.ReadInc(C.GoString(key), C.GoString(table), db.ReadIncOptions{
+		Type:     db.ReadIncType(cStringOrDefault(readType, string(db.ReadIncByID))),
+		ID:       uint64(id),
+		EntryKey: cStringOrEmpty(entryKey),
+		Amount:   uint64(amount),
+	})
+	if err != nil {
+		return -1
+	}
+
+	type incEntryJSON struct {
+		ID   uint64 `json:"id"`
+		Data string `json:"data"`
+	}
+	jsonEntries := make([]incEntryJSON, len(entries))
+	for i, entry := range entries {
+		jsonEntries[i] = incEntryJSON{ID: entry.ID, Data: string(entry.Data)}
+	}
+	dataBytes, err := json.Marshal(jsonEntries)
+	if err != nil {
+		return -1
+	}
+
+	buf := (*C.char)(C.CBytes(dataBytes))
+	if len(dataBytes) > 0 && buf == nil {
+		return -1
+	}
+	*outLen = C.int(len(dataBytes))
 	*out = buf
 	return 0
 }
@@ -241,6 +308,24 @@ func FreeKeysArray(array **C.char, count C.int) {
 		C.free(unsafe.Pointer(ptr))
 	}
 	C.free(unsafe.Pointer(array))
+}
+
+func cStringOrEmpty(value *C.char) string {
+	if value == nil {
+		return ""
+	}
+	return C.GoString(value)
+}
+
+func cStringOrDefault(value *C.char, fallback string) string {
+	if value == nil {
+		return fallback
+	}
+	out := C.GoString(value)
+	if out == "" {
+		return fallback
+	}
+	return out
 }
 
 func main() {}

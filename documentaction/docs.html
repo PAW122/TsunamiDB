@@ -76,10 +76,27 @@
         </section>
         <section class="card">
           <h3>DLL Lib</h3>
-          <p>Status and intended ABI for native DLL/shared-library usage. The repository currently does not expose a finished <code>c-shared</code> DLL API.</p>
+          <p>Native DLL/shared-library wrapper built with Go <code>c-shared</code>, with exported C ABI functions over <code>lib/dbclient</code>. On Linux the library is built as <code>.dist/libtsunamidb.so</code>, the <code>.so</code> equivalent of a Windows DLL.</p>
           <a href="./dll-lib/overview.html">Open DLL docs</a>
         </section>
       </div>
+
+      <h2>Build Binaries</h2>
+      <pre><code class="language-bash"># Windows server binary
+go build -buildvcs=false -o .dist/TsunamiDB.exe .
+
+# Linux server binary
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+  go build -buildvcs=false -o .dist/TsunamiDB-linux .
+
+# Windows + Linux server binaries via helper
+.\build.bat
+
+# Windows DLL
+go build -buildvcs=false -buildmode=c-shared -o .dist/tsunamidb.dll ./lib/dll
+
+# Linux shared object (.so, Linux equivalent of DLL)
+go build -buildvcs=false -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll</code></pre>
 
       <h2>Runtime Ports</h2>
       <table>
@@ -93,16 +110,16 @@
 
       <h2>Run TsunamiDB</h2>
       <pre><code class="language-bash"># Local server without P2P network manager
-TsunamiDB.exe
+.dist/TsunamiDB.exe
 
 # Start P2P network manager
-TsunamiDB.exe 5845
+.dist/TsunamiDB.exe 5845
 
 # Linux with P2P network manager
-./TsunamiDB-linux 5845
+./.dist/TsunamiDB-linux 5845
 
 # Join existing peers
-TsunamiDB.exe 5845 10.0.0.2:5845 10.0.0.3:5845</code></pre>
+.dist/TsunamiDB.exe 5845 10.0.0.2:5845 10.0.0.3:5845</code></pre>
       <p>The P2P network manager is optional. When no network-manager port is passed, TsunamiDB starts only the HTTP API on <code>5844</code> and the subscription WebSocket server on <code>5845</code>. Passing the first CLI argument starts the P2P network manager on that port; any following arguments are known peers.</p>
 
       <h2>Data Model</h2>

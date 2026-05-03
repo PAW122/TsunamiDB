@@ -50,11 +50,15 @@
 
       <h2>Build</h2>
       <p>The DLL/shared library is built from a dedicated <code>package main</code> file using cgo exports. It is separate from <code>lib/export</code> so native bindings do not import Go internals directly.</p>
+      <p>On Linux the equivalent of a Windows <code>.dll</code> is a shared object file with the <code>.so</code> extension. TsunamiDB builds it as <code>.dist/libtsunamidb.so</code> and exposes the same C ABI functions as the Windows DLL.</p>
       <pre><code class="language-bash"># Windows DLL
-go build -buildmode=c-shared -o .dist/tsunamidb.dll ./lib/dll
+go build -buildvcs=false -buildmode=c-shared -o .dist/tsunamidb.dll ./lib/dll
 
 # Linux shared object
-go build -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll</code></pre>
+go build -buildvcs=false -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll
+
+# Linux helper script
+bash ./lib/dll/build.sh</code></pre>
 
       <h2>Current ABI</h2>
       <table>
@@ -90,7 +94,7 @@ void FreeBuf(char* ptr);</code></pre>
 
       <div class="machine-block">ai_keywords: dll lib c-shared cgo export ABI native bindings Save Read FreeBuf
 current_status: implemented in lib/dll
-source_files_checked: lib/dll/main.go, lib/dll/build.bat, lib/dbclient/client.go</div>
+source_files_checked: lib/dll/main.go, lib/dll/build.bat, lib/dll/build.sh, lib/dbclient/client.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

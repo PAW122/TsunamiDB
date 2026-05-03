@@ -91,6 +91,43 @@ func TestClient_SaveReadEncrypted(t *testing.T) {
 	assert.Error(t, err, "oczekiwano błędu po usunięciu klucza")
 }
 
+func TestClient_SaveReadInc(t *testing.T) {
+	table := "test_table_inc"
+	key := "client_inc_key"
+
+	first, err := TsuClient.SaveInc(key, table, []byte("first"), TsuClient.SaveIncOptions{
+		MaxEntrySize: 16,
+		EntryKey:     "first-key",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(0), first.ID)
+
+	second, err := TsuClient.SaveInc(key, table, []byte("second"), TsuClient.SaveIncOptions{
+		MaxEntrySize: 16,
+		EntryKey:     "second-key",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(1), second.ID)
+
+	byKey, err := TsuClient.ReadInc(key, table, TsuClient.ReadIncOptions{
+		Type:     TsuClient.ReadIncByKey,
+		EntryKey: "second-key",
+	})
+	assert.NoError(t, err)
+	assert.Len(t, byKey, 1)
+	assert.Equal(t, uint64(1), byKey[0].ID)
+	assert.Equal(t, []byte("second"), byKey[0].Data)
+
+	firstEntries, err := TsuClient.ReadInc(key, table, TsuClient.ReadIncOptions{
+		Type:   TsuClient.ReadIncFirstEntries,
+		Amount: 2,
+	})
+	assert.NoError(t, err)
+	assert.Len(t, firstEntries, 2)
+	assert.Equal(t, []byte("first"), firstEntries[0].Data)
+	assert.Equal(t, []byte("second"), firstEntries[1].Data)
+}
+
 func TestClient_GetKeysByRegex(t *testing.T) {
 	table := "test_table_regex"
 	keys := []string{"client_regex_alpha", "client_regex_beta"}

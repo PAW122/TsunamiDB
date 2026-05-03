@@ -101,10 +101,10 @@
     "source": ["lib/dbclient/client.go", "lib/export/*.go"]
   },
   "dll_lib": {
-    "status": "implemented as c-shared wrapper in lib/dll",
+    "status": "implemented as c-shared wrapper in lib/dll; Windows output is .dist/tsunamidb.dll and Linux shared object output is .dist/libtsunamidb.so",
     "page": "../dll-lib/overview.html",
-    "keywords": ["dll", "c-shared", "cgo", "ABI", "native bindings", "Save", "Read", "FreeBuf"],
-    "source_checked": ["lib/dll/main.go", "lib/dll/build.bat", "lib/dbclient/client.go"]
+    "keywords": ["dll", ".dll", ".so", "linux dll", "shared object", "shared library", "c-shared", "cgo", "ABI", "native bindings", "Save", "Read", "FreeBuf"],
+    "source_checked": ["lib/dll/main.go", "lib/dll/build.bat", "lib/dll/build.sh", "lib/dbclient/client.go"]
   },
   "downloads": {
     "page": "../downloads/index.html",

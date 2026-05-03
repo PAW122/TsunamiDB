@@ -9,28 +9,56 @@ install
 go get github.com/PAW122/TsunamiDB/lib/dbclient@v0.8.0
 ``` 
 
-## DLL wrapper
+## Build binaries
+
+```powershell
+# Windows server binary
+go build -buildvcs=false -o .dist\TsunamiDB.exe .
+```
+
+```bash
+# Linux server binary
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+  go build -buildvcs=false -o .dist/TsunamiDB-linux .
+```
+
+```powershell
+# Windows + Linux server binaries
+.\build.bat
+```
+
+## DLL/shared-library wrapper
 Native DLL/shared-library wrapper is available in `lib/dll`.
 
 ```powershell
 # Windows DLL + generated C header
-go build -buildmode=c-shared -o .dist\tsunamidb.dll .\lib\dll
+go build -buildvcs=false -buildmode=c-shared -o .dist\tsunamidb.dll .\lib\dll
 
 # or
 .\lib\dll\build.bat
 ```
 
+```bash
+# Linux .so + generated C header
+go build -buildvcs=false -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll
+
+# or
+bash ./lib/dll/build.sh
+```
+
+```powershell
+# Linux .so from Windows, using WSL
+.\lib\dll\build.bat linux
+```
+
 The wrapper exports the key-value, encrypted, network manager, public API, subscription and regex-key functions from `lib/dbclient`.
 
 + execute:
-    go build -tags debug
+    go build -buildvcs=false -tags debug
 
-    - local server without P2P network manager - ```./TsunamiDB.exe```
-        > ./TsunamiDB
-    - server with P2P network manager - ```./TsunamiDB.exe 5845```
-        > ./TsunamiDB <port for node's communication>
-    - server joining another node - ```./TsunamiDB-linux 5845 127.0.0.1:5845```
-        > ./TsunamiDB-linux <port for node's communication> <ip and port of other server>
+    - local server without P2P network manager - ```.dist\TsunamiDB.exe```
+    - server with P2P network manager - ```.dist\TsunamiDB.exe 5845```
+    - Linux server joining another node - ```./.dist/TsunamiDB-linux 5845 127.0.0.1:5845```
 
 + performance:
 + I5-10400f

@@ -18,6 +18,7 @@ import (
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	defrag "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	"github.com/PAW122/TsunamiDB/errors"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
@@ -63,6 +64,7 @@ func resetStorageForTest(t *testing.T) {
 	dataManager_v2.ShutdownWorkersForTests()
 	dataManager_v2.EnsureDirsForTests()
 	fileSystem_v1.ResetForTests()
+	incindex.ResetForTests()
 	defrag.ResetForTests()
 	setLocalNetworkManager(t)
 }
@@ -398,6 +400,131 @@ func TestReadEncryptedRemoteDecryptError(t *testing.T) {
 
 	if _, err := ReadEncrypted("remote-key", "remote-table", "secret"); err == nil {
 		t.Fatal("ReadEncrypted() remote decrypt error = nil, want an error")
+	}
+}
+
+func TestSaveReadIncModes(t *testing.T) {
+	resetStorageForTest(t)
+
+	table := testTable("lib_export_inc")
+	key := "events"
+
+	first, err := SaveInc(key, table, []byte("first"), SaveIncOptions{MaxEntrySize: 16, EntryKey: "first-key"})
+	if err != nil {
+		t.Fatalf("SaveInc(first) error = %v", err)
+	}
+	if first.ID != 0 {
+		t.Fatalf("SaveInc(first) id = %d, want 0", first.ID)
+	}
+	second, err := SaveInc(key, table, []byte("second"), SaveIncOptions{MaxEntrySize: 99, EntryKey: "second-key"})
+	if err != nil {
+		t.Fatalf("SaveInc(second) error = %v", err)
+	}
+	if second.ID != 1 {
+		t.Fatalf("SaveInc(second) id = %d, want 1", second.ID)
+	}
+	if second.Warning == "" {
+		t.Fatal("SaveInc with mismatched existing max size warning is empty")
+	}
+
+	byID, err := ReadInc(key, table, ReadIncOptions{Type: ReadIncByID, ID: 0})
+	if err != nil {
+		t.Fatalf("ReadInc(by_id) error = %v", err)
+	}
+	assertIncEntries(t, byID, IncEntry{ID: 0, Data: []byte("first")})
+
+	byKey, err := ReadInc(key, table, ReadIncOptions{Type: ReadIncByKey, EntryKey: "second-key"})
+	if err != nil {
+		t.Fatalf("ReadInc(by_key) error = %v", err)
+	}
+	assertIncEntries(t, byKey, IncEntry{ID: 1, Data: []byte("second")})
+
+	insertAt := uint64(1)
+	inserted, err := SaveInc(key, table, []byte("middle"), SaveIncOptions{
+		ID:        &insertAt,
+		CountFrom: IncCountFromBottom,
+		EntryKey:  "middle-key",
+	})
+	if err != nil {
+		t.Fatalf("SaveInc(insert) error = %v", err)
+	}
+	if inserted.ID != 1 {
+		t.Fatalf("SaveInc(insert) id = %d, want 1", inserted.ID)
+	}
+
+	overwriteID := uint64(0)
+	overwritten, err := SaveInc(key, table, []byte("FIRST"), SaveIncOptions{
+		ID:        &overwriteID,
+		Mode:      SaveIncModeOverwrite,
+		CountFrom: IncCountFromBottom,
+		EntryKey:  "first-key-updated",
+	})
+	if err != nil {
+		t.Fatalf("SaveInc(overwrite) error = %v", err)
+	}
+	if overwritten.ID != 0 {
+		t.Fatalf("SaveInc(overwrite) id = %d, want 0", overwritten.ID)
+	}
+
+	firstEntries, err := ReadInc(key, table, ReadIncOptions{Type: ReadIncFirstEntries, Amount: 3})
+	if err != nil {
+		t.Fatalf("ReadInc(first_entries) error = %v", err)
+	}
+	assertIncEntries(t, firstEntries,
+		IncEntry{ID: 0, Data: []byte("FIRST")},
+		IncEntry{ID: 1, Data: []byte("middle")},
+		IncEntry{ID: 2, Data: []byte("second")},
+	)
+
+	lastEntries, err := ReadInc(key, table, ReadIncOptions{Type: ReadIncLastEntries, Amount: 2})
+	if err != nil {
+		t.Fatalf("ReadInc(last_entries) error = %v", err)
+	}
+	assertIncEntries(t, lastEntries,
+		IncEntry{ID: 2, Data: []byte("second")},
+		IncEntry{ID: 1, Data: []byte("middle")},
+	)
+
+	updatedByKey, err := ReadInc(key, table, ReadIncOptions{Type: ReadIncByKey, EntryKey: "first-key-updated"})
+	if err != nil {
+		t.Fatalf("ReadInc(updated by_key) error = %v", err)
+	}
+	assertIncEntries(t, updatedByKey, IncEntry{ID: 0, Data: []byte("FIRST")})
+
+	if _, err := ReadInc(key, table, ReadIncOptions{Type: ReadIncByKey, EntryKey: "first-key"}); err == nil {
+		t.Fatal("ReadInc(old entry_key) error = nil, want an error")
+	}
+}
+
+func TestSaveReadIncValidation(t *testing.T) {
+	resetStorageForTest(t)
+
+	if _, err := SaveInc("", "table", []byte("x"), SaveIncOptions{MaxEntrySize: 1}); err == nil {
+		t.Fatal("SaveInc with empty key error = nil, want an error")
+	}
+	if _, err := SaveInc("key", "", []byte("x"), SaveIncOptions{MaxEntrySize: 1}); err == nil {
+		t.Fatal("SaveInc with empty table error = nil, want an error")
+	}
+	if _, err := SaveInc("key", "table", []byte("x"), SaveIncOptions{}); err == nil {
+		t.Fatal("SaveInc new table without max size error = nil, want an error")
+	}
+	if _, err := SaveInc("key", "table", []byte("too-big"), SaveIncOptions{MaxEntrySize: 3}); err == nil {
+		t.Fatal("SaveInc body larger than max size error = nil, want an error")
+	}
+	if _, err := ReadInc("key", "table", ReadIncOptions{Type: "bad"}); err == nil {
+		t.Fatal("ReadInc bad type error = nil, want an error")
+	}
+}
+
+func assertIncEntries(t *testing.T, got []IncEntry, want ...IncEntry) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("inc entries len = %d, want %d; got=%#v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i].ID != want[i].ID || !bytes.Equal(got[i].Data, want[i].Data) {
+			t.Fatalf("inc entry[%d] = {ID:%d Data:%q}, want {ID:%d Data:%q}", i, got[i].ID, got[i].Data, want[i].ID, want[i].Data)
+		}
 	}
 }
 
