@@ -20,6 +20,7 @@ typedef void (*FreeBufFn)(char*);
 typedef int  (*FreeFn)(char*, char*);
 typedef int  (*SaveEncryptedFn)(char*, char*, char*, char*, int);
 typedef int  (*ReadEncryptedFn)(char*, char*, char*, char**, int*);
+typedef int  (*RelationalSQLFn)(char*, char**, int*);
 typedef void (*InitNetworkManagerFn)(int, char**, int);
 typedef void (*InitPublicApiFn)(int);
 typedef int  (*InitSubscriptionServerFn)(char*);
@@ -114,6 +115,7 @@ int main(int argc, char** argv) {
 	LOAD_FN(FreeFn, Free);
 	LOAD_FN(SaveEncryptedFn, SaveEncrypted);
 	LOAD_FN(ReadEncryptedFn, ReadEncrypted);
+	LOAD_FN(RelationalSQLFn, RelationalSQL);
 	LOAD_FN(InitNetworkManagerFn, InitNetworkManager);
 	LOAD_FN(InitPublicApiFn, InitPublicApi);
 	LOAD_FN(InitSubscriptionServerFn, InitSubscriptionServer);
@@ -144,6 +146,31 @@ int main(int argc, char** argv) {
 
 	CHECK(SaveEncrypted("dll_encrypted_key", table, enc_key, encrypted, (int)strlen(encrypted)) == 0, "SaveEncrypted");
 	CHECK(read_encrypted_exact(ReadEncrypted, FreeBuf, "dll_encrypted_key", table, enc_key, encrypted, (int)strlen(encrypted)) == 0, "ReadEncrypted data");
+
+	char* sql_out = NULL;
+	int sql_len = -1;
+	CHECK(RelationalSQL("CREATE TABLE dll_rel_products (id uint64 PRIMARY KEY, name string(32) INDEXED TRIGRAM, price uint64, active bool)", &sql_out, &sql_len) == 0, "RelationalSQL create table");
+	CHECK(sql_out != NULL && sql_len > 0, "RelationalSQL create returns JSON");
+	CHECK(strstr(sql_out, "\"operation\":\"create_table\"") != NULL, "RelationalSQL create operation");
+	FreeBuf(sql_out);
+
+	sql_out = NULL;
+	sql_len = -1;
+	CHECK(RelationalSQL("INSERT INTO dll_rel_products (id, name, price, active) VALUES (1, 'widget', 100, true)", &sql_out, &sql_len) == 0, "RelationalSQL insert");
+	CHECK(sql_out != NULL && strstr(sql_out, "\"row_id\":0") != NULL, "RelationalSQL insert row ID");
+	FreeBuf(sql_out);
+
+	sql_out = NULL;
+	sql_len = -1;
+	CHECK(RelationalSQL("SELECT row_id, name, price FROM dll_rel_products WHERE name LIKE '%wid%'", &sql_out, &sql_len) == 0, "RelationalSQL select");
+	CHECK(sql_out != NULL && strstr(sql_out, "\"name\":\"widget\"") != NULL, "RelationalSQL select name");
+	CHECK(strstr(sql_out, "\"price\":100") != NULL, "RelationalSQL select price");
+	FreeBuf(sql_out);
+
+	sql_out = (char*)1;
+	sql_len = -1;
+	CHECK(RelationalSQL("DROP TABLE dll_rel_products", &sql_out, &sql_len) == -1, "RelationalSQL rejects unsupported SQL");
+	CHECK(sql_out == NULL && sql_len == 0, "RelationalSQL clears output on failure");
 
 	CHECK(Save("dll_persist_key", table, persistent, (int)strlen(persistent)) == 0, "Save persistent");
 	CHECK(read_exact(Read, FreeBuf, "dll_persist_key", table, persistent, (int)strlen(persistent)) == 0, "Read persistent data");
@@ -270,5 +297,16 @@ func assertDatabaseFiles(t *testing.T, dbWorkDir string) {
 	}
 	if !strings.Contains(walText, "D|dll_plain_key") {
 		t.Fatalf("expected WAL to contain plain key delete, got:\n%s", walText)
+	}
+
+	relSchema := filepath.Join(dbWorkDir, "db", "rel", "dll_rel_products.schema")
+	if _, err := os.Stat(relSchema); err != nil {
+		t.Fatalf("expected relational schema file %s: %v", relSchema, err)
+	}
+	relRows := filepath.Join(dbWorkDir, "db", "rel", "dll_rel_products.rows")
+	if info, err := os.Stat(relRows); err != nil {
+		t.Fatalf("expected relational rows file %s: %v", relRows, err)
+	} else if info.Size() == 0 {
+		t.Fatalf("expected relational rows file %s to contain data", relRows)
 	}
 }

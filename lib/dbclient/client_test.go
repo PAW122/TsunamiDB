@@ -110,6 +110,55 @@ func TestClient_GetKeysByRegex(t *testing.T) {
 	}
 }
 
+func TestClient_RelationalWrappers(t *testing.T) {
+	table := "client_rel_products"
+	created, err := TsuClient.CreateRelationalTable(TsuClient.RelationalSchema{
+		Name: table,
+		Columns: []TsuClient.RelationalColumn{
+			{Name: "id", Type: TsuClient.RelationalColumnTypeUint64, Indexed: true},
+			{Name: "name", Type: TsuClient.RelationalColumnTypeString, Size: 32, TrigramIndexed: true},
+			{Name: "price", Type: TsuClient.RelationalColumnTypeUint64},
+			{Name: "active", Type: TsuClient.RelationalColumnTypeBool},
+		},
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, table, created.Name)
+
+	rowID, err := TsuClient.InsertRelationalRow(table, map[string]any{
+		"id":     uint64(1),
+		"name":   "widget",
+		"price":  uint64(100),
+		"active": true,
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, uint64(0), rowID)
+
+	row, err := TsuClient.ReadRelationalRow(table, rowID)
+	assert.NoError(t, err)
+	assert.Equal(t, "widget", row["name"])
+
+	selected, err := TsuClient.SelectRelationalRows(table, TsuClient.RelationalLike("name", "%wid%"))
+	assert.NoError(t, err)
+	assert.Len(t, selected, 1)
+	assert.Equal(t, uint64(0), selected[0].RowID)
+
+	assert.NoError(t, TsuClient.UpdateRelationalRow(table, rowID, map[string]any{"price": uint64(175)}))
+	updated, err := TsuClient.ExecuteRelationalSQL("SELECT row_id, name, price FROM client_rel_products WHERE price = 175")
+	assert.NoError(t, err)
+	assert.Equal(t, "select", updated.Operation)
+	assert.Len(t, updated.Rows, 1)
+	assert.Equal(t, uint64(175), updated.Rows[0].Values["price"])
+
+	raw, err := TsuClient.ExecuteRelationalSQLJSON("SHOW TABLES")
+	assert.NoError(t, err)
+	assert.Contains(t, string(raw), `"operation":"show_tables"`)
+	assert.Contains(t, string(raw), table)
+
+	assert.NoError(t, TsuClient.DeleteRelationalRow(table, rowID))
+	_, err = TsuClient.ReadRelationalRow(table, rowID)
+	assert.Error(t, err)
+}
+
 func TestClient_SubscriptionWrappers(t *testing.T) {
 	_, err := TsuClient.EnableSubscription(nil)
 	assert.Error(t, err)

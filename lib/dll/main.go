@@ -98,6 +98,28 @@ func ReadEncrypted(key, table, encryptionKey *C.char, out **C.char, outLen *C.in
 	return 0
 }
 
+//export RelationalSQL
+func RelationalSQL(query *C.char, out **C.char, outLen *C.int) C.int {
+	if query == nil || out == nil || outLen == nil {
+		return -1
+	}
+	*out = nil
+	*outLen = 0
+
+	data, err := db.ExecuteRelationalSQLJSON(C.GoString(query))
+	if err != nil {
+		return -1
+	}
+
+	buf := (*C.char)(C.CBytes(data))
+	if len(data) > 0 && buf == nil {
+		return -1
+	}
+	*outLen = C.int(len(data))
+	*out = buf
+	return 0
+}
+
 //export InitNetworkManager
 func InitNetworkManager(port C.int, peers **C.char, count C.int) {
 	if count < 0 || (count > 0 && peers == nil) {

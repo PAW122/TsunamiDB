@@ -32,6 +32,7 @@ Arrays returned by `GetKeysByRegex` must be released with `FreeKeysArray`.
 - `Free(key, table)`
 - `SaveEncrypted(key, table, encryptionKey, data, length)`
 - `ReadEncrypted(key, table, encryptionKey, out, outLen)`
+- `RelationalSQL(query, out, outLen)`
 - `InitNetworkManager(port, peers, count)`
 - `InitPublicApi(port)`
 - `InitSubscriptionServer(port)`
@@ -39,3 +40,24 @@ Arrays returned by `GetKeysByRegex` must be released with `FreeKeysArray`.
 - `DisableSubscription(key)`
 - `GetKeysByRegex(table, regex, max, result, count)`
 - `FreeKeysArray(array, count)`
+
+## Relational SQL
+
+`RelationalSQL` executes one relational SQL statement and returns a JSON `SQLResult` buffer.
+Release the returned buffer with `FreeBuf`.
+
+Example:
+
+```c
+char* out = NULL;
+int outLen = 0;
+int rc = RelationalSQL(
+    "SELECT row_id, name FROM products WHERE id = 1",
+    &out,
+    &outLen
+);
+if (rc == 0) {
+    // out points to outLen JSON bytes.
+    FreeBuf(out);
+}
+```
