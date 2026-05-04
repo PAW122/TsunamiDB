@@ -1,0 +1,1094 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Cluster Map</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4efe6;
+      --bg-accent: radial-gradient(circle at top, rgba(241, 144, 60, 0.22), transparent 38%);
+      --panel: rgba(255, 251, 245, 0.92);
+      --panel-strong: #fffdf8;
+      --ink: #15211b;
+      --muted: #5f685f;
+      --line: rgba(24, 33, 27, 0.1);
+      --accent: #0f766e;
+      --accent-strong: #0a5d57;
+      --warm: #d97706;
+      --danger: #b42318;
+      --ghost: #d7d1c3;
+      --shadow: 0 18px 44px rgba(30, 34, 29, 0.12);
+      --radius: 18px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.15), transparent 28%),
+        linear-gradient(135deg, #f8f4ed, #efe6d7 55%, #e5dccd),
+        var(--bg-accent);
+      color: var(--ink);
+      font-family: Aptos, "Segoe UI", "Trebuchet MS", sans-serif;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+    }
+
+    aside {
+      padding: 24px;
+      background:
+        linear-gradient(180deg, rgba(22, 37, 31, 0.98), rgba(18, 30, 26, 0.96)),
+        linear-gradient(135deg, rgba(15, 118, 110, 0.2), transparent 45%);
+      color: #f7f5ef;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    main {
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 28px;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    h2 {
+      font-size: 15px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .lead {
+      color: rgba(247, 245, 239, 0.78);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .panel,
+    .side-panel {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel {
+      background: var(--panel);
+      backdrop-filter: blur(10px);
+    }
+
+    .side-panel {
+      background: rgba(255, 255, 255, 0.06);
+      border-color: rgba(255, 255, 255, 0.12);
+      box-shadow: none;
+    }
+
+    .panel-head,
+    .side-head {
+      padding: 14px 16px 0;
+    }
+
+    .panel-body,
+    .side-body {
+      padding: 16px;
+    }
+
+    .side-body {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    aside label {
+      color: rgba(247, 245, 239, 0.72);
+    }
+
+    input,
+    textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      font: inherit;
+      color: inherit;
+      background: #fff;
+      outline: none;
+    }
+
+    aside input,
+    aside textarea {
+      border-color: rgba(255, 255, 255, 0.16);
+      background: rgba(14, 22, 19, 0.72);
+      color: #fbfaf7;
+    }
+
+    textarea {
+      min-height: 124px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    button {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 15px;
+      min-height: 40px;
+      cursor: pointer;
+      background: var(--accent);
+      color: #fff;
+      font: inherit;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    button:hover {
+      background: var(--accent-strong);
+    }
+
+    button.secondary {
+      background: #e6ede8;
+      color: var(--ink);
+    }
+
+    aside button.secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f7f5ef;
+    }
+
+    button.warn {
+      background: var(--warm);
+    }
+
+    .status {
+      min-height: 48px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: rgba(0, 0, 0, 0.18);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #f7f5ef;
+      line-height: 1.4;
+    }
+
+    .status.error {
+      border-color: rgba(255, 157, 143, 0.5);
+      color: #ffd8d1;
+    }
+
+    .small {
+      font-size: 12px;
+      line-height: 1.45;
+      color: var(--muted);
+    }
+
+    aside .small {
+      color: rgba(247, 245, 239, 0.72);
+    }
+
+    .legend {
+      display: grid;
+      gap: 10px;
+    }
+
+    .legend-item {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-size: 12px;
+      color: rgba(247, 245, 239, 0.78);
+    }
+
+    .swatch {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      margin-top: 2px;
+      flex: 0 0 auto;
+    }
+
+    .dash {
+      width: 18px;
+      height: 3px;
+      margin-top: 8px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      padding: 16px;
+      border-radius: var(--radius);
+      background: var(--panel-strong);
+      border: 1px solid var(--line);
+    }
+
+    .card .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .card .value {
+      margin-top: 6px;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .card .meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .graph-wrap {
+      position: relative;
+      min-height: 560px;
+      background:
+        radial-gradient(circle at top right, rgba(15, 118, 110, 0.12), transparent 24%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0.2));
+    }
+
+    svg {
+      width: 100%;
+      height: 560px;
+      display: block;
+    }
+
+    .floating-note {
+      position: absolute;
+      right: 16px;
+      bottom: 16px;
+      max-width: 260px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(21, 33, 27, 0.84);
+      color: #f7f5ef;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .tables {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+
+    .table-scroll {
+      overflow: auto;
+      max-height: 340px;
+      border-top: 1px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 13px;
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: rgba(255, 253, 248, 0.95);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    code {
+      font-family: Consolas, "Cascadia Mono", monospace;
+      font-size: 12px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: rgba(15, 118, 110, 0.1);
+      color: var(--accent-strong);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .pill.ghost {
+      background: rgba(95, 104, 95, 0.12);
+      color: #5f685f;
+    }
+
+    .empty {
+      padding: 36px 18px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1100px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      .cards,
+      .tables {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div>
+        <h1>Cluster Map</h1>
+        <p class="lead">Statyczny podglad topologii TsunamiDB. Strona czyta <code>GET /health</code>, wykrywa peery z <code>network-manager</code> i liczy <code>req/s</code> z roznicy licznikow miedzy odpytywaniami.</p>
+      </div>
+
+      <section class="side-panel">
+        <div class="side-head">
+          <h2>Zrodla</h2>
+        </div>
+        <div class="side-body">
+          <div>
+            <label for="endpoints">Endpointy health</label>
+            <textarea id="endpoints" spellcheck="false">http://localhost:5844/health</textarea>
+            <div class="small">Jeden URL na linie. Mozesz podac tez bazowy adres, np. <code>http://localhost:5844</code>.</div>
+          </div>
+          <div>
+            <label for="intervalMs">Polling</label>
+            <input id="intervalMs" type="number" min="1000" step="500" value="2000">
+          </div>
+          <div class="toolbar">
+            <button id="saveConfig">Zapisz</button>
+            <button class="secondary" id="refreshNow">Odswiez</button>
+            <button class="warn" id="togglePolling">Stop</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="side-panel">
+        <div class="side-head">
+          <h2>Status</h2>
+        </div>
+        <div class="side-body">
+          <div id="status" class="status">Start polling...</div>
+          <div class="small" id="lastRefresh">Brak danych.</div>
+        </div>
+      </section>
+
+      <section class="side-panel">
+        <div class="side-head">
+          <h2>Legenda</h2>
+        </div>
+        <div class="side-body legend">
+          <div class="legend-item"><span class="swatch" style="background:#0f766e;"></span><span>Node odpytywany bezposrednio przez te strone.</span></div>
+          <div class="legend-item"><span class="swatch" style="background:#d7d1c3;"></span><span>Peer wykryty z katalogu, ale bez wlasnego endpointu <code>health</code> na liscie.</span></div>
+          <div class="legend-item"><span class="dash" style="background:#d97706;"></span><span>Krawedz z ruchem <code>network-manager</code> request/response.</span></div>
+          <div class="legend-item"><span class="dash" style="background:#97a29a;"></span><span>Po pierwszym odczycie wszystkie wartosci beda <code>0.0</code>, bo strona potrzebuje drugiej probki do policzenia delty.</span></div>
+        </div>
+      </section>
+    </aside>
+
+    <main>
+      <section class="cards" id="summaryCards"></section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Diagram</h2>
+        </div>
+        <div class="panel-body graph-wrap">
+          <svg id="graph" viewBox="0 0 1200 560" role="img" aria-label="TsunamiDB topology graph"></svg>
+          <div class="floating-note">Na krawedziach: <code>out req/s</code> to liczba request frame'ow wysylanych do peera z perspektywy danego noda. <code>in req/s</code> to requesty przychodzace z tego peera.</div>
+        </div>
+      </section>
+
+      <section class="tables">
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Nody</h2>
+          </div>
+          <div class="table-scroll" id="nodesTable"></div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Polaczenia</h2>
+          </div>
+          <div class="table-scroll" id="edgesTable"></div>
+        </section>
+      </section>
+    </main>
+  </div>
+  <script>
+    const storageKey = "tsunamidb.cluster.map.config";
+    const layoutState = new Map();
+    const pollState = new Map();
+    let pollingTimer = null;
+    let pollingEnabled = true;
+    let latestModel = { nodes: [], edges: [] };
+
+    const els = {
+      endpoints: document.getElementById("endpoints"),
+      intervalMs: document.getElementById("intervalMs"),
+      saveConfig: document.getElementById("saveConfig"),
+      refreshNow: document.getElementById("refreshNow"),
+      togglePolling: document.getElementById("togglePolling"),
+      status: document.getElementById("status"),
+      lastRefresh: document.getElementById("lastRefresh"),
+      summaryCards: document.getElementById("summaryCards"),
+      graph: document.getElementById("graph"),
+      nodesTable: document.getElementById("nodesTable"),
+      edgesTable: document.getElementById("edgesTable")
+    };
+
+    function loadConfig() {
+      try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) {
+          return;
+        }
+        const parsed = JSON.parse(raw);
+        if (typeof parsed.endpoints === "string" && parsed.endpoints.trim()) {
+          els.endpoints.value = parsed.endpoints;
+        }
+        if (Number.isFinite(parsed.intervalMs) && parsed.intervalMs >= 1000) {
+          els.intervalMs.value = String(parsed.intervalMs);
+        }
+      } catch (err) {
+        setStatus(`Nie udalo sie wczytac konfiguracji: ${err.message}`, true);
+      }
+    }
+
+    function loadQueryConfig() {
+      const params = new URLSearchParams(window.location.search);
+      const endpoints = params.get("endpoints");
+      const intervalMs = params.get("intervalMs");
+
+      if (typeof endpoints === "string" && endpoints.trim()) {
+        const normalized = endpoints.includes("\n")
+          ? endpoints
+          : endpoints.split(",").map(value => value.trim()).filter(Boolean).join("\n");
+        if (normalized) {
+          els.endpoints.value = normalized;
+        }
+      }
+
+      if (intervalMs !== null) {
+        const parsed = Number(intervalMs);
+        if (Number.isFinite(parsed) && parsed >= 1000) {
+          els.intervalMs.value = String(Math.round(parsed));
+        }
+      }
+    }
+
+    function saveConfig() {
+      localStorage.setItem(storageKey, JSON.stringify({
+        endpoints: els.endpoints.value,
+        intervalMs: intervalValue()
+      }));
+      setStatus("Konfiguracja zapisana lokalnie.", true);
+      restartPolling();
+    }
+
+    function intervalValue() {
+      const value = Number(els.intervalMs.value);
+      if (!Number.isFinite(value) || value < 1000) {
+        return 2000;
+      }
+      return Math.round(value);
+    }
+
+    function normalizeEndpoint(raw) {
+      let value = String(raw || "").trim();
+      if (!value) {
+        return "";
+      }
+      if (!/^https?:\/\//i.test(value)) {
+        value = "http://" + value;
+      }
+      if (!/\/health$/i.test(value)) {
+        value = value.replace(/\/+$/, "") + "/health";
+      }
+      return value;
+    }
+
+    function configuredEndpoints() {
+      const unique = new Set();
+      for (const line of els.endpoints.value.split(/\r?\n/)) {
+        const normalized = normalizeEndpoint(line);
+        if (normalized) {
+          unique.add(normalized);
+        }
+      }
+      return [...unique];
+    }
+
+    function setStatus(message, ok) {
+      els.status.textContent = message;
+      els.status.classList.toggle("error", !ok);
+    }
+
+    function formatRate(value) {
+      if (!Number.isFinite(value)) {
+        return "0.0";
+      }
+      return value.toFixed(value >= 10 ? 1 : 2);
+    }
+
+    function formatTime(iso) {
+      if (!iso) {
+        return "-";
+      }
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) {
+        return iso;
+      }
+      return date.toLocaleString();
+    }
+
+    function safeNodeId(health, endpoint) {
+      const network = health?.network;
+      return network?.node_id || network?.server_ip || endpoint;
+    }
+
+    async function fetchHealth(endpoint) {
+      const response = await fetch(endpoint, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+        mode: "cors"
+      });
+      if (!response.ok) {
+        throw new Error(`${endpoint} -> HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+
+    function peerKey(peer) {
+      return peer.advertise_addr || peer.node_id || peer.address || "unknown-peer";
+    }
+
+    function computeRates(endpoint, health, sampledAt) {
+      const previous = pollState.get(endpoint);
+      const totalRequests = Number(health?.api?.total_requests || 0);
+      const apiRps = previous && sampledAt > previous.sampledAt
+        ? Math.max(0, (totalRequests - previous.totalRequests) / ((sampledAt - previous.sampledAt) / 1000))
+        : 0;
+
+      const peerRates = new Map();
+      const peers = Array.isArray(health?.network?.peers) ? health.network.peers : [];
+      for (const peer of peers) {
+        const key = peerKey(peer);
+        const current = {
+          requestsSent: Number(peer.requests_sent || 0),
+          requestsReceived: Number(peer.requests_received || 0),
+          responsesSent: Number(peer.responses_sent || 0),
+          responsesReceived: Number(peer.responses_received || 0)
+        };
+        const prev = previous?.peerCounters?.get(key);
+        const elapsed = previous && sampledAt > previous.sampledAt ? (sampledAt - previous.sampledAt) / 1000 : 0;
+        peerRates.set(key, {
+          outReqRps: prev && elapsed > 0 ? Math.max(0, (current.requestsSent - prev.requestsSent) / elapsed) : 0,
+          inReqRps: prev && elapsed > 0 ? Math.max(0, (current.requestsReceived - prev.requestsReceived) / elapsed) : 0,
+          outResRps: prev && elapsed > 0 ? Math.max(0, (current.responsesSent - prev.responsesSent) / elapsed) : 0,
+          inResRps: prev && elapsed > 0 ? Math.max(0, (current.responsesReceived - prev.responsesReceived) / elapsed) : 0
+        });
+      }
+
+      pollState.set(endpoint, {
+        sampledAt,
+        totalRequests,
+        peerCounters: new Map(peers.map(peer => [peerKey(peer), {
+          requestsSent: Number(peer.requests_sent || 0),
+          requestsReceived: Number(peer.requests_received || 0),
+          responsesSent: Number(peer.responses_sent || 0),
+          responsesReceived: Number(peer.responses_received || 0)
+        }]))
+      });
+
+      return { apiRps, peerRates };
+    }
+
+    function buildGraph(results) {
+      const nodes = new Map();
+      const edges = new Map();
+
+      for (const result of results) {
+        if (!result.ok) {
+          continue;
+        }
+        const health = result.health;
+        const network = health.network || {};
+        const nodeId = safeNodeId(health, result.endpoint);
+        const localTables = Array.isArray(network.local_tables) ? network.local_tables : [];
+        const peerList = Array.isArray(network.peers) ? network.peers : [];
+
+        nodes.set(nodeId, {
+          id: nodeId,
+          label: nodeId,
+          endpoint: result.endpoint,
+          direct: true,
+          apiRps: result.apiRps,
+          totalRequests: Number(health.api?.total_requests || 0),
+          uptimeSeconds: Number(health.api?.uptime_seconds || 0),
+          connectedPeers: Number(network.connected_peers || 0),
+          pendingResponses: Number(network.pending_responses || 0),
+          localTables,
+          remoteTables: network.remote_tables || {},
+          secureTransport: Boolean(network.secure_transport),
+          subscriptions: Number(health.subscriptions?.active_clients || 0),
+          lastRequestAt: health.api?.last_request_at || ""
+        });
+
+        for (const peer of peerList) {
+          const targetId = peerKey(peer);
+          if (!nodes.has(targetId)) {
+            nodes.set(targetId, {
+              id: targetId,
+              label: targetId,
+              endpoint: "",
+              direct: false,
+              apiRps: 0,
+              totalRequests: 0,
+              uptimeSeconds: 0,
+              connectedPeers: 0,
+              pendingResponses: 0,
+              localTables: Array.isArray(peer.tables) ? peer.tables : [],
+              remoteTables: {},
+              secureTransport: false,
+              subscriptions: 0,
+              lastRequestAt: "",
+              discoveredBy: [nodeId]
+            });
+          } else {
+            const node = nodes.get(targetId);
+            if (!node.direct) {
+              node.localTables = node.localTables.length ? node.localTables : (Array.isArray(peer.tables) ? peer.tables : []);
+              node.discoveredBy = Array.from(new Set([...(node.discoveredBy || []), nodeId]));
+            }
+          }
+
+          const rates = result.peerRates.get(targetId) || {
+            outReqRps: 0,
+            inReqRps: 0,
+            outResRps: 0,
+            inResRps: 0
+          };
+          edges.set(`${nodeId}->${targetId}`, {
+            id: `${nodeId}->${targetId}`,
+            source: nodeId,
+            target: targetId,
+            outReqRps: rates.outReqRps,
+            inReqRps: rates.inReqRps,
+            outResRps: rates.outResRps,
+            inResRps: rates.inResRps,
+            secureTransport: Boolean(network.secure_transport)
+          });
+        }
+      }
+
+      return {
+        nodes: [...nodes.values()].sort((a, b) => a.label.localeCompare(b.label)),
+        edges: [...edges.values()].sort((a, b) => a.id.localeCompare(b.id))
+      };
+    }
+
+    function renderSummary(nodes, edges) {
+      const directNodes = nodes.filter(node => node.direct);
+      const totalApiRps = directNodes.reduce((sum, node) => sum + node.apiRps, 0);
+      const totalOutReqRps = edges.reduce((sum, edge) => sum + edge.outReqRps, 0);
+      const secureLinks = edges.filter(edge => edge.secureTransport).length;
+      const cards = [
+        { label: "Nodes", value: String(nodes.length), meta: `${directNodes.length} odpytywanych bezposrednio` },
+        { label: "HTTP req/s", value: formatRate(totalApiRps), meta: "suma z api.total_requests" },
+        { label: "P2P out req/s", value: formatRate(totalOutReqRps), meta: "request frame'y do peerow" },
+        { label: "Secure links", value: String(secureLinks), meta: `${edges.length} wykrytych polaczen` }
+      ];
+
+      els.summaryCards.innerHTML = cards.map(card => `
+        <article class="card">
+          <div class="label">${escapeHTML(card.label)}</div>
+          <div class="value">${escapeHTML(card.value)}</div>
+          <div class="meta">${escapeHTML(card.meta)}</div>
+        </article>
+      `).join("");
+    }
+
+    function nodeColor(node) {
+      return node.direct ? "#0f766e" : "#d7d1c3";
+    }
+
+    function nodeBorderColor(node) {
+      return node.direct ? "#0a5d57" : "#978f80";
+    }
+
+    function layoutNodes(nodes, edges, width, height) {
+      if (nodes.length === 0) {
+        return [];
+      }
+
+      const centerX = width / 2;
+      const centerY = height / 2;
+      const radius = Math.min(width, height) * 0.28;
+
+      const state = nodes.map((node, index) => {
+        const remembered = layoutState.get(node.id);
+        if (remembered) {
+          return { ...node, x: remembered.x, y: remembered.y, vx: 0, vy: 0 };
+        }
+        const angle = (index / Math.max(1, nodes.length)) * Math.PI * 2;
+        return {
+          ...node,
+          x: centerX + Math.cos(angle) * radius,
+          y: centerY + Math.sin(angle) * radius,
+          vx: 0,
+          vy: 0
+        };
+      });
+
+      const byId = new Map(state.map(node => [node.id, node]));
+      for (let step = 0; step < 180; step++) {
+        for (let i = 0; i < state.length; i++) {
+          for (let j = i + 1; j < state.length; j++) {
+            const a = state[i];
+            const b = state[j];
+            let dx = b.x - a.x;
+            let dy = b.y - a.y;
+            let dist = Math.hypot(dx, dy) || 1;
+            const force = 18000 / (dist * dist);
+            dx /= dist;
+            dy /= dist;
+            a.vx -= dx * force;
+            a.vy -= dy * force;
+            b.vx += dx * force;
+            b.vy += dy * force;
+          }
+        }
+
+        for (const edge of edges) {
+          const source = byId.get(edge.source);
+          const target = byId.get(edge.target);
+          if (!source || !target) {
+            continue;
+          }
+          const dx = target.x - source.x;
+          const dy = target.y - source.y;
+          const dist = Math.hypot(dx, dy) || 1;
+          const desired = 230;
+          const pull = (dist - desired) * 0.008;
+          source.vx += dx * pull;
+          source.vy += dy * pull;
+          target.vx -= dx * pull;
+          target.vy -= dy * pull;
+        }
+
+        for (const node of state) {
+          node.vx += (centerX - node.x) * 0.0009;
+          node.vy += (centerY - node.y) * 0.0009;
+          node.vx *= 0.88;
+          node.vy *= 0.88;
+          node.x = Math.max(110, Math.min(width - 110, node.x + node.vx));
+          node.y = Math.max(72, Math.min(height - 72, node.y + node.vy));
+        }
+      }
+
+      for (const node of state) {
+        layoutState.set(node.id, { x: node.x, y: node.y });
+      }
+      return state;
+    }
+
+    function renderGraph(nodes, edges) {
+      const width = 1200;
+      const height = 560;
+      const laidOut = layoutNodes(nodes, edges, width, height);
+      const byId = new Map(laidOut.map(node => [node.id, node]));
+
+      if (laidOut.length === 0) {
+        els.graph.innerHTML = `<text x="600" y="280" text-anchor="middle" fill="#5f685f" font-size="18">Brak danych. Dodaj endpoint /health i kliknij Odswiez.</text>`;
+        return;
+      }
+
+      const defs = `
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#d97706"></path>
+          </marker>
+        </defs>
+      `;
+
+      const edgeSvg = edges.map(edge => {
+        const source = byId.get(edge.source);
+        const target = byId.get(edge.target);
+        if (!source || !target) {
+          return "";
+        }
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const ux = dx / dist;
+        const uy = dy / dist;
+        const padding = 76;
+        const x1 = source.x + ux * padding;
+        const y1 = source.y + uy * padding;
+        const x2 = target.x - ux * padding;
+        const y2 = target.y - uy * padding;
+        const midX = (x1 + x2) / 2;
+        const midY = (y1 + y2) / 2;
+        return `
+          <g>
+            <line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+              stroke="${edge.secureTransport ? "#d97706" : "#8a938b"}" stroke-width="2.4" stroke-linecap="round" marker-end="url(#arrow)"></line>
+            <rect x="${(midX - 82).toFixed(1)}" y="${(midY - 20).toFixed(1)}" width="164" height="40" rx="12"
+              fill="rgba(255, 253, 248, 0.92)" stroke="rgba(21, 33, 27, 0.08)"></rect>
+            <text x="${midX.toFixed(1)}" y="${(midY - 5).toFixed(1)}" text-anchor="middle" fill="#15211b" font-size="11" font-weight="700">
+              out ${escapeHTML(formatRate(edge.outReqRps))} req/s
+            </text>
+            <text x="${midX.toFixed(1)}" y="${(midY + 11).toFixed(1)}" text-anchor="middle" fill="#5f685f" font-size="11">
+              in ${escapeHTML(formatRate(edge.inReqRps))} req/s
+            </text>
+          </g>
+        `;
+      }).join("");
+
+      const nodeSvg = laidOut.map(node => {
+        const widthBox = 180;
+        const heightBox = 92;
+        const x = node.x - widthBox / 2;
+        const y = node.y - heightBox / 2;
+        const localTables = Array.isArray(node.localTables) ? node.localTables.length : 0;
+        const subtitle = node.direct ? `HTTP ${formatRate(node.apiRps)} req/s` : "peer discovered";
+        const meta = node.direct ? `${node.connectedPeers} peers | ${localTables} tables` : `${localTables} tables`;
+        return `
+          <g>
+            <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${widthBox}" height="${heightBox}" rx="18"
+              fill="${nodeColor(node)}" stroke="${nodeBorderColor(node)}" stroke-width="2.2"></rect>
+            <text x="${node.x.toFixed(1)}" y="${(y + 28).toFixed(1)}" text-anchor="middle" fill="${node.direct ? "#f7f5ef" : "#27312b"}" font-size="15" font-weight="800">
+              ${escapeHTML(shortLabel(node.label))}
+            </text>
+            <text x="${node.x.toFixed(1)}" y="${(y + 50).toFixed(1)}" text-anchor="middle" fill="${node.direct ? "rgba(247,245,239,0.9)" : "#47524a"}" font-size="12" font-weight="700">
+              ${escapeHTML(subtitle)}
+            </text>
+            <text x="${node.x.toFixed(1)}" y="${(y + 68).toFixed(1)}" text-anchor="middle" fill="${node.direct ? "rgba(247,245,239,0.76)" : "#5f685f"}" font-size="11">
+              ${escapeHTML(meta)}
+            </text>
+          </g>
+        `;
+      }).join("");
+
+      els.graph.innerHTML = defs + edgeSvg + nodeSvg;
+    }
+
+    function shortLabel(value) {
+      return value.length > 24 ? value.slice(0, 21) + "..." : value;
+    }
+
+    function renderNodesTable(nodes) {
+      if (nodes.length === 0) {
+        els.nodesTable.innerHTML = `<div class="empty">Brak wezlow do pokazania.</div>`;
+        return;
+      }
+      els.nodesTable.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Node</th>
+              <th>Typ</th>
+              <th>HTTP req/s</th>
+              <th>Peers</th>
+              <th>Tables</th>
+              <th>Last request</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${nodes.map(node => `
+              <tr>
+                <td><code>${escapeHTML(node.label)}</code></td>
+                <td>${node.direct ? '<span class="pill">direct</span>' : '<span class="pill ghost">ghost</span>'}</td>
+                <td>${escapeHTML(formatRate(node.apiRps))}</td>
+                <td>${escapeHTML(String(node.connectedPeers || 0))}</td>
+                <td>${escapeHTML(String(Array.isArray(node.localTables) ? node.localTables.length : 0))}</td>
+                <td>${escapeHTML(formatTime(node.lastRequestAt))}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function renderEdgesTable(edges) {
+      if (edges.length === 0) {
+        els.edgesTable.innerHTML = `<div class="empty">Brak polaczen. Jesli network manager nie jest uruchomiony, to tutaj bedzie pusto.</div>`;
+        return;
+      }
+      els.edgesTable.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>From</th>
+              <th>To</th>
+              <th>Out req/s</th>
+              <th>In req/s</th>
+              <th>Out resp/s</th>
+              <th>In resp/s</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${edges.map(edge => `
+              <tr>
+                <td><code>${escapeHTML(edge.source)}</code></td>
+                <td><code>${escapeHTML(edge.target)}</code></td>
+                <td>${escapeHTML(formatRate(edge.outReqRps))}</td>
+                <td>${escapeHTML(formatRate(edge.inReqRps))}</td>
+                <td>${escapeHTML(formatRate(edge.outResRps))}</td>
+                <td>${escapeHTML(formatRate(edge.inResRps))}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `;
+    }
+
+    async function refreshCluster() {
+      const endpoints = configuredEndpoints();
+      if (endpoints.length === 0) {
+        latestModel = { nodes: [], edges: [] };
+        renderSummary([], []);
+        renderGraph([], []);
+        renderNodesTable([]);
+        renderEdgesTable([]);
+        setStatus("Dodaj co najmniej jeden endpoint /health.", false);
+        return;
+      }
+
+      setStatus(`Pobieranie ${endpoints.length} endpointow...`, true);
+      const sampledAt = Date.now();
+      const settled = await Promise.all(endpoints.map(async endpoint => {
+        try {
+          const health = await fetchHealth(endpoint);
+          const rates = computeRates(endpoint, health, sampledAt);
+          return { ok: true, endpoint, health, apiRps: rates.apiRps, peerRates: rates.peerRates };
+        } catch (err) {
+          return { ok: false, endpoint, error: err instanceof Error ? err.message : String(err) };
+        }
+      }));
+
+      latestModel = buildGraph(settled);
+      renderSummary(latestModel.nodes, latestModel.edges);
+      renderGraph(latestModel.nodes, latestModel.edges);
+      renderNodesTable(latestModel.nodes);
+      renderEdgesTable(latestModel.edges);
+
+      const failures = settled.filter(item => !item.ok);
+      if (failures.length > 0) {
+        setStatus(failures.map(item => item.error).join(" | "), false);
+      } else {
+        setStatus(`OK. ${latestModel.nodes.length} nodes, ${latestModel.edges.length} polaczen.`, true);
+      }
+      els.lastRefresh.textContent = `Ostatnie odswiezenie: ${new Date(sampledAt).toLocaleTimeString()}`;
+    }
+
+    function stopPolling() {
+      if (pollingTimer) {
+        clearInterval(pollingTimer);
+        pollingTimer = null;
+      }
+    }
+
+    function startPolling() {
+      stopPolling();
+      if (!pollingEnabled) {
+        els.togglePolling.textContent = "Start";
+        return;
+      }
+      els.togglePolling.textContent = "Stop";
+      pollingTimer = setInterval(refreshCluster, intervalValue());
+    }
+
+    function restartPolling() {
+      startPolling();
+      refreshCluster();
+    }
+
+    function escapeHTML(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll("\"", "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    window.addEventListener("resize", () => renderGraph(latestModel.nodes, latestModel.edges));
+    els.saveConfig.addEventListener("click", saveConfig);
+    els.refreshNow.addEventListener("click", refreshCluster);
+    els.togglePolling.addEventListener("click", () => {
+      pollingEnabled = !pollingEnabled;
+      startPolling();
+      if (pollingEnabled) {
+        refreshCluster();
+      } else {
+        setStatus("Polling zatrzymany.", true);
+      }
+    });
+    els.intervalMs.addEventListener("change", restartPolling);
+
+    loadConfig();
+    loadQueryConfig();
+    restartPolling();
+  </script>
+</body>
+</html>

@@ -397,10 +397,18 @@ func TestHealthEndpoint(t *testing.T) {
 	if body.Network == nil {
 		t.Fatalf("expected network stats in response")
 	}
+	if got := resp.Header().Get("Access-Control-Allow-Origin"); got != "*" {
+		t.Fatalf("allow origin = %q, want *", got)
+	}
 
 	method := perform(Health, http.MethodPost, "/health", nil, nil)
 	if method.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405 for POST, got %d", method.Code)
+	}
+
+	options := perform(Health, http.MethodOptions, "/health", nil, nil)
+	if options.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for OPTIONS, got %d", options.Code)
 	}
 }
 

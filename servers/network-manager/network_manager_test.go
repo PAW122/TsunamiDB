@@ -262,7 +262,11 @@ func TestSnapshotAndInstanceHelpers(t *testing.T) {
 	nm.port = 8080
 	nm.localTables["users"] = TableInfo{Name: "users", Kind: tableKindKV}
 	nm.peers["b"] = &Peer{Address: "b", LastActive: time.Now(), tables: map[string]TableInfo{"logs": {Name: "logs", Kind: tableKindKV}}}
-	nm.peers["a"] = &Peer{Address: "a", Advertise: "10.0.0.2:7000", LastActive: time.Now(), tables: map[string]TableInfo{"users": {Name: "users", Kind: tableKindKV}}}
+	nm.peers["a"] = &Peer{Address: "a", Advertise: "10.0.0.2:7000", NodeID: "node-a", LastActive: time.Now(), tables: map[string]TableInfo{"users": {Name: "users", Kind: tableKindKV}}}
+	nm.peers["a"].requestsSent.Store(3)
+	nm.peers["a"].requestsReceived.Store(2)
+	nm.peers["a"].responsesSent.Store(1)
+	nm.peers["a"].responsesReceived.Store(4)
 	nm.responseChannels["req"] = &pendingResponse{ch: make(chan types.NMmessage, 1)}
 	SetInstanceForTests(nm)
 	t.Cleanup(func() { SetInstanceForTests(nil) })
@@ -279,6 +283,12 @@ func TestSnapshotAndInstanceHelpers(t *testing.T) {
 	}
 	if got := strings.Join(stats.RemoteTables["users"], ","); got != "10.0.0.2:7000" {
 		t.Fatalf("unexpected remote owners: %#v", stats.RemoteTables)
+	}
+	if len(stats.Peers) != 2 {
+		t.Fatalf("unexpected peer stats: %+v", stats.Peers)
+	}
+	if stats.Peers[0].AdvertiseAddr != "10.0.0.2:7000" || stats.Peers[0].RequestsSent != 3 || stats.Peers[0].ResponsesReceived != 4 {
+		t.Fatalf("unexpected first peer stats: %+v", stats.Peers[0])
 	}
 	if zero := (*NetworkManager)(nil).Snapshot(); zero.ConnectedPeers != 0 {
 		t.Fatalf("nil snapshot should be empty: %+v", zero)
@@ -793,6 +803,13 @@ func TestListenForMessagesHandlesCatalogResponseAndDisconnect(t *testing.T) {
 	for {
 		stats := nm.Snapshot()
 		if owners, ok := stats.RemoteTables["remote"]; ok && len(owners) == 1 && owners[0] == "10.0.0.3:7000" {
+			if len(stats.Peers) != 1 {
+				t.Fatalf("expected one peer stats entry, got %+v", stats.Peers)
+			}
+			peer := stats.Peers[0]
+			if peer.CatalogsReceived == 0 || peer.ResponsesReceived == 0 {
+				t.Fatalf("expected received counters to be populated, got %+v", peer)
+			}
 			break
 		}
 		if time.Now().After(deadline) {
@@ -812,6 +829,76 @@ func TestListenForMessagesHandlesCatalogResponseAndDisconnect(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func TestSendTaskReqTracksPerPeerFrameCounters(t *testing.T) {
+	nm := newTestManager()
+	serverConnCh := make(chan *websocket.Conn, 1)
+	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Errorf("upgrade: %v", err)
+			return
+		}
+		serverConnCh <- conn
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	clientConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	serverConn := <-serverConnCh
+	defer serverConn.Close()
+
+	nm.peers["peer"] = &Peer{Conn: clientConn, Address: "peer", LastActive: time.Now(), tables: map[string]TableInfo{"target": {Name: "target", Kind: tableKindKV}}}
+	go nm.listenForMessages("peer", clientConn)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, raw, err := serverConn.ReadMessage()
+		if err != nil {
+			return
+		}
+		frame, err := nm.decodeFrame(raw)
+		if err != nil {
+			t.Errorf("decode request frame: %v", err)
+			return
+		}
+		if frame.Type != frameTypeRequest {
+			t.Errorf("unexpected frame type: %s", frame.Type)
+			return
+		}
+		err = serverConn.WriteMessage(websocket.BinaryMessage, mustEncodeFrame(t, nm, protocolFrame{
+			Version: 1,
+			Type:    frameTypeResponse,
+			NodeID:  "peer-node",
+			Message: types.NMmessage{
+				RequestID: frame.Message.RequestID,
+				Task:      frame.Message.Task,
+				ReqSendBy: frame.Message.ReqSendBy,
+				ReqResBy:  "peer-node",
+				Finished:  true,
+			},
+		}))
+		if err != nil {
+			t.Errorf("write response frame: %v", err)
+		}
+	}()
+
+	res := nm.SendTaskReq(types.NMmessage{Task: "read", Args: []string{"target", "key"}})
+	if !res.Finished || res.ReqResBy != "peer-node" {
+		t.Fatalf("unexpected response: %+v", res)
+	}
+	<-done
+
+	waitForCondition(t, time.Second, func() bool {
+		stats := nm.Snapshot()
+		return len(stats.Peers) == 1 && stats.Peers[0].RequestsSent == 1 && stats.Peers[0].ResponsesReceived == 1
+	}, "request/response counters were not tracked")
 }
 
 func mustEncodeFrame(t *testing.T, nm *NetworkManager, frame protocolFrame) []byte {

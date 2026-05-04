@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Network Manager Demo</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">Testing &amp; Benchmarks</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="../http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="../http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/relational.html">Relational</a>
+        <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="../http/network-manager.html">Network Manager</a>
+        <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="../examples/http-go.html">Overview</a>
+          <a class="nav-child" href="../examples/http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="../examples/http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="../examples/http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-health">Meta and Health</a>
+          <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Testing &amp; Benchmarks</p>
+        <a class="nav-parent" href="./relational-benchmark.html">Relational db</a>
+        <a class="nav-parent" href="./subscription-benchmark.html">Subscriptions</a>
+        <a class="nav-parent" href="./network-manager.html">Network Manager</a>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Network Manager</h1>
+      <p class="lead">Quick local demo page for spinning up two TsunamiDB nodes, connecting them through the P2P layer, and feeding live traffic into <code>tools/network-topology.html</code>.</p>
+
+      <div class="note">
+        Source files: <code>tools/example-NM-presentation/start-demo.ps1</code>, <code>stop-demo.ps1</code>, <code>traffic-loop.ps1</code>, <code>node-runner/main.go</code>, and <code>tools/network-topology.html</code>.
+      </div>
+
+      <h2>Quick Start</h2>
+      <pre><code class="language-powershell"># from repository root
+powershell -ExecutionPolicy Bypass -File .\tools\example-NM-presentation\start-demo.ps1
+
+# stop the whole demo
+powershell -ExecutionPolicy Bypass -File .\tools\example-NM-presentation\stop-demo.ps1</code></pre>
+      <p>The helper starts two isolated working directories under <code>tools/example-NM-presentation/runtime</code>, so both nodes keep separate <code>db</code> folders and do not fight over ports or on-disk data.</p>
+
+      <table>
+        <thead><tr><th>Node</th><th>HTTP API</th><th>Subscriptions</th><th>Network Manager</th><th>Seeded Table</th></tr></thead>
+        <tbody>
+          <tr><td>Node A</td><td><code>http://127.0.0.1:6044</code></td><td><code>ws://127.0.0.1:6045/sub</code></td><td><code>127.0.0.1:6055</code></td><td><code>users</code></td></tr>
+          <tr><td>Node B</td><td><code>http://127.0.0.1:6144</code></td><td><code>ws://127.0.0.1:6145/sub</code></td><td><code>127.0.0.1:6155</code></td><td><code>orders</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>What The Demo Generates</h2>
+      <ol>
+        <li>Node A stores one JSON record in table <code>users</code>.</li>
+        <li>Node B stores one JSON record in table <code>orders</code>.</li>
+        <li>The traffic loop keeps updating both records every 1.5 seconds.</li>
+        <li>Node A repeatedly calls <code>GET /read/orders/order-1</code>, which forces a remote P2P read from node B.</li>
+        <li>Node B repeatedly calls <code>GET /read/users/user-1</code>, which forces a remote P2P read from node A.</li>
+      </ol>
+      <p>This is enough to make the topology tool show changing <code>HTTP req/s</code> and live <code>out req/s</code> / <code>in req/s</code> on both edges.</p>
+
+      <h2>Manual Two-Node Startup</h2>
+      <p>If you want to run the same setup manually, use the helper runner instead of the default <code>main.go</code> entrypoint. The main binary uses fixed ports <code>5844</code> and <code>5845</code>, so two local nodes need a custom starter.</p>
+      <pre><code class="language-powershell">New-Item -ItemType Directory -Force .\tools\example-NM-presentation\runtime\node-a | Out-Null
+New-Item -ItemType Directory -Force .\tools\example-NM-presentation\runtime\node-b | Out-Null
+
+# shell A
+Set-Location .\tools\example-NM-presentation\runtime\node-a
+go run ..\..\node-runner `
+  -api-port 6044 `
+  -sub-port 6045 `
+  -nm-port 6055 `
+  -advertise-addr 127.0.0.1:6055 `
+  -network-secret demo-cluster-secret
+
+# shell B
+Set-Location .\tools\example-NM-presentation\runtime\node-b
+go run ..\..\node-runner `
+  -api-port 6144 `
+  -sub-port 6145 `
+  -nm-port 6155 `
+  -known-peers 127.0.0.1:6055 `
+  -advertise-addr 127.0.0.1:6155 `
+  -network-secret demo-cluster-secret</code></pre>
+
+      <h2>Seed Example Data</h2>
+      <pre><code class="language-powershell">$user = @{
+  customer_id = "cust-1001"
+  name = "Anna Kowalska"
+  tier = "pro"
+  region = "eu-central"
+} | ConvertTo-Json -Compress
+
+$order = @{
+  order_id = "ord-2026-0001"
+  customer_id = "cust-1001"
+  status = "created"
+  warehouse = "wroclaw-01"
+} | ConvertTo-Json -Compress
+
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:6044/save/users/user-1" -ContentType "application/json" -Body $user
+Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:6144/save/orders/order-1" -ContentType "application/json" -Body $order
+
+# remote reads through network-manager
+Invoke-RestMethod -Uri "http://127.0.0.1:6044/read/orders/order-1"
+Invoke-RestMethod -Uri "http://127.0.0.1:6144/read/users/user-1"</code></pre>
+
+      <h2>Use network-topology.html</h2>
+      <ol>
+        <li>Open <code>tools/network-topology.html</code> in your browser.</li>
+        <li>Paste both health endpoints into the left panel:</li>
+      </ol>
+      <pre><code class="language-text">http://127.0.0.1:6044/health
+http://127.0.0.1:6144/health</code></pre>
+      <ol>
+        <li>Leave polling at <code>1500-2000 ms</code>.</li>
+        <li>Click <code>Odswiez</code> once if you started the page before the demo.</li>
+        <li>Ignore the first sample if all rates are <code>0.0</code>; the page needs a second poll to calculate deltas.</li>
+      </ol>
+      <p>The quick-start script already knows these endpoints and, unless you pass <code>-NoBrowser</code>, opens the page with prefilled query parameters so the graph starts working immediately.</p>
+
+      <h2>What To Watch In The Visualization</h2>
+      <table>
+        <thead><tr><th>Widget</th><th>Meaning during this demo</th></tr></thead>
+        <tbody>
+          <tr><td><code>HTTP req/s</code></td><td>Mixed load from local <code>save</code> requests and the synthetic client-side <code>read</code> requests sent to each node.</td></tr>
+          <tr><td><code>P2P out req/s</code></td><td>Cross-node reads, for example node A asking node B for table <code>orders</code>.</td></tr>
+          <tr><td><code>Nodes</code></td><td>Two direct nodes should be visible, both with one local table and one connected peer.</td></tr>
+          <tr><td><code>Edges</code></td><td>Both directions should show traffic because the demo reads <code>orders</code> from node A and <code>users</code> from node B.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="machine-block">ai_keywords: testing benchmarks network manager topology demo two nodes start-demo stop-demo network-topology health endpoints p2p visualization
+source_files: tools/example-NM-presentation/start-demo.ps1, stop-demo.ps1, traffic-loop.ps1, node-runner/main.go, tools/network-topology.html</div>
+    </main>
+  </div>
+  <script src="../assets/syntax-highlight.js"></script>
+</body>
+</html>

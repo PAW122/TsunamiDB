@@ -39,6 +39,7 @@
         <p class="nav-group">Testing &amp; Benchmarks</p>
         <a class="nav-parent" href="../testing/relational-benchmark.html">Relational db</a>
         <a class="nav-parent" href="../testing/subscription-benchmark.html">Subscriptions</a>
+        <a class="nav-parent" href="../testing/network-manager.html">Network Manager</a>
         <p class="nav-group">Downloads</p>
         <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
         <p class="nav-group">Libraries</p>
@@ -135,14 +136,20 @@ if err != nil {
 fmt.Println(string(entries[0].Data))</code></pre>
 
       <h2>Subscriptions Example</h2>
-      <pre><code class="language-go">authKey, err := TsuClient.EnableSubscription([]string{"user-1"})
+      <p>A practical pattern is a live <code>Online Users</code> field. Start <code>InitSubscriptionServer</code>, subscribe clients to a key such as <code>online-users</code>, and update that key whenever the count changes.</p>
+      <p>Each connected WebSocket client then receives the new value automatically, which is a better fit than repeated polling when the UI should refresh immediately.</p>
+      <pre><code class="language-go">authKey, err := TsuClient.EnableSubscription([]string{"online-users"})
 if err != nil {
 	panic(err)
 }
 
 fmt.Println("send this auth key to the WebSocket client:", authKey)
 
-if err := TsuClient.DisableSubscription("user-1"); err != nil {
+if err := TsuClient.Save("online-users", "stats", []byte("128")); err != nil {
+	panic(err)
+}
+
+if err := TsuClient.DisableSubscription("online-users"); err != nil {
 	panic(err)
 }</code></pre>
 
@@ -153,7 +160,7 @@ if err := TsuClient.DisableSubscription("user-1"); err != nil {
         <li>Public API and subscription server use goroutines; give them a short startup window before first request in tests or examples.</li>
       </ul>
 
-      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Free SaveEncrypted ReadEncrypted SaveInc ReadInc InitNetworkManager InitPublicApi subscriptions
+      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Free SaveEncrypted ReadEncrypted SaveInc ReadInc InitNetworkManager InitPublicApi subscriptions online users realtime
 source_files: lib/dbclient/client.go, lib/export/*.go, lib/dbclient/client_test.go</div>
     </main>
   </div>

@@ -73,6 +73,14 @@
       "source": ["servers/subscriptions/subServer_benchmark_test.go", "servers/subscriptions/subServer.go"]
     },
     {
+      "id": "network-manager-demo",
+      "method": "testing",
+      "path": "Network Manager",
+      "page": "../testing/network-manager.html",
+      "keywords": ["network manager demo", "network topology", "p2p visualization", "two nodes", "health polling", "distributed read", "start-demo", "stop-demo", "network-topology.html"],
+      "source": ["tools/example-NM-presentation/start-demo.ps1", "tools/example-NM-presentation/traffic-loop.ps1", "tools/example-NM-presentation/node-runner/main.go", "tools/network-topology.html"]
+    },
+    {
       "id": "subscriptions",
       "method": "POST/WS",
       "path": "/subscriptions/enable, /subscriptions/disable, ws://localhost:5845/sub",

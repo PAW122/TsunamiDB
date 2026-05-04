@@ -39,6 +39,7 @@
         <p class="nav-group">Testing &amp; Benchmarks</p>
         <a class="nav-parent" href="../testing/relational-benchmark.html">Relational db</a>
         <a class="nav-parent" href="../testing/subscription-benchmark.html">Subscriptions</a>
+        <a class="nav-parent" href="../testing/network-manager.html">Network Manager</a>
         <p class="nav-group">Downloads</p>
         <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
         <p class="nav-group">Libraries</p>
@@ -61,6 +62,17 @@
         <li>Your client connects to <code>ws://localhost:5845/sub</code> and sends <code>{"auth_key":"..."}</code>.</li>
         <li>The socket receives <code>subscribed</code>, then update/delete events for the authorized keys.</li>
       </ol>
+
+      <h2>Practical Example: Online Users</h2>
+      <p>A common use case for <code>SubscriptionServer</code> is a live <code>Online Users</code> field in a dashboard, admin panel, or landing page.</p>
+      <ol>
+        <li>Your backend stores the current online-user count under one key, for example <code>online-users</code> in table <code>stats</code>.</li>
+        <li>When a client opens a screen that should show the live counter, your trusted backend enables a subscription for <code>online-users</code> and returns the one-time <code>auth_key</code>.</li>
+        <li>The frontend opens <code>ws://localhost:5845/sub</code>, sends the auth key once, and waits for events.</li>
+        <li>Whenever your application writes a new value for <code>online-users</code>, TsunamiDB pushes an <code>updated</code> event automatically to all subscribed clients.</li>
+        <li>The UI refreshes the field immediately, so users see the new count without polling the API.</li>
+      </ol>
+      <p>This is usually the best fit for values that change often and should be reflected on screen in real time.</p>
 
       <h2>Example Communication Scheme</h2>
       <p>Recommended subscription communication pattern:</p>
@@ -98,7 +110,7 @@
 
       <div class="warning">Do not expose <code>/subscriptions/enable</code> and <code>/subscriptions/disable</code> directly to untrusted clients. Treat them as server-side endpoints.</div>
 
-      <div class="machine-block">ai_keywords: subscriptions websocket auth_key enable disable subscribed updated deleted inc_table_update benchmark notifications/s writes/s
+      <div class="machine-block">ai_keywords: subscriptions websocket auth_key enable disable subscribed updated deleted inc_table_update online users live counter realtime benchmark notifications/s writes/s
 source_files: servers/subscriptions/subServer.go, servers/subscriptions/subServer_benchmark_test.go</div>
     </main>
   </div>

@@ -65,6 +65,15 @@ type Peer struct {
 
 	sendMu sync.Mutex
 	tables map[string]TableInfo
+
+	requestsSent       atomic.Uint64
+	requestsReceived   atomic.Uint64
+	responsesSent      atomic.Uint64
+	responsesReceived  atomic.Uint64
+	catalogsSent       atomic.Uint64
+	catalogsReceived   atomic.Uint64
+	heartbeatsSent     atomic.Uint64
+	heartbeatsReceived atomic.Uint64
 }
 
 func (p *Peer) snapshotTables() map[string]TableInfo {
@@ -96,10 +105,27 @@ type Stats struct {
 	Port             int                 `json:"port"`
 	ConnectedPeers   int                 `json:"connected_peers"`
 	PeerAddresses    []string            `json:"peer_addresses"`
+	Peers            []PeerStats         `json:"peers,omitempty"`
 	PendingResponses int                 `json:"pending_responses"`
 	LocalTables      []TableInfo         `json:"local_tables,omitempty"`
 	RemoteTables     map[string][]string `json:"remote_tables,omitempty"`
 	SecureTransport  bool                `json:"secure_transport"`
+}
+
+type PeerStats struct {
+	Address            string      `json:"address"`
+	AdvertiseAddr      string      `json:"advertise_addr,omitempty"`
+	NodeID             string      `json:"node_id,omitempty"`
+	LastActive         string      `json:"last_active,omitempty"`
+	Tables             []TableInfo `json:"tables,omitempty"`
+	RequestsSent       uint64      `json:"requests_sent"`
+	RequestsReceived   uint64      `json:"requests_received"`
+	ResponsesSent      uint64      `json:"responses_sent"`
+	ResponsesReceived  uint64      `json:"responses_received"`
+	CatalogsSent       uint64      `json:"catalogs_sent"`
+	CatalogsReceived   uint64      `json:"catalogs_received"`
+	HeartbeatsSent     uint64      `json:"heartbeats_sent"`
+	HeartbeatsReceived uint64      `json:"heartbeats_received"`
 }
 
 var nmInstance *NetworkManager
@@ -293,6 +319,7 @@ func (nm *NetworkManager) listenForMessages(peerAddr string, conn *websocket.Con
 		}
 
 		nm.touchPeer(peerAddr)
+		nm.recordFrameReceived(peerAddr, frame.Type)
 
 		switch frame.Type {
 		case frameTypeHello:
@@ -329,6 +356,7 @@ func (nm *NetworkManager) Snapshot() Stats {
 	defer nm.RUnlock()
 
 	peers := make([]string, 0, len(nm.peers))
+	peerStats := make([]PeerStats, 0, len(nm.peers))
 	remoteTables := make(map[string][]string)
 	for addr, peer := range nm.peers {
 		peers = append(peers, addr)
@@ -339,8 +367,47 @@ func (nm *NetworkManager) Snapshot() Stats {
 			}
 			remoteTables[table] = append(remoteTables[table], owner)
 		}
+		tables := make([]TableInfo, 0, len(peer.tables))
+		for _, info := range peer.tables {
+			tables = append(tables, info)
+		}
+		sort.Slice(tables, func(i, j int) bool {
+			if tables[i].Kind == tables[j].Kind {
+				return tables[i].Name < tables[j].Name
+			}
+			return tables[i].Kind < tables[j].Kind
+		})
+		stats := PeerStats{
+			Address:            addr,
+			AdvertiseAddr:      peer.Advertise,
+			NodeID:             peer.NodeID,
+			Tables:             tables,
+			RequestsSent:       peer.requestsSent.Load(),
+			RequestsReceived:   peer.requestsReceived.Load(),
+			ResponsesSent:      peer.responsesSent.Load(),
+			ResponsesReceived:  peer.responsesReceived.Load(),
+			CatalogsSent:       peer.catalogsSent.Load(),
+			CatalogsReceived:   peer.catalogsReceived.Load(),
+			HeartbeatsSent:     peer.heartbeatsSent.Load(),
+			HeartbeatsReceived: peer.heartbeatsReceived.Load(),
+		}
+		if !peer.LastActive.IsZero() {
+			stats.LastActive = peer.LastActive.UTC().Format(time.RFC3339Nano)
+		}
+		peerStats = append(peerStats, stats)
 	}
 	sort.Strings(peers)
+	sort.Slice(peerStats, func(i, j int) bool {
+		left := peerStats[i].AdvertiseAddr
+		if left == "" {
+			left = peerStats[i].Address
+		}
+		right := peerStats[j].AdvertiseAddr
+		if right == "" {
+			right = peerStats[j].Address
+		}
+		return left < right
+	})
 
 	for table := range remoteTables {
 		sort.Strings(remoteTables[table])
@@ -363,6 +430,7 @@ func (nm *NetworkManager) Snapshot() Stats {
 		Port:             nm.port,
 		ConnectedPeers:   len(peers),
 		PeerAddresses:    peers,
+		Peers:            peerStats,
 		PendingResponses: len(nm.responseChannels),
 		LocalTables:      localTables,
 		RemoteTables:     remoteTables,
@@ -524,7 +592,11 @@ func (nm *NetworkManager) sendFrame(peer *Peer, frame protocolFrame) error {
 
 	peer.sendMu.Lock()
 	defer peer.sendMu.Unlock()
-	return peer.Conn.WriteMessage(websocket.BinaryMessage, payload)
+	if err := peer.Conn.WriteMessage(websocket.BinaryMessage, payload); err != nil {
+		return err
+	}
+	nm.recordFrameSent(peer, frame.Type)
+	return nil
 }
 
 func (nm *NetworkManager) encodeFrame(frame protocolFrame) ([]byte, error) {
@@ -619,6 +691,41 @@ func (nm *NetworkManager) updatePeerMetadata(peerAddr, nodeID, advertiseAddr str
 	peer.tables = make(map[string]TableInfo, len(tables))
 	for _, info := range tables {
 		peer.tables[info.Name] = info
+	}
+}
+
+func (nm *NetworkManager) recordFrameSent(peer *Peer, frameType string) {
+	if peer == nil {
+		return
+	}
+	switch frameType {
+	case frameTypeRequest:
+		peer.requestsSent.Add(1)
+	case frameTypeResponse:
+		peer.responsesSent.Add(1)
+	case frameTypeHello, frameTypeCatalog:
+		peer.catalogsSent.Add(1)
+	case frameTypePing, frameTypePong:
+		peer.heartbeatsSent.Add(1)
+	}
+}
+
+func (nm *NetworkManager) recordFrameReceived(peerAddr, frameType string) {
+	nm.RLock()
+	peer := nm.peers[peerAddr]
+	nm.RUnlock()
+	if peer == nil {
+		return
+	}
+	switch frameType {
+	case frameTypeRequest:
+		peer.requestsReceived.Add(1)
+	case frameTypeResponse:
+		peer.responsesReceived.Add(1)
+	case frameTypeHello, frameTypeCatalog:
+		peer.catalogsReceived.Add(1)
+	case frameTypePing, frameTypePong:
+		peer.heartbeatsReceived.Add(1)
 	}
 }
 

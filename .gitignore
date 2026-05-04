@@ -13,6 +13,7 @@ config.json
 /servers/network-manager/tasks/db
 /servers/public-api/v1/db
 /servers/public-api/v1/routes/db
+tools/example-NM-presentation/runtime
 relationalDB.md
 ai_layer.md
 x_tensor_tests.md
