@@ -10,6 +10,7 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
@@ -89,6 +90,7 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	// sends "plain text data" (not encrypted)
+	networkmanager.NotifyKVTable(file)
 	go subServer.NotifySubscribers(key, body)
 
 	w.WriteHeader(http.StatusOK)

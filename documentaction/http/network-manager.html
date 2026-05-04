@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Network Manager</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">HTTP API</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="./overview.html">HTTP Overview</a>
+        <a class="nav-child" href="./key-value.html">Key-Value</a>
+        <a class="nav-child" href="./encrypted.html">Encrypted</a>
+        <a class="nav-child" href="./incremental.html">Incremental</a>
+        <a class="nav-child" href="./relational.html">Relational</a>
+        <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./network-manager.html">Network Manager</a>
+        <a class="nav-child" href="./meta.html">Meta</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="../examples/http-go.html">Overview</a>
+          <a class="nav-child" href="../examples/http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="../examples/http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="../examples/http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-health">Meta and Health</a>
+          <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Testing &amp; Benchmarks</p>
+        <a class="nav-parent" href="../testing/relational-benchmark.html">Relational db</a>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Network Manager</h1>
+      <p class="lead">Dedicated documentation page for TsunamiDB's P2P layer. This section is intended to grow as the distributed feature set expands.</p>
+
+      <h2>Purpose</h2>
+      <p>Network Manager connects TsunamiDB nodes over WebSocket, exchanges table catalogs and routes reads to peers that advertise the requested table. The goal is to let one node answer requests using data stored on another node.</p>
+
+      <h2>Current Capabilities</h2>
+      <table>
+        <thead><tr><th>Capability</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>Peer-to-peer node connections</td><td>Implemented.</td></tr>
+          <tr><td>Heartbeat and stale-peer cleanup</td><td>Implemented.</td></tr>
+          <tr><td>Table catalog exchange</td><td>Implemented.</td></tr>
+          <tr><td>Table-aware distributed read routing</td><td>Implemented.</td></tr>
+          <tr><td>Encrypted node-to-node transport with shared secret</td><td>Implemented.</td></tr>
+          <tr><td>Distributed write placement and replication policies</td><td>Planned.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Transport Settings</h2>
+      <table>
+        <thead><tr><th>Environment Variable</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>TSUNAMI_NETWORK_SECRET</code></td><td>Encrypts node-to-node protocol frames with a shared secret.</td></tr>
+          <tr><td><code>TSUNAMI_NETWORK_ADVERTISE_ADDR</code></td><td>Overrides the address advertised to peers.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Example Startup</h2>
+      <pre><code class="language-bash"># Node A
+$env:TSUNAMI_NETWORK_SECRET="cluster-secret"
+$env:TSUNAMI_NETWORK_ADVERTISE_ADDR="10.0.0.1:5855"
+.dist/TsunamiDB.exe 5855 10.0.0.2:5855
+
+# Node B
+$env:TSUNAMI_NETWORK_SECRET="cluster-secret"
+$env:TSUNAMI_NETWORK_ADVERTISE_ADDR="10.0.0.2:5855"
+.dist/TsunamiDB.exe 5855 10.0.0.1:5855</code></pre>
+
+      <h2>Routing Model</h2>
+      <pre><code class="language-text">Client -> Node A
+Send: GET /read/users/user-1
+
+Node A -> Node B
+Send: P2P request for table users
+
+Node B -> Node A
+Response: stored bytes
+
+Node A -> Client
+Response: HTTP 200</code></pre>
+
+      <h2>Planned Sections</h2>
+      <p>This page is reserved for future expansion. Planned topics include distributed writes, replication modes, failover behavior, routing strategies, peer authentication and topology management.</p>
+
+      <div class="machine-block">ai_keywords: network manager p2p peer distributed read table catalog TSUNAMI_NETWORK_SECRET TSUNAMI_NETWORK_ADVERTISE_ADDR
+source_files: servers/network-manager/network_manager.go, send_message.go, handle_message.go, types/networkManager.go</div>
+    </main>
+  </div>
+  <script src="../assets/syntax-highlight.js"></script>
+</body>
+</html>

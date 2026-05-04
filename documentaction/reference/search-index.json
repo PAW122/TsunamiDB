@@ -73,6 +73,14 @@
       "source": ["servers/subscriptions/subServer.go"]
     },
     {
+      "id": "network-manager",
+      "method": "docs",
+      "path": "P2P network manager",
+      "page": "../http/network-manager.html",
+      "keywords": ["network manager", "p2p", "peer", "table catalog", "distributed read", "requestId", "TSUNAMI_NETWORK_SECRET", "TSUNAMI_NETWORK_ADVERTISE_ADDR"],
+      "source": ["servers/network-manager/network_manager.go", "servers/network-manager/send_message.go", "servers/network-manager/handle_message.go", "types/networkManager.go"]
+    },
+    {
       "id": "meta",
       "method": "GET",
       "path": "/key_by_regex/{table}, /health",

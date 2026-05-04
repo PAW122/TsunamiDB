@@ -2,6 +2,8 @@ package export
 
 import (
 	"fmt"
+
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 )
 
 func Save(key, table string, data []byte) error {
@@ -27,6 +29,7 @@ func Save(key, table string, data []byte) error {
 			recordDefragSkip()
 		}
 	}
+	networkmanager.NotifyKVTable(table)
 	go notifySubscribers(key, data)
 	return nil
 }

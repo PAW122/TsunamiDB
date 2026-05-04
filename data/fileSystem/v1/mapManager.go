@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -138,6 +139,10 @@ func (ti *tableIndex) tableDir() string {
 	return filepath.Join(baseMapsDir, ti.safeName)
 }
 
+func (ti *tableIndex) metaPath() string {
+	return filepath.Join(ti.tableDir(), "table.meta")
+}
+
 func (ti *tableIndex) snapPath() string {
 	return filepath.Join(ti.tableDir(), "index.snap")
 }
@@ -148,6 +153,10 @@ func (ti *tableIndex) walPath() string {
 
 func (ti *tableIndex) ensureDir() error {
 	return os.MkdirAll(ti.tableDir(), 0755)
+}
+
+func (ti *tableIndex) ensureMetadata() error {
+	return os.WriteFile(ti.metaPath(), []byte(ti.name+"\n"), 0644)
 }
 
 func newTableIndex(table string) (*tableIndex, error) {
@@ -162,6 +171,9 @@ func newTableIndex(table string) (*tableIndex, error) {
 	}
 
 	if err := idx.ensureDir(); err != nil {
+		return nil, err
+	}
+	if err := idx.ensureMetadata(); err != nil {
 		return nil, err
 	}
 	if err := idx.loadIndex(); err != nil {
@@ -812,4 +824,48 @@ func GetKeysByRegex(table, pattern string, max int) ([]string, error) {
 		return nil, err
 	}
 	return idx.keysByRegex(pattern, max)
+}
+
+func ListTables() ([]string, error) {
+	if err := os.MkdirAll(baseMapsDir, 0755); err != nil {
+		return nil, err
+	}
+
+	seen := make(map[string]struct{})
+
+	registryMu.RLock()
+	for name := range indexRegistry {
+		seen[name] = struct{}{}
+	}
+	registryMu.RUnlock()
+
+	entries, err := os.ReadDir(baseMapsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []string{}, nil
+		}
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		tableName := entry.Name()
+		metaPath := filepath.Join(baseMapsDir, entry.Name(), "table.meta")
+		if raw, readErr := os.ReadFile(metaPath); readErr == nil {
+			if name := strings.TrimSpace(string(raw)); name != "" {
+				tableName = name
+			}
+		}
+		seen[tableName] = struct{}{}
+	}
+
+	tables := make([]string, 0, len(seen))
+	for name := range seen {
+		tables = append(tables, name)
+	}
+	sort.Strings(tables)
+	return tables, nil
 }

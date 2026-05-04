@@ -539,6 +539,13 @@ func TestFreeMissingReturnsError(t *testing.T) {
 func withPeerNetworkManager(t *testing.T, responder func(types.NMmessage) types.NMmessage) {
 	t.Helper()
 
+	type wireFrame struct {
+		Version int             `json:"version"`
+		Type    string          `json:"type"`
+		NodeID  string          `json:"node_id,omitempty"`
+		Message types.NMmessage `json:"message,omitempty"`
+	}
+
 	upgrader := websocket.Upgrader{CheckOrigin: func(r *http.Request) bool { return true }}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -551,12 +558,18 @@ func withPeerNetworkManager(t *testing.T, responder func(types.NMmessage) types.
 			if err != nil {
 				return
 			}
-			var req types.NMmessage
-			if err := json.Unmarshal(raw, &req); err != nil {
+			var frame wireFrame
+			if err := json.Unmarshal(raw, &frame); err != nil {
 				return
 			}
-			res := responder(req)
-			if err := conn.WriteJSON(res); err != nil {
+			if frame.Type != "request" {
+				continue
+			}
+			res := responder(frame.Message)
+			res.RequestID = frame.Message.RequestID
+			res.Task = frame.Message.Task
+			res.ReqSendBy = frame.Message.ReqSendBy
+			if err := conn.WriteJSON(wireFrame{Version: 1, Type: "response", NodeID: "peer", Message: res}); err != nil {
 				return
 			}
 		}
@@ -574,17 +587,16 @@ func withPeerNetworkManager(t *testing.T, responder func(types.NMmessage) types.
 	setUnexportedField(nm, "peers", map[string]*networkmanager.Peer{
 		"peer": {Conn: conn, Address: "peer", LastActive: time.Now()},
 	})
-	setUnexportedField(nm, "responseChannels", map[string]chan types.NMmessage{})
 	networkmanager.SetInstanceForTests(nm)
 
 	go func() {
 		for {
-			var res types.NMmessage
-			if err := conn.ReadJSON(&res); err != nil {
+			var frame wireFrame
+			if err := conn.ReadJSON(&frame); err != nil {
 				return
 			}
-			if res.Finished {
-				nm.HandleResponse(res)
+			if frame.Type == "response" {
+				nm.HandleResponse(frame.Message)
 			}
 		}
 	}()

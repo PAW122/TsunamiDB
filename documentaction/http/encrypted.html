@@ -21,6 +21,7 @@
         <a class="nav-child" href="./encrypted.html">Encrypted</a>
         <a class="nav-child" href="./incremental.html">Incremental</a>
         <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./network-manager.html">Network Manager</a>
         <a class="nav-child" href="./meta.html">Meta</a>
         <p class="nav-group">Examples</p>
         <details class="nav-details">
@@ -48,7 +49,7 @@
       <h1>HTTP Encrypted Values</h1>
       <p class="lead">Encrypted endpoints encrypt data before storage and decrypt it on read. The caller provides the encryption key in a request header.</p>
 
-      <div class="warning">The <code>save_encrypted</code> route sends plaintext data to active subscribers for the key. Do not expose subscriptions for sensitive keys unless that behavior is acceptable.</div>
+      <div class="warning">The <code>save_encrypted</code> route stores encrypted bytes, but subscription notifications are matched by <code>key</code> only and send the original plaintext request body in the <code>updated.data</code> field. Any client subscribed to that key can receive the unencrypted value, regardless of table, so do not expose subscriptions for sensitive keys unless that behavior is intentional.</div>
 
       <h2><span class="endpoint">POST</span> /save_encrypted/{table}/{key}</h2>
       <table>
@@ -67,6 +68,17 @@
       <p>Uses the same <code>encryption_key</code> header to decrypt the stored value. If the key is missing locally, the route asks P2P peers and decrypts the returned encrypted bytes.</p>
       <pre><code class="language-bash">curl http://localhost:5844/read_encrypted/secrets/api-token \
   -H "encryption_key: correct-horse-battery-staple"</code></pre>
+
+      <h3>P2P Encrypted Routing</h3>
+      <p>Encrypted reads participate in the same table-aware P2P routing as plain key-value reads. The serving node forwards the request to the peer that advertises the target table, receives encrypted bytes back, and decrypts them using the caller-provided <code>encryption_key</code>.</p>
+      <table>
+        <thead><tr><th>Layer</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td>Stored value</td><td>Encrypted with the request <code>encryption_key</code>.</td></tr>
+          <tr><td>P2P transport</td><td>Can be encrypted separately with <code>TSUNAMI_NETWORK_SECRET</code>.</td></tr>
+          <tr><td>Remote response</td><td>Returns ciphertext to the requesting node, which performs the final decrypt step for the HTTP caller.</td></tr>
+        </tbody>
+      </table>
 
       <h2>Error Notes</h2>
       <table>

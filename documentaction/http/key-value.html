@@ -21,6 +21,7 @@
         <a class="nav-child" href="./encrypted.html">Encrypted</a>
         <a class="nav-child" href="./incremental.html">Incremental</a>
         <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./network-manager.html">Network Manager</a>
         <a class="nav-child" href="./meta.html">Meta</a>
         <p class="nav-group">Examples</p>
         <details class="nav-details">
@@ -48,6 +49,8 @@
       <h1>HTTP Key-Value</h1>
       <p class="lead">Basic operations save, read and delete bytes in a table under a key.</p>
 
+      <div class="warning">Data saved using<code>save</code> is saved in plain text.</div>
+
       <h2><span class="endpoint">POST</span> /save/{table}/{key}</h2>
       <p>Reads the request body as bytes, stores it in <code>table</code>, and associates it with <code>key</code>. Re-saving the same key replaces metadata and marks the old span for defragmentation.</p>
       <table>
@@ -65,6 +68,17 @@
       <h2><span class="endpoint">GET</span> /read/{table}/{key}</h2>
       <p>Returns the decoded user bytes. If the key is not local, TsunamiDB asks connected P2P peers.</p>
       <pre><code class="language-bash">curl http://localhost:5844/read/users/user-1</code></pre>
+
+      <h3>P2P Table-Aware Reads</h3>
+      <p>With the new network manager flow, peers exchange a catalog of available tables. That means node A can answer a user read even when the requested table exists on node B, as long as both nodes are connected in the P2P network.</p>
+      <table>
+        <thead><tr><th>Aspect</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Selection</td><td>The request prefers peers that advertise the requested <code>table</code>.</td></tr>
+          <tr><td>Fallback</td><td>If the catalog is still warming up, the read can fall back to querying a broader peer set.</td></tr>
+          <tr><td>Encryption</td><td>Set <code>TSUNAMI_NETWORK_SECRET</code> to encrypt node-to-node traffic.</td></tr>
+        </tbody>
+      </table>
 
       <h2><span class="endpoint">GET</span> /free/{table}/{key}</h2>
       <p>Removes the key from the map and marks the stored data range as free. If the value has nested JSON chunks, linked nested chunks are also cleaned up.</p>

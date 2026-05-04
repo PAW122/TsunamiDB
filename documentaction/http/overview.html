@@ -22,6 +22,7 @@
         <a class="nav-child" href="./incremental.html">Incremental</a>
         <a class="nav-child" href="./relational.html">Relational</a>
         <a class="nav-child" href="./subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./network-manager.html">Network Manager</a>
         <a class="nav-child" href="./meta.html">Meta</a>
         <p class="nav-group">Examples</p>
         <details class="nav-details">
@@ -64,6 +65,7 @@
           <tr><td>POST/GET/PATCH/DELETE</td><td><code>/rel/...</code>, <code>/rel/sql</code></td><td>Relational schemas, row CRUD, selects, compact SQL, indexes and compaction.</td><td><a href="./relational.html">Relational</a></td></tr>
           <tr><td>POST</td><td><code>/subscriptions/enable</code></td><td>Mint a one-time subscription auth key.</td><td><a href="./subscriptions.html">Subscriptions</a></td></tr>
           <tr><td>POST</td><td><code>/subscriptions/disable</code></td><td>Unsubscribe active sockets from one key.</td><td><a href="./subscriptions.html">Subscriptions</a></td></tr>
+          <tr><td>Docs</td><td><code>network manager</code></td><td>P2P routing, table catalogs and transport settings.</td><td><a href="./network-manager.html">Network Manager</a></td></tr>
           <tr><td>GET</td><td><code>/key_by_regex/{table}?regex=...&amp;max=...</code></td><td>Find keys in one table by regex.</td><td><a href="./meta.html">Meta</a></td></tr>
           <tr><td>GET</td><td><code>/health</code></td><td>Runtime health and stats.</td><td><a href="./meta.html">Meta</a></td></tr>
         </tbody>
@@ -79,6 +81,18 @@
           <tr><td><code>405</code></td><td>Wrong HTTP method.</td></tr>
           <tr><td><code>409</code></td><td>Incremental <code>entry_key</code> already exists.</td></tr>
           <tr><td><code>500</code></td><td>Storage, encryption, index, network or serialization failure.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>P2P Read Routing</h2>
+      <p>When the network manager is enabled, <code>/read/{table}/{key}</code> and <code>/read_encrypted/{table}/{key}</code> are not limited to local storage. Nodes exchange table catalogs over P2P connections and prefer the peers that advertise the requested table.</p>
+      <table>
+        <thead><tr><th>Part</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td>Local hit</td><td>The node returns the local value immediately.</td></tr>
+          <tr><td>Remote hit</td><td>If the table is owned by another peer, the node forwards the read and returns the response as if it were local.</td></tr>
+          <tr><td>Unknown catalog</td><td>If the table catalog is not known yet, the node can still fall back to a broader peer query.</td></tr>
+          <tr><td>Security</td><td>Set <code>TSUNAMI_NETWORK_SECRET</code> to encrypt node-to-node frames.</td></tr>
         </tbody>
       </table>
 

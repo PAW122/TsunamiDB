@@ -1,62 +1,45 @@
 package networkmanager
 
 import (
-	"encoding/json"
 	"log"
 
 	tasks "github.com/PAW122/TsunamiDB/servers/network-manager/tasks"
 	types "github.com/PAW122/TsunamiDB/types"
-
-	"github.com/gorilla/websocket"
 )
 
-// read and execute on message
-func handleMsg(peerAddr string, message []byte, nm *NetworkManager, conn *websocket.Conn) {
-	var req types.NMmessage
-	err := json.Unmarshal(message, &req)
-	if err != nil {
-		log.Println("📌 Błąd parsowania wiadomości od", peerAddr, ":", err)
-		return
-	}
-
-	// log.Println("📌 Otrzymano wiadomość od", peerAddr, ":", req)
-
-	// 🔹 Ignorujemy odpowiedzi (Finished: true) - zapobiega pętli!
-	if req.Finished {
-		// log.Println("📌 Ignoruję wiadomość, bo jest już oznaczona jako Finished")
-		return
-	}
-
-	// 🔹 Obsługa nowych żądań
-	var res types.NMmessage
+func executeTask(req types.NMmessage) types.NMmessage {
 	switch req.Task {
 	case "read":
-		res = tasks.Read(req)
+		return tasks.Read(req)
 	case "save":
-		res = tasks.Save(req)
+		return tasks.Save(req)
 	case "free":
-		res = tasks.Free(req)
+		return tasks.Free(req)
 	default:
-		log.Println("📌 Nieznane zadanie:", req.Task)
-		return
+		return types.NMmessage{RequestID: req.RequestID, Task: req.Task, ReqSendBy: req.ReqSendBy, Finished: false}
+	}
+}
+
+func (nm *NetworkManager) handleTaskRequest(peerAddr string, req types.NMmessage) {
+	res := executeTask(req)
+	res.RequestID = req.RequestID
+	res.Task = req.Task
+	res.ReqSendBy = req.ReqSendBy
+	res.ReqResBy = nm.NodeID
+	if res.Finished && len(req.Args) > 0 && (req.Task == "save" || req.Task == "free") {
+		nm.NotifyLocalTable(req.Args[0], tableKindKV)
 	}
 
-	// Przypisanie adresu IP serwera, który odpowiada
-	res.ReqSendBy = req.ReqSendBy // Nadawca żądania
-	res.ReqResBy = nm.ServerIP    // Ten serwer odpowiada
-	res.Finished = true           // Oznaczamy jako zakończone
-
-	// Serializacja odpowiedzi do JSON
-	responseJSON, err := json.Marshal(res)
-	if err != nil {
-		log.Println("📌 Błąd serializacji odpowiedzi:", err)
+	peer := nm.getPeer(peerAddr)
+	if peer == nil {
 		return
 	}
-
-	// Bezpośrednie wysłanie odpowiedzi do klienta
-	// log.Println("📌 Wysyłam odpowiedź do", peerAddr)
-	err = conn.WriteMessage(websocket.TextMessage, responseJSON)
-	if err != nil {
-		log.Println("📌 Błąd wysyłania do", peerAddr, ":", err)
+	if err := nm.sendFrame(peer, protocolFrame{
+		Version: 1,
+		Type:    frameTypeResponse,
+		NodeID:  nm.NodeID,
+		Message: res,
+	}); err != nil {
+		log.Println("send task response error:", err)
 	}
 }

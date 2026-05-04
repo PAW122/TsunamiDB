@@ -2,6 +2,8 @@ package export
 
 import (
 	"fmt"
+
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 )
 
 func SaveEncrypted(key, table, encryption_key string, data []byte) error {
@@ -37,6 +39,7 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 		}
 	}
 
+	networkmanager.NotifyKVTable(table)
 	go notifySubscribers(key, data)
 	return nil
 }

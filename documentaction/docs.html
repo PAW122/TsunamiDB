@@ -23,6 +23,7 @@
         <a class="nav-child" href="./http/incremental.html">Incremental Tables</a>
         <a class="nav-child" href="./http/relational.html">Relational</a>
         <a class="nav-child" href="./http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="./http/network-manager.html">Network Manager</a>
         <a class="nav-child" href="./http/meta.html">Meta and Health</a>
         <p class="nav-group">Examples</p>
         <details class="nav-details">
@@ -60,6 +61,11 @@
           <h3>Relational API</h3>
           <p>Fixed-row relational tables with schemas, row CRUD, equality and LIKE selects, compact SQL, indexes and compaction. Includes a manual browser tool.</p>
           <a href="./http/relational.html">Open relational docs</a>
+        </section>
+        <section class="card">
+          <h3>Network Manager</h3>
+          <p>P2P layer for peer discovery, table catalogs, distributed reads and encrypted node-to-node transport.</p>
+          <a href="./http/network-manager.html">Open network docs</a>
         </section>
         <section class="card">
           <h3>Go Lib</h3>
@@ -128,6 +134,30 @@ go build -buildvcs=false -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll<
 # Join existing peers
 .dist/TsunamiDB.exe 5845 10.0.0.2:5845 10.0.0.3:5845</code></pre>
       <p>The P2P network manager is optional. When no network-manager port is passed, TsunamiDB starts only the HTTP API on <code>5844</code> and the subscription WebSocket server on <code>5845</code>. Passing the first CLI argument starts the P2P network manager on that port; any following arguments are known peers.</p>
+      <p>In practice, use a network-manager port different from the subscription WebSocket port. For example keep subscriptions on <code>5845</code> and run the P2P manager on <code>5855</code>.</p>
+
+      <h2>P2P Table Routing</h2>
+      <p>The network manager now works as a P2P layer between TsunamiDB nodes. Each node advertises which tables it currently owns, and a read sent to node A can be forwarded to node B when node B has the requested table.</p>
+      <table>
+        <thead><tr><th>Behavior</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Discovery</td><td>Peers exchange a table catalog during connection setup and refresh it after local <code>save</code> or <code>free</code>.</td></tr>
+          <tr><td>Routing</td><td><code>read</code> and <code>read_encrypted</code> prefer peers that advertise the requested table instead of asking every connected node.</td></tr>
+          <tr><td>Fallback</td><td>If a node has not learned the catalog yet, it can still fall back to a wider peer query.</td></tr>
+          <tr><td>Transport security</td><td>Set <code>TSUNAMI_NETWORK_SECRET</code> to encrypt node-to-node frames over WebSocket using the shared secret.</td></tr>
+          <tr><td>Advertised address</td><td>Set <code>TSUNAMI_NETWORK_ADVERTISE_ADDR</code> when automatic IP detection is not the address peers should use.</td></tr>
+        </tbody>
+      </table>
+      <pre><code class="language-bash"># Node A
+$env:TSUNAMI_NETWORK_SECRET="cluster-secret"
+$env:TSUNAMI_NETWORK_ADVERTISE_ADDR="10.0.0.1:5855"
+.dist/TsunamiDB.exe 5855 10.0.0.2:5855
+
+# Node B
+$env:TSUNAMI_NETWORK_SECRET="cluster-secret"
+$env:TSUNAMI_NETWORK_ADVERTISE_ADDR="10.0.0.2:5855"
+.dist/TsunamiDB.exe 5855 10.0.0.1:5855</code></pre>
+      <p>With that setup, an application can call <code>GET /read/users/user-1</code> on node A and still receive the value when the <code>users</code> table is stored on node B.</p>
 
       <h2>Data Model</h2>
       <p>Most public operations use a <code>table</code> and a <code>key</code>. The table maps to an internal data file and key map. Values are stored as bytes with TsunamiDB metadata, then decoded back to user bytes on read.</p>
@@ -142,6 +172,9 @@ sections: HTTP API, Go Lib, DLL Lib
 base_http_url: http://localhost:5844
 subscription_ws_url: ws://localhost:5845/sub
 network_manager: optional CLI port; disabled when omitted
+p2p_table_routing: read requests prefer peers advertising the requested table
+p2p_network_secret_env: TSUNAMI_NETWORK_SECRET
+p2p_advertise_addr_env: TSUNAMI_NETWORK_ADVERTISE_ADDR
 go_import: github.com/PAW122/TsunamiDB/lib/dbclient</div>
     </main>
   </div>

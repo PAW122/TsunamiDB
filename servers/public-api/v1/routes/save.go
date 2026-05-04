@@ -11,6 +11,7 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
 )
 
@@ -115,6 +116,7 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		}
 	}
 
+	networkmanager.NotifyKVTable(file)
 	go subServer.NotifySubscribers(key, encodedBody)
 
 	w.WriteHeader(http.StatusOK)

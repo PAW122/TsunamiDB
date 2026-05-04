@@ -1,103 +1,115 @@
 package networkmanager
 
 import (
-	"encoding/json"
-	"log"
+	"strings"
 	"time"
 
 	types "github.com/PAW122/TsunamiDB/types"
-
-	"github.com/gorilla/websocket"
 )
 
-// SendTaskReq wysyła żądanie do wszystkich serwerów i czeka na pierwszą odpowiedź
+// SendTaskReq wysyła żądanie do peerów posiadających tabelę i czeka na pierwszą udaną odpowiedź.
 func (nm *NetworkManager) SendTaskReq(req types.NMmessage) types.NMmessage {
-	responseChannel := make(chan types.NMmessage, 1)
+	if nm == nil {
+		return types.NMmessage{Finished: false}
+	}
+	nm.initState()
 
-	if len(nm.peers) == 0 {
+	targets := nm.selectPeersForRequest(req)
+	if len(targets) == 0 {
 		return types.NMmessage{Finished: false}
 	}
 
-	// Tworzymy zapytanie `get_my_ip`
-	if nm.ServerIP == "" {
-		reqIP := types.NMmessage{
-			Task: "get_my_ip",
-		}
-		reqJSON, err := json.Marshal(reqIP)
-		if err != nil {
-			// log.Println("📌 Błąd serializacji get_my_ip:", err)
-		} else {
-			nm.BroadcastMessage("", reqJSON)
-		}
-		time.Sleep(2 * time.Second)
+	if req.RequestID == "" {
+		req.RequestID = nm.nextRequestID()
 	}
-	if nm.ServerIP == "" {
-		// log.Println("📌 Nadal brak IP, anuluję żądanie.")
-		return types.NMmessage{Finished: false}
+	if req.ReqSendBy == "" {
+		req.ReqSendBy = nm.NodeID
 	}
 
-	req.ReqSendBy = nm.ServerIP // 🔹 Poprawne IP serwera
-
-	// Tworzymy klucz dla odpowiedzi
-	reqKey := req.ReqSendBy + "_" + req.Task
-
-	// Rejestracja kanału odpowiedzi
+	responseChannel := make(chan types.NMmessage, len(targets))
 	nm.Lock()
-	nm.responseChannels[reqKey] = responseChannel
+	nm.responseChannels[req.RequestID] = &pendingResponse{ch: responseChannel}
 	nm.Unlock()
-
-	// Serializacja JSON
-	reqJSON, err := json.Marshal(req)
-	if err != nil {
-		log.Println("📌 Błąd serializacji żądania:", err)
-		return types.NMmessage{Finished: false}
-	}
-
-	// Wysłanie żądania do wszystkich peerów
-	nm.Lock()
-	for _, peer := range nm.peers {
-		go peer.Conn.WriteMessage(websocket.TextMessage, reqJSON)
-	}
-	nm.Unlock()
-
-	// Czekamy na odpowiedź lub timeout 5s
-	select {
-	case res := <-responseChannel:
-		// log.Println("📌 Otrzymano odpowiedź:", res)
-
-		/*
-			todo
-			tutaj trzeba cachować conn - has <key
-			key: conn
-		*/
-
-		return res
-	case <-time.After(5 * time.Second):
-		// log.Println("📌 Timeout: brak odpowiedzi od serwerów")
+	defer func() {
 		nm.Lock()
-		delete(nm.responseChannels, reqKey)
+		delete(nm.responseChannels, req.RequestID)
 		nm.Unlock()
+	}()
+
+	frame := protocolFrame{
+		Version: 1,
+		Type:    frameTypeRequest,
+		NodeID:  nm.NodeID,
+		Message: req,
+	}
+	sent := 0
+	for _, peer := range targets {
+		if err := nm.sendFrame(peer, frame); err == nil {
+			sent++
+		}
+	}
+	if sent == 0 {
 		return types.NMmessage{Finished: false}
 	}
+
+	deadline := time.NewTimer(defaultRequestTimeout)
+	defer deadline.Stop()
+
+	for pending := sent; pending > 0; pending-- {
+		select {
+		case res := <-responseChannel:
+			if res.Finished {
+				return res
+			}
+		case <-deadline.C:
+			return types.NMmessage{Finished: false}
+		}
+	}
+
+	return types.NMmessage{Finished: false}
 }
 
-// HandleResponse obsługuje odpowiedź z handleMsg() i przekazuje ją do kanału
-func (nm *NetworkManager) HandleResponse(response types.NMmessage) {
-	reqKey := response.ReqSendBy + "_" + response.Task
+func (nm *NetworkManager) selectPeersForRequest(req types.NMmessage) []*Peer {
+	allPeers := nm.snapshotPeersExcept("")
+	if len(req.Args) == 0 {
+		return allPeers
+	}
 
-	nm.Lock()
-	responseChannel, exists := nm.responseChannels[reqKey]
-	nm.Unlock()
+	table := strings.TrimSpace(req.Args[0])
+	if table == "" {
+		return allPeers
+	}
 
-	if exists {
-		// log.Println("📌 Przekazuję odpowiedź dla", reqKey, "od", response.ReqResBy)
-		select {
-		case responseChannel <- response:
-			// log.Println("📌 Odpowiedź dostarczona do kanału:", reqKey)
-		default:
-			// log.Println("📌 Kanał odpowiedzi dla", reqKey, "jest pełny.")
+	targets := make([]*Peer, 0, len(allPeers))
+	nm.RLock()
+	for _, peer := range allPeers {
+		if _, ok := peer.tables[table]; ok {
+			targets = append(targets, peer)
 		}
-	} else {
-		// log.Println("📌 Brak kanału odpowiedzi dla:", reqKey, "Odpowiedź zostanie zignorowana.")
+	}
+	nm.RUnlock()
+	if len(targets) > 0 {
+		return targets
+	}
+	return allPeers
+}
+
+// HandleResponse obsługuje odpowiedź i przekazuje ją do kanału oczekującego requestu.
+func (nm *NetworkManager) HandleResponse(response types.NMmessage) {
+	if nm == nil || response.RequestID == "" {
+		return
+	}
+
+	nm.RLock()
+	pending := nm.responseChannels[response.RequestID]
+	nm.RUnlock()
+
+	if pending == nil {
+		return
+	}
+
+	select {
+	case pending.ch <- response:
+	default:
 	}
 }

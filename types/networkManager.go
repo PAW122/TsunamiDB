@@ -1,6 +1,7 @@
 package types
 
 type NMmessage struct {
+	RequestID string   `json:"requestId,omitempty"`
 	Task      string   `json:"task"`
 	Args      []string `json:"args"`
 	Content   []byte   `json:"content"`
