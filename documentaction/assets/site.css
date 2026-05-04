@@ -294,6 +294,7 @@ code {
 }
 
 pre {
+  position: relative;
   overflow: auto;
   border-radius: 8px;
   background: var(--code-bg);
@@ -301,10 +302,37 @@ pre {
   padding: 16px;
 }
 
+pre.has-copy-button {
+  padding-top: 48px;
+}
+
 pre code {
   background: transparent;
   color: inherit;
   padding: 0;
+}
+
+.copy-code-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 10px;
+  font: 12px/1.2 "Segoe UI", system-ui, sans-serif;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.copy-code-button:hover,
+.copy-code-button:focus-visible {
+  border-color: var(--accent-strong);
+  background: var(--accent);
+  color: #ffffff;
+  outline: none;
 }
 
 .token.comment {

@@ -189,6 +189,70 @@
     return match ? match[1].toLowerCase() : "";
   }
 
+  function fallbackCopyText(text) {
+    var textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "readonly");
+    textarea.style.position = "fixed";
+    textarea.style.top = "-1000px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    try {
+      return document.execCommand("copy");
+    } catch (_error) {
+      return false;
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      return navigator.clipboard.writeText(text).catch(function () {
+        if (!fallbackCopyText(text)) {
+          throw new Error("copy_failed");
+        }
+      });
+    }
+
+    return fallbackCopyText(text) ? Promise.resolve() : Promise.reject(new Error("copy_failed"));
+  }
+
+  function attachCopyButton(block) {
+    var container = block.parentElement;
+    if (!container || container.querySelector(".copy-code-button")) {
+      return;
+    }
+
+    var resetTimer = 0;
+    var button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "copy-code-button";
+    button.textContent = "Copy";
+    button.setAttribute("aria-label", "Copy code to clipboard");
+    button.title = "Copy code to clipboard";
+
+    button.addEventListener("click", function () {
+      window.clearTimeout(resetTimer);
+      copyText(block.textContent).then(function () {
+        button.textContent = "Copied";
+      }).catch(function () {
+        button.textContent = "Failed";
+      }).finally(function () {
+        resetTimer = window.setTimeout(function () {
+          button.textContent = "Copy";
+        }, 1600);
+      });
+    });
+
+    container.classList.add("has-copy-button");
+    container.appendChild(button);
+  }
+
   document.addEventListener("DOMContentLoaded", function () {
     initThemeSwitch();
 
@@ -207,6 +271,8 @@
       } else {
         block.innerHTML = escapeHTML(source);
       }
+
+      attachCopyButton(block);
     });
   });
 })();
