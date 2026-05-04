@@ -22,6 +22,7 @@ func TestRunCoreValidation(t *testing.T) {
 func TestRunCoreWithoutNetworkManager(t *testing.T) {
 	var networkStarted bool
 	var wsPort string
+	var mysqlPort int
 	var apiPort int
 
 	deps := testCoreDeps(nil)
@@ -29,9 +30,15 @@ func TestRunCoreWithoutNetworkManager(t *testing.T) {
 		networkStarted = true
 	}
 	wsDone := make(chan struct{}, 1)
+	mysqlDone := make(chan struct{}, 1)
 	deps.startWSServer = func(port string) error {
 		wsPort = port
 		wsDone <- struct{}{}
+		return nil
+	}
+	deps.startMySQLServer = func(port int) error {
+		mysqlPort = port
+		mysqlDone <- struct{}{}
 		return nil
 	}
 	deps.runPublicAPI = func(port int) { apiPort = port }
@@ -40,12 +47,13 @@ func TestRunCoreWithoutNetworkManager(t *testing.T) {
 		t.Fatalf("runCore: %v", err)
 	}
 	<-wsDone
+	<-mysqlDone
 
 	if networkStarted {
 		t.Fatal("network manager started without a port")
 	}
-	if wsPort != "5845" || apiPort != 5844 {
-		t.Fatalf("unexpected service ports: ws=%s api=%d", wsPort, apiPort)
+	if wsPort != "5845" || mysqlPort != 3307 || apiPort != 5844 {
+		t.Fatalf("unexpected service ports: ws=%s mysql=%d api=%d", wsPort, mysqlPort, apiPort)
 	}
 }
 
@@ -54,6 +62,7 @@ func TestRunCoreStartsServices(t *testing.T) {
 	var networkPort int
 	var peers []string
 	var wsPort string
+	var mysqlPort int
 	var apiPort int
 
 	deps := testCoreDeps([]string{"-config", "6000", "peer1", "peer2"})
@@ -63,9 +72,15 @@ func TestRunCoreStartsServices(t *testing.T) {
 		peers = append([]string(nil), knownPeers...)
 	}
 	wsDone := make(chan struct{}, 1)
+	mysqlDone := make(chan struct{}, 1)
 	deps.startWSServer = func(port string) error {
 		wsPort = port
 		wsDone <- struct{}{}
+		return nil
+	}
+	deps.startMySQLServer = func(port int) error {
+		mysqlPort = port
+		mysqlDone <- struct{}{}
 		return nil
 	}
 	deps.runPublicAPI = func(port int) { apiPort = port }
@@ -74,6 +89,7 @@ func TestRunCoreStartsServices(t *testing.T) {
 		t.Fatalf("runCore: %v", err)
 	}
 	<-wsDone
+	<-mysqlDone
 
 	if loaded != defaultConfigDir {
 		t.Fatalf("unexpected config path: %s", loaded)
@@ -84,8 +100,8 @@ func TestRunCoreStartsServices(t *testing.T) {
 	if len(peers) != 2 || peers[0] != "peer1" || peers[1] != "peer2" {
 		t.Fatalf("unexpected peers: %#v", peers)
 	}
-	if wsPort != "5845" || apiPort != 5844 {
-		t.Fatalf("unexpected service ports: ws=%s api=%d", wsPort, apiPort)
+	if wsPort != "5845" || mysqlPort != 3307 || apiPort != 5844 {
+		t.Fatalf("unexpected service ports: ws=%s mysql=%d api=%d", wsPort, mysqlPort, apiPort)
 	}
 }
 
@@ -95,6 +111,7 @@ func testCoreDeps(args []string) coreDeps {
 		loadConfig:          func(string) {},
 		startNetworkManager: func(int, []string) {},
 		startWSServer:       func(string) error { return nil },
+		startMySQLServer:    func(int) error { return nil },
 		runPublicAPI:        func(int) {},
 	}
 }

@@ -261,6 +261,35 @@ curl -X POST http://localhost:5844/rel/sql \
   --data "SELECT row_id, name, price FROM products WHERE name LIKE '%wid%'"
 ```
 
+## MySQL-compatible relational endpoint
+The server also starts a minimal MySQL wire-protocol endpoint for SQL clients such
+as HeidiSQL. It listens on port `3307` by default and maps client queries onto the
+same relational SQL engine used by `POST /rel/sql`.
+
+HeidiSQL connection settings:
+
+```text
+Network type: MySQL (TCP/IP)
+Hostname: 127.0.0.1
+Port: 3307
+User: any value
+Password: empty or any value
+Database: tsunamidb
+```
+
+Change the port before starting the server:
+
+```powershell
+$env:TSU_MYSQL_PORT='3310'
+go run .
+```
+
+The compatibility endpoint supports MySQL handshake/login, `USE`, `PING`, basic
+session `SET` commands, metadata queries used by GUI clients (`SHOW DATABASES`,
+`SHOW TABLES`, `SHOW FULL TABLES`, `SHOW TABLE STATUS`, `SHOW COLUMNS`,
+`SHOW CREATE TABLE`, `SHOW VARIABLES`) and normal relational statements such as
+`CREATE TABLE`, `INSERT`, `SELECT`, `UPDATE`, and `DELETE`.
+
 Supported column types:
 
 ```text

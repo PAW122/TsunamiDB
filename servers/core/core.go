@@ -6,9 +6,11 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	configpkg "github.com/PAW122/TsunamiDB/servers/config"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
+	mysqlcompat "github.com/PAW122/TsunamiDB/servers/mysqlcompat"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	public_api_v1 "github.com/PAW122/TsunamiDB/servers/public-api/v1"
 	subServer "github.com/PAW122/TsunamiDB/servers/subscriptions"
@@ -21,6 +23,7 @@ type coreDeps struct {
 	loadConfig          func(string)
 	startNetworkManager func(int, []string)
 	startWSServer       func(string) error
+	startMySQLServer    func(int) error
 	runPublicAPI        func(int)
 }
 
@@ -30,6 +33,7 @@ func defaultCoreDeps(args []string) coreDeps {
 		loadConfig:          configpkg.LoadConfig,
 		startNetworkManager: networkmanager.StartNetworkManager,
 		startWSServer:       subServer.StartWSServer,
+		startMySQLServer:    mysqlcompat.Run,
 		runPublicAPI:        public_api_v1.RunPublicApi_v1,
 	}
 }
@@ -80,7 +84,27 @@ func runCore(deps coreDeps) error {
 		}
 	}()
 
+	mysqlPort := mysqlCompatPort()
+	fmt.Println("Starting MySQL compatibility server on port:", mysqlPort)
+	go func() {
+		if err := deps.startMySQLServer(mysqlPort); err != nil {
+			log.Println("mysql compatibility server stopped:", err)
+		}
+	}()
+
 	fmt.Println("Starting server on port: ", 5844)
 	deps.runPublicAPI(5844)
 	return nil
+}
+
+func mysqlCompatPort() int {
+	raw := strings.TrimSpace(os.Getenv("TSU_MYSQL_PORT"))
+	if raw == "" {
+		return 3307
+	}
+	port, err := strconv.Atoi(raw)
+	if err != nil || port <= 0 || port > 65535 {
+		return 3307
+	}
+	return port
 }
