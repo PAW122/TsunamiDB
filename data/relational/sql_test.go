@@ -199,6 +199,52 @@ func TestExecuteSQLShowTables(t *testing.T) {
 	}
 }
 
+func TestExecuteSQLAlterColumnSameLayout(t *testing.T) {
+	withTempWorkingDir(t)
+
+	if _, err := ExecuteSQL("CREATE TABLE users (id uint64 PRIMARY KEY, name string(16))"); err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	if _, err := ExecuteSQL("INSERT INTO users (id, name) VALUES (7, 'alice')"); err != nil {
+		t.Fatalf("INSERT: %v", err)
+	}
+
+	altered, err := ExecuteSQL("ALTER TABLE users CHANGE COLUMN id id int64 NOT NULL FIRST")
+	if err != nil {
+		t.Fatalf("ALTER TABLE: %v", err)
+	}
+	if altered.Operation != "alter_table" || altered.Schema == nil {
+		t.Fatalf("alter result = %+v", altered)
+	}
+	loaded, err := LoadSchema("users")
+	if err != nil {
+		t.Fatalf("LoadSchema: %v", err)
+	}
+	id := mustColumn(t, loaded, "id")
+	if id.Type != ColumnTypeInt64 || !id.Indexed {
+		t.Fatalf("id column after alter = %+v, want int64 indexed", id)
+	}
+
+	selected, err := ExecuteSQL("SELECT id, name FROM users WHERE id = 7")
+	if err != nil {
+		t.Fatalf("SELECT after ALTER: %v", err)
+	}
+	if len(selected.Rows) != 1 || selected.Rows[0].Values["id"] != int64(7) {
+		t.Fatalf("selected rows after alter = %+v", selected.Rows)
+	}
+}
+
+func TestExecuteSQLAlterColumnRejectsLayoutChange(t *testing.T) {
+	withTempWorkingDir(t)
+
+	if _, err := ExecuteSQL("CREATE TABLE users (id uint64, name string(16))"); err != nil {
+		t.Fatalf("CREATE TABLE: %v", err)
+	}
+	if _, err := ExecuteSQL("ALTER TABLE users MODIFY COLUMN name string(32)"); !errors.Is(err, ErrInvalidSchema) {
+		t.Fatalf("ALTER layout change error = %v, want ErrInvalidSchema", err)
+	}
+}
+
 func TestExecuteSQLValidation(t *testing.T) {
 	withTempWorkingDir(t)
 

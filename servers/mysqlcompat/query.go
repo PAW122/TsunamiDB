@@ -11,29 +11,33 @@ import (
 )
 
 var (
-	reWhitespace      = regexp.MustCompile(`\s+`)
-	reTrailingLimit   = regexp.MustCompile(`(?i)\s+LIMIT\s+\d+(\s*,\s*\d+|\s+OFFSET\s+\d+)?\s*$`)
-	reQualifiedName   = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9_]*\.`)
-	reCreateEngine    = regexp.MustCompile(`(?i)\)\s+ENGINE\s*=.*$`)
-	reBigintUnsigned  = regexp.MustCompile(`(?i)\b(?:BIGINT|INT|INTEGER)\s+UNSIGNED\b`)
-	reTinyintBool     = regexp.MustCompile(`(?i)\bTINYINT\s*\(\s*1\s*\)`)
-	rePlainText       = regexp.MustCompile(`(?i)\bTEXT\b`)
-	reAutoIncrement   = regexp.MustCompile(`(?i)\s+AUTO_INCREMENT\b`)
-	reDefaultValue    = regexp.MustCompile(`(?i)\s+DEFAULT\s+(NULL|'[^']*'|[^\s,]+)`)
-	reCharsetClause   = regexp.MustCompile(`(?i)\s+(?:CHARACTER\s+SET|CHARSET|COLLATE)\s+[A-Za-z0-9_]+`)
-	reShowFullTables  = regexp.MustCompile(`(?i)^SHOW\s+FULL\s+TABLES(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
-	reShowTables      = regexp.MustCompile(`(?i)^SHOW\s+TABLES(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
-	reShowTableStatus = regexp.MustCompile(`(?i)^SHOW\s+TABLE\s+STATUS(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
-	reShowCreateTable = regexp.MustCompile(`(?i)^SHOW\s+CREATE\s+TABLE\s+(.+)$`)
-	reShowColumns     = regexp.MustCompile(`(?i)^(SHOW\s+(?:FULL\s+)?(?:COLUMNS|FIELDS)\s+FROM|DESCRIBE|DESC)\s+(.+?)(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
-	reShowIndexes     = regexp.MustCompile(`(?i)^SHOW\s+(?:INDEX|INDEXES|KEYS)\s+FROM\s+(.+?)(?:\s+FROM\s+\S+)?(?:\s+WHERE\s+.+)?$`)
-	reShowVariables   = regexp.MustCompile(`(?i)^SHOW\s+(?:GLOBAL\s+|SESSION\s+)?VARIABLES(?:\s+LIKE\s+'([^']*)')?$`)
-	reSelectFromDual  = regexp.MustCompile(`(?i)^SELECT\s+(.+?)\s+FROM\s+DUAL$`)
-	reSelectAlias     = regexp.MustCompile(`(?i)^(.+?)\s+AS\s+(.+)$`)
-	reShowRoutines    = regexp.MustCompile(`(?i)^SHOW\s+(?:PROCEDURE|FUNCTION)\s+STATUS(?:\s+WHERE\s+.+)?$`)
-	reShowTriggers    = regexp.MustCompile(`(?i)^SHOW\s+TRIGGERS(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'[^']*')?(?:\s+WHERE\s+.+)?$`)
-	reShowEvents      = regexp.MustCompile(`(?i)^SHOW\s+EVENTS(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'[^']*')?(?:\s+WHERE\s+.+)?$`)
-	reUse             = regexp.MustCompile(`(?i)^USE\s+(.+)$`)
+	reWhitespace       = regexp.MustCompile(`\s+`)
+	reTrailingLimit    = regexp.MustCompile(`(?i)\s+LIMIT\s+\d+(\s*,\s*\d+|\s+OFFSET\s+\d+)?\s*$`)
+	reQualifiedName    = regexp.MustCompile(`\b[A-Za-z][A-Za-z0-9_]*\.`)
+	reCreateEngine     = regexp.MustCompile(`(?i)\)\s+ENGINE\s*=.*$`)
+	reAlertTypo        = regexp.MustCompile(`(?i)^ALERT\s+TABLE\b`)
+	reIntWidthUnsigned = regexp.MustCompile(`(?i)\b(?:BIGINT|INT|INTEGER)\s*\(\s*\d+\s*\)\s+UNSIGNED\b`)
+	reBigintUnsigned   = regexp.MustCompile(`(?i)\b(?:BIGINT|INT|INTEGER)\s+UNSIGNED\b`)
+	reIntWidth         = regexp.MustCompile(`(?i)\b(?:BIGINT|INT|INTEGER)\s*\(\s*\d+\s*\)`)
+	reTinyintBool      = regexp.MustCompile(`(?i)\bTINYINT\s*\(\s*1\s*\)`)
+	rePlainText        = regexp.MustCompile(`(?i)\bTEXT\b`)
+	reAutoIncrement    = regexp.MustCompile(`(?i)\s+AUTO_INCREMENT\b`)
+	reDefaultValue     = regexp.MustCompile(`(?i)\s+DEFAULT\s+(NULL|'[^']*'|[^\s,]+)`)
+	reCharsetClause    = regexp.MustCompile(`(?i)\s+(?:CHARACTER\s+SET|CHARSET|COLLATE)\s+[A-Za-z0-9_]+`)
+	reColumnComment    = regexp.MustCompile(`(?i)\s+COMMENT\s+'[^']*'`)
+	reShowFullTables   = regexp.MustCompile(`(?i)^SHOW\s+FULL\s+TABLES(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
+	reShowTables       = regexp.MustCompile(`(?i)^SHOW\s+TABLES(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
+	reShowTableStatus  = regexp.MustCompile(`(?i)^SHOW\s+TABLE\s+STATUS(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
+	reShowCreateTable  = regexp.MustCompile(`(?i)^SHOW\s+CREATE\s+TABLE\s+(.+)$`)
+	reShowColumns      = regexp.MustCompile(`(?i)^(SHOW\s+(?:FULL\s+)?(?:COLUMNS|FIELDS)\s+FROM|DESCRIBE|DESC)\s+(.+?)(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'([^']*)')?$`)
+	reShowIndexes      = regexp.MustCompile(`(?i)^SHOW\s+(?:INDEX|INDEXES|KEYS)\s+FROM\s+(.+?)(?:\s+FROM\s+\S+)?(?:\s+WHERE\s+.+)?$`)
+	reShowVariables    = regexp.MustCompile(`(?i)^SHOW\s+(?:GLOBAL\s+|SESSION\s+)?VARIABLES(?:\s+LIKE\s+'([^']*)')?$`)
+	reSelectFromDual   = regexp.MustCompile(`(?i)^SELECT\s+(.+?)\s+FROM\s+DUAL$`)
+	reSelectAlias      = regexp.MustCompile(`(?i)^(.+?)\s+AS\s+(.+)$`)
+	reShowRoutines     = regexp.MustCompile(`(?i)^SHOW\s+(?:PROCEDURE|FUNCTION)\s+STATUS(?:\s+WHERE\s+.+)?$`)
+	reShowTriggers     = regexp.MustCompile(`(?i)^SHOW\s+TRIGGERS(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'[^']*')?(?:\s+WHERE\s+.+)?$`)
+	reShowEvents       = regexp.MustCompile(`(?i)^SHOW\s+EVENTS(?:\s+FROM\s+\S+)?(?:\s+LIKE\s+'[^']*')?(?:\s+WHERE\s+.+)?$`)
+	reUse              = regexp.MustCompile(`(?i)^USE\s+(.+)$`)
 )
 
 func executeCompatQuery(db, query string) (*queryResult, error) {
@@ -261,13 +265,17 @@ func unquoteMySQLIdentifiers(query string) string {
 func normalizeRelationalSQL(query string) string {
 	query = reTrailingLimit.ReplaceAllString(query, "")
 	query = reQualifiedName.ReplaceAllString(query, "")
+	query = reAlertTypo.ReplaceAllString(query, "ALTER TABLE")
 	query = reCreateEngine.ReplaceAllString(query, ")")
+	query = reIntWidthUnsigned.ReplaceAllString(query, "uint64")
 	query = reBigintUnsigned.ReplaceAllString(query, "uint64")
+	query = reIntWidth.ReplaceAllString(query, "int64")
 	query = reTinyintBool.ReplaceAllString(query, "bool")
 	query = rePlainText.ReplaceAllString(query, "string(255)")
 	query = reAutoIncrement.ReplaceAllString(query, "")
 	query = reDefaultValue.ReplaceAllString(query, "")
 	query = reCharsetClause.ReplaceAllString(query, "")
+	query = reColumnComment.ReplaceAllString(query, "")
 	return strings.TrimSpace(query)
 }
 
@@ -1097,8 +1105,20 @@ func sqlResultToMySQL(query string, result *relational.SQLResult) (*queryResult,
 func selectSQLResultToMySQL(query string, result *relational.SQLResult) (*queryResult, error) {
 	names := selectColumnNames(query, result)
 	columns := make([]column, 0, len(names))
+	schema, _ := relational.LoadSchema(result.Table)
 	for _, name := range names {
-		columns = append(columns, columnForResultValue(name, firstResultValue(result, name)))
+		if schema != nil {
+			if relCol, ok := schemaColumnByName(schema, name); ok {
+				columns = append(columns, columnForRelationalColumn(schema.Name, relCol))
+				continue
+			}
+		}
+		col := columnForResultValue(name, firstResultValue(result, name))
+		if result.Table != "" {
+			col.table = result.Table
+			col.orgTable = result.Table
+		}
+		columns = append(columns, col)
 	}
 
 	rows := make([][]any, 0, len(result.Rows))
@@ -1121,7 +1141,17 @@ func selectColumnNames(query string, result *relational.SQLResult) []string {
 	from := strings.Index(upper, " FROM ")
 	if from > len("SELECT ") {
 		projection := strings.TrimSpace(query[len("SELECT "):from])
-		if projection != "*" {
+		if projection == "*" {
+			if result.Table != "" {
+				if schema, err := relational.LoadSchema(result.Table); err == nil {
+					names := make([]string, 0, len(schema.Columns))
+					for _, col := range schema.Columns {
+						names = append(names, col.Name)
+					}
+					return names
+				}
+			}
+		} else {
 			parts := strings.Split(projection, ",")
 			names := make([]string, 0, len(parts))
 			for _, part := range parts {
@@ -1136,7 +1166,7 @@ func selectColumnNames(query string, result *relational.SQLResult) []string {
 		}
 	}
 
-	names := []string{"row_id"}
+	names := make([]string, 0)
 	if result.Table != "" {
 		if schema, err := relational.LoadSchema(result.Table); err == nil {
 			for _, col := range schema.Columns {
@@ -1145,7 +1175,7 @@ func selectColumnNames(query string, result *relational.SQLResult) []string {
 			return names
 		}
 	}
-	seen := map[string]struct{}{"row_id": {}}
+	seen := map[string]struct{}{}
 	for _, row := range result.Rows {
 		for name := range row.Values {
 			if _, ok := seen[name]; ok {
@@ -1155,8 +1185,17 @@ func selectColumnNames(query string, result *relational.SQLResult) []string {
 			names = append(names, name)
 		}
 	}
-	sort.Strings(names[1:])
+	sort.Strings(names)
 	return names
+}
+
+func schemaColumnByName(schema *relational.Schema, name string) (relational.Column, bool) {
+	for _, col := range schema.Columns {
+		if strings.EqualFold(col.Name, name) {
+			return col, true
+		}
+	}
+	return relational.Column{}, false
 }
 
 func cleanProjectionName(part string) string {
@@ -1205,6 +1244,44 @@ func columnForResultValue(name string, value any) column {
 		col.decimals = 31
 	case nil:
 		col.typ = columnTypeNull
+	}
+	return col
+}
+
+func columnForRelationalColumn(table string, relCol relational.Column) column {
+	col := column{
+		schema:   defaultDatabase,
+		table:    table,
+		orgTable: table,
+		name:     relCol.Name,
+		orgName:  relCol.Name,
+		length:   uint32(relCol.Size),
+	}
+	if col.length == 0 {
+		col.length = 1024
+	}
+	switch relCol.Type {
+	case relational.ColumnTypeBool:
+		col.typ = columnTypeTiny
+		col.length = 1
+	case relational.ColumnTypeInt64:
+		col.typ = columnTypeLongLong
+		col.length = 20
+	case relational.ColumnTypeUint64, relational.ColumnTypeBlobPtr, relational.ColumnTypeRowRef:
+		col.typ = columnTypeLongLong
+		col.flags = columnFlagUnsigned
+		col.length = 20
+	case relational.ColumnTypeFloat64:
+		col.typ = columnTypeDouble
+		col.length = 32
+		col.decimals = 31
+	case relational.ColumnTypeString:
+		col.typ = columnTypeVarString
+	default:
+		col.typ = columnTypeVarString
+	}
+	if relCol.Indexed {
+		col.flags |= columnFlagPriKey
 	}
 	return col
 }

@@ -51,6 +51,7 @@ type sqlOrder struct {
 //   - SELECT *|column,... FROM table [WHERE column = value|column LIKE value|row_id = value] [ORDER BY column [ASC|DESC]]
 //   - UPDATE table SET column = value, ... [WHERE ...]
 //   - DELETE FROM table [WHERE ...]
+//   - ALTER TABLE table MODIFY|CHANGE [COLUMN] column type ...
 //   - SHOW TABLES
 func ExecuteSQL(query string) (*SQLResult, error) {
 	tokens, err := lexSQL(query)
@@ -179,6 +180,8 @@ func (p *sqlParser) parseStatement() (*SQLResult, error) {
 		return p.parseUpdate()
 	case p.matchKeyword("DELETE"):
 		return p.parseDelete()
+	case p.matchKeyword("ALTER"):
+		return p.parseAlter()
 	case p.matchKeyword("SHOW"):
 		return p.parseShow()
 	default:
@@ -286,12 +289,24 @@ func (p *sqlParser) parseColumnDefinition(name string) (Column, error) {
 	switch strings.ToLower(typeName) {
 	case "uint64", "unsigned", "bigserial":
 		column.Type = ColumnTypeUint64
+		if err := p.parseOptionalFixedTypeWidth(); err != nil {
+			return Column{}, err
+		}
 	case "int64", "integer", "int", "bigint":
 		column.Type = ColumnTypeInt64
+		if err := p.parseOptionalFixedTypeWidth(); err != nil {
+			return Column{}, err
+		}
 	case "bool", "boolean":
 		column.Type = ColumnTypeBool
+		if err := p.parseOptionalFixedTypeWidth(); err != nil {
+			return Column{}, err
+		}
 	case "float64", "float", "double", "real":
 		column.Type = ColumnTypeFloat64
+		if err := p.parseOptionalFixedTypeWidth(); err != nil {
+			return Column{}, err
+		}
 	case "blob_ptr":
 		column.Type = ColumnTypeBlobPtr
 	case "row_ref":
@@ -353,6 +368,16 @@ func (p *sqlParser) parseColumnDefinition(name string) (Column, error) {
 	}
 }
 
+func (p *sqlParser) parseOptionalFixedTypeWidth() error {
+	if !p.matchSymbol("(") {
+		return nil
+	}
+	if _, err := p.expectUintLiteral(); err != nil {
+		return err
+	}
+	return p.expectSymbol(")")
+}
+
 func (p *sqlParser) parseCreateIndex(trigram bool) (*SQLResult, error) {
 	if !p.checkKeyword("ON") {
 		if _, err := p.expectIdentifier(); err != nil {
@@ -390,6 +415,62 @@ func (p *sqlParser) parseCreateIndex(trigram bool) (*SQLResult, error) {
 		operation = "create_trigram_index"
 	}
 	return &SQLResult{Operation: operation, Table: table}, nil
+}
+
+func (p *sqlParser) parseAlter() (*SQLResult, error) {
+	if err := p.expectKeyword("TABLE"); err != nil {
+		return nil, err
+	}
+	table, err := p.expectIdentifier()
+	if err != nil {
+		return nil, err
+	}
+
+	var oldColumn string
+	var nextColumn string
+	switch {
+	case p.matchKeyword("MODIFY"):
+		_ = p.matchKeyword("COLUMN")
+		nextColumn, err = p.expectIdentifier()
+		oldColumn = nextColumn
+	case p.matchKeyword("CHANGE"):
+		_ = p.matchKeyword("COLUMN")
+		oldColumn, err = p.expectIdentifier()
+		if err != nil {
+			return nil, err
+		}
+		nextColumn, err = p.expectIdentifier()
+	default:
+		return nil, fmt.Errorf("%w: expected MODIFY or CHANGE after ALTER TABLE", ErrInvalidSQL)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	column, err := p.parseColumnDefinition(nextColumn)
+	if err != nil {
+		return nil, err
+	}
+	if err := p.parseOptionalAlterColumnPosition(); err != nil {
+		return nil, err
+	}
+	schema, err := AlterColumn(table, oldColumn, column)
+	if err != nil {
+		return nil, err
+	}
+	return &SQLResult{Operation: "alter_table", Table: table, Schema: schema}, nil
+}
+
+func (p *sqlParser) parseOptionalAlterColumnPosition() error {
+	switch {
+	case p.matchKeyword("FIRST"):
+		return nil
+	case p.matchKeyword("AFTER"):
+		_, err := p.expectIdentifier()
+		return err
+	default:
+		return nil
+	}
 }
 
 func (p *sqlParser) parseInsert() (*SQLResult, error) {

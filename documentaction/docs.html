@@ -51,7 +51,7 @@
     </aside>
     <main class="content">
       <h1>TsunamiDB Documentation</h1>
-      <p class="lead">TsunamiDB is a fast key-value database with HTTP endpoints, an in-process Go client library, P2P reads, encrypted values, incremental tables, and WebSocket subscriptions.</p>
+      <p class="lead">TsunamiDB is a fast key-value database with HTTP endpoints, an in-process Go client library, P2P reads, encrypted values, incremental tables, WebSocket subscriptions and a minimal MySQL-compatible endpoint for relational tables.</p>
 
       <div class="grid">
         <section class="card">
@@ -61,8 +61,13 @@
         </section>
         <section class="card">
           <h3>Relational API</h3>
-          <p>Fixed-row relational tables with schemas, row CRUD, equality and LIKE selects, compact SQL, indexes and compaction. Includes a manual browser tool.</p>
+          <p>Fixed-row relational tables with schemas, row CRUD, equality and LIKE selects, compact SQL, indexes, compaction and MySQL-compatible client access.</p>
           <a href="./http/relational.html">Open relational docs</a>
+        </section>
+        <section class="card">
+          <h3>MySQL Compatibility</h3>
+          <p>TCP MySQL wire-protocol endpoint on <code>127.0.0.1:3307</code> for tools such as HeidiSQL. It maps client SQL and metadata queries to the relational engine.</p>
+          <a href="./http/relational.html#mysql-compatibility-endpoint">Open MySQL compat docs</a>
         </section>
         <section class="card">
           <h3>Network Manager</h3>
@@ -120,6 +125,7 @@ go build -buildvcs=false -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll<
         <thead><tr><th>Service</th><th>Default</th><th>Purpose</th></tr></thead>
         <tbody>
           <tr><td>HTTP Public API</td><td><code>http://localhost:5844</code></td><td>Application reads, writes, deletes, incremental tables, health and subscription token endpoints.</td></tr>
+          <tr><td>MySQL Compatibility</td><td><code>127.0.0.1:3307</code></td><td>MySQL wire-protocol endpoint for HeidiSQL and simple MySQL clients. Change with <code>TSU_MYSQL_PORT</code>.</td></tr>
           <tr><td>WebSocket Subscriptions</td><td><code>ws://localhost:5845/sub</code></td><td>Client-side real-time events after a one-time auth key is minted.</td></tr>
           <tr><td>P2P Network Manager</td><td>Optional CLI argument, for example <code>5845</code></td><td>Internal node-to-node WebSocket mesh used for distributed reads. Disabled when no port is provided.</td></tr>
         </tbody>
@@ -174,6 +180,8 @@ version: 0.8.0
 root_doc: documentaction/docs.html
 sections: HTTP API, Go Lib, DLL Lib
 base_http_url: http://localhost:5844
+mysql_compat_url: 127.0.0.1:3307
+mysql_compat_port_env: TSU_MYSQL_PORT
 subscription_ws_url: ws://localhost:5845/sub
 network_manager: optional CLI port; disabled when omitted
 p2p_table_routing: read requests prefer peers advertising the requested table

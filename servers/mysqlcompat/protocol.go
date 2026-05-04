@@ -6,11 +6,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/PAW122/TsunamiDB/data/relational"
 )
 
 var nextConnectionID uint32 = 100
@@ -33,17 +36,32 @@ func ListenAndServe(addr string) error {
 	}
 	defer listener.Close()
 
+	return Serve(listener)
+}
+
+// Serve accepts MySQL-compatible connections from listener until it is closed.
+func Serve(listener net.Listener) error {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			return err
 		}
 		go func() {
-			if err := handleConn(conn); err != nil && !errors.Is(err, net.ErrClosed) {
+			if err := handleConn(conn); err != nil && !isExpectedConnClose(err) {
 				log.Println("mysql compatibility connection stopped:", err)
 			}
 		}()
 	}
+}
+
+func isExpectedConnClose(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "forcibly closed") ||
+		strings.Contains(message, "use of closed network connection") ||
+		strings.Contains(message, "connection reset by peer")
 }
 
 func handleConn(conn net.Conn) error {
@@ -207,7 +225,7 @@ func (s *session) commandLoop() error {
 				return err
 			}
 		case comFieldList:
-			if err := s.writeEOF(); err != nil {
+			if err := s.handleFieldList(payload[1:]); err != nil {
 				return err
 			}
 		default:
@@ -216,6 +234,24 @@ func (s *session) commandLoop() error {
 			}
 		}
 	}
+}
+
+func (s *session) handleFieldList(payload []byte) error {
+	table := string(payload)
+	if idx := bytes.IndexByte(payload, 0); idx >= 0 {
+		table = string(payload[:idx])
+	}
+	table = cleanTableName(table)
+	schema, err := relational.LoadSchema(table)
+	if err != nil {
+		return s.writeError(1064, "42000", err.Error())
+	}
+	for _, relCol := range schema.Columns {
+		if err := s.writeColumn(columnForRelationalColumn(schema.Name, relCol)); err != nil {
+			return err
+		}
+	}
+	return s.writeEOF()
 }
 
 func (s *session) handleQuery(query string) error {
@@ -295,11 +331,23 @@ func (s *session) writeResultset(result *queryResult) error {
 func (s *session) writeColumn(col column) error {
 	var payload bytes.Buffer
 	writeLengthEncodedString(&payload, "def")
-	writeLengthEncodedString(&payload, s.db)
-	writeLengthEncodedString(&payload, "")
-	writeLengthEncodedString(&payload, "")
+	schema := col.schema
+	if schema == "" {
+		schema = s.db
+	}
+	writeLengthEncodedString(&payload, schema)
+	writeLengthEncodedString(&payload, col.table)
+	orgTable := col.orgTable
+	if orgTable == "" {
+		orgTable = col.table
+	}
+	writeLengthEncodedString(&payload, orgTable)
 	writeLengthEncodedString(&payload, col.name)
-	writeLengthEncodedString(&payload, col.name)
+	orgName := col.orgName
+	if orgName == "" {
+		orgName = col.name
+	}
+	writeLengthEncodedString(&payload, orgName)
 	payload.WriteByte(0x0c)
 	_ = binary.Write(&payload, binary.LittleEndian, uint16(33))
 	if col.length == 0 {

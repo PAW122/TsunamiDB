@@ -58,6 +58,8 @@
 version: 0.8.0
 documentation_root: documentaction/docs.html
 http_base_url: http://localhost:5844
+mysql_compat_url: 127.0.0.1:3307
+mysql_compat_port_env: TSU_MYSQL_PORT
 subscription_ws_url: ws://localhost:5845/sub
 network_manager: optional CLI port; disabled when omitted
 go_import: github.com/PAW122/TsunamiDB/lib/dbclient
@@ -75,6 +77,7 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
           <tr><td>Encrypted save/read</td><td><code>/save_encrypted</code>, <code>/read_encrypted</code></td><td><a href="../http/encrypted.html">Encrypted</a></td><td><code>routes/save_encrypted.go</code>, <code>routes/read_encrypted.go</code></td></tr>
           <tr><td>Incremental append/read/delete</td><td><code>/save_inc</code>, <code>/read_inc</code>, <code>/delete_inc</code></td><td><a href="../http/incremental.html">Incremental</a></td><td><code>routes/inc_*.go</code></td></tr>
           <tr><td>Relational schema, CRUD, select and SQL</td><td><code>/rel/schema/{table}</code>, <code>/rel/{table}/row/{rowID}</code>, <code>/rel/{table}/select</code>, <code>/rel/sql</code></td><td><a href="../http/relational.html">Relational</a></td><td><code>routes/relational.go</code>, <code>data/relational/*.go</code></td></tr>
+          <tr><td>MySQL-compatible SQL clients</td><td><code>127.0.0.1:3307</code>, <code>TSU_MYSQL_PORT</code>, HeidiSQL, MySQL TCP protocol</td><td><a href="../http/relational.html#mysql-compatibility-endpoint">Relational</a></td><td><code>servers/mysqlcompat/*.go</code>, <code>data/relational/*.go</code></td></tr>
           <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
           <tr><td>P2P network layer</td><td><code>network manager</code>, table catalogs, distributed reads</td><td><a href="../http/network-manager.html">Network Manager</a></td><td><code>servers/network-manager/*.go</code></td></tr>
           <tr><td>Regex key search</td><td><code>GET /key_by_regex/{table}?regex=...&amp;max=...</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/keyByRegex.go</code></td></tr>

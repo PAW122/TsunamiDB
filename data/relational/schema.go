@@ -96,6 +96,69 @@ func ListTables() ([]Schema, error) {
 	return tables, nil
 }
 
+// AlterColumn updates one column definition when the fixed row layout is unchanged.
+// It is intended for metadata-compatible changes such as uint64 <-> int64.
+func AlterColumn(table, oldColumn string, next Column) (*Schema, error) {
+	lock := tableLock(table)
+	lock.Lock()
+	defer lock.Unlock()
+
+	current, err := LoadSchema(table)
+	if err != nil {
+		return nil, err
+	}
+
+	index := -1
+	for i, column := range current.Columns {
+		if strings.EqualFold(column.Name, oldColumn) {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		return nil, fmt.Errorf("%w: column %q not found", ErrInvalidSchema, oldColumn)
+	}
+
+	previous := current.Columns[index]
+	if !strings.EqualFold(previous.Name, next.Name) {
+		return nil, fmt.Errorf("%w: ALTER COLUMN rename is not supported", ErrInvalidSchema)
+	}
+	next.Name = previous.Name
+	next.Indexed = previous.Indexed || next.Indexed
+	next.TrigramIndexed = previous.TrigramIndexed || next.TrigramIndexed
+	if next.RefTable == "" {
+		next.RefTable = previous.RefTable
+	}
+	if next.Size == 0 && previous.Type == ColumnTypeString {
+		next.Size = previous.Size
+	}
+
+	candidate := *current
+	candidate.Columns = append([]Column(nil), current.Columns...)
+	candidate.Columns[index] = next
+
+	calculated, err := CalculateSchema(candidate)
+	if err != nil {
+		return nil, err
+	}
+	if calculated.RowSize != current.RowSize || calculated.RowHeaderSize != current.RowHeaderSize {
+		return nil, fmt.Errorf("%w: ALTER COLUMN requiring row layout change is not supported", ErrInvalidSchema)
+	}
+	for i := range calculated.Columns {
+		if calculated.Columns[i].Offset != current.Columns[i].Offset || calculated.Columns[i].Size != current.Columns[i].Size {
+			return nil, fmt.Errorf("%w: ALTER COLUMN requiring row layout change is not supported", ErrInvalidSchema)
+		}
+	}
+
+	if err := persistSchema(calculated); err != nil {
+		return nil, err
+	}
+	if err := rebuildIndexesLocked(calculated); err != nil {
+		return nil, err
+	}
+	return &calculated, nil
+}
+
 func persistSchema(schema Schema) error {
 	data, err := marshalJSON(schema, "", "  ")
 	if err != nil {

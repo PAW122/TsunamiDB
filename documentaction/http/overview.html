@@ -50,7 +50,7 @@
     </aside>
     <main class="content">
       <h1>HTTP API Overview</h1>
-      <p class="lead">HTTP API is the language-neutral interface to TsunamiDB. Base URL: <code>http://localhost:5844</code>.</p>
+      <p class="lead">HTTP API is the language-neutral interface to TsunamiDB. Base URL: <code>http://localhost:5844</code>. Relational tables are also available through a minimal MySQL-compatible TCP endpoint on <code>127.0.0.1:3307</code>.</p>
 
       <h2>Endpoint Index</h2>
       <table>
@@ -65,6 +65,7 @@
           <tr><td>GET</td><td><code>/read_inc/{table}/{key}</code></td><td>Read incremental entries by id, key, first N or last N.</td><td><a href="./incremental.html">Incremental</a></td></tr>
           <tr><td>GET</td><td><code>/delete_inc/{table}/{key}</code></td><td>Delete incremental table metadata and backing file.</td><td><a href="./incremental.html">Incremental</a></td></tr>
           <tr><td>POST/GET/PATCH/DELETE</td><td><code>/rel/...</code>, <code>/rel/sql</code></td><td>Relational schemas, row CRUD, selects, compact SQL, indexes and compaction.</td><td><a href="./relational.html">Relational</a></td></tr>
+          <tr><td>TCP/MySQL</td><td><code>127.0.0.1:3307</code></td><td>MySQL-compatible access to relational tables for HeidiSQL and simple MySQL clients.</td><td><a href="./relational.html#mysql-compatibility-endpoint">Relational</a></td></tr>
           <tr><td>POST</td><td><code>/subscriptions/enable</code></td><td>Mint a one-time subscription auth key.</td><td><a href="./subscriptions.html">Subscriptions</a></td></tr>
           <tr><td>POST</td><td><code>/subscriptions/disable</code></td><td>Unsubscribe active sockets from one key.</td><td><a href="./subscriptions.html">Subscriptions</a></td></tr>
           <tr><td>Docs</td><td><code>network manager</code></td><td>P2P routing, table catalogs and transport settings.</td><td><a href="./network-manager.html">Network Manager</a></td></tr>
@@ -103,8 +104,10 @@
 curl http://localhost:5844/read/users/user-1
 curl http://localhost:5844/free/users/user-1</code></pre>
 
-      <div class="machine-block">ai_keywords: http api, endpoint list, status codes, base url, public api
-source_files: servers/public-api/v1/Api.go, servers/public-api/v1/routes/*.go</div>
+      <div class="machine-block">ai_keywords: http api, endpoint list, status codes, base url, public api, mysql compat, heidisql, mysql wire protocol
+mysql_compat_url: 127.0.0.1:3307
+mysql_compat_port_env: TSU_MYSQL_PORT
+source_files: servers/public-api/v1/Api.go, servers/public-api/v1/routes/*.go, servers/mysqlcompat/*.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

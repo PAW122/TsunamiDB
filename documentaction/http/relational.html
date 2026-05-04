@@ -50,10 +50,10 @@
     </aside>
     <main class="content">
       <h1>Relational HTTP API</h1>
-      <p class="lead">The relational API exposes fixed-row tables through public-api v1 under <code>/rel/...</code>. It supports schemas, row CRUD, equality and LIKE selects, indexes, compaction and a compact SQL subset.</p>
+      <p class="lead">The relational API exposes fixed-row tables through public-api v1 under <code>/rel/...</code>. It supports schemas, row CRUD, equality and LIKE selects, indexes, compaction, a compact SQL subset and a MySQL-compatible TCP endpoint for tools such as HeidiSQL.</p>
 
       <div class="note">
-        Source files: <code>data/relational</code>, <code>servers/public-api/v1/routes/relational.go</code>, and route registration in <code>servers/public-api/v1/Api.go</code>.
+        Source files: <code>data/relational</code>, <code>servers/public-api/v1/routes/relational.go</code>, MySQL compatibility in <code>servers/mysqlcompat</code>, and route registration in <code>servers/public-api/v1/Api.go</code>.
       </div>
 
       <h2>Current Storage Model</h2>
@@ -128,7 +128,9 @@ WHERE row_id = 0;
 DELETE FROM products WHERE id = 1;
 
 CREATE INDEX products_price_idx ON products (price);
-CREATE TRIGRAM INDEX ON products (name);</code></pre>
+CREATE TRIGRAM INDEX ON products (name);
+
+ALTER TABLE products CHANGE COLUMN price price int64;</code></pre>
 
       <h3>SQL Result</h3>
       <pre><code class="language-json">{
@@ -145,7 +147,43 @@ CREATE TRIGRAM INDEX ON products (name);</code></pre>
     }
   ]
 }</code></pre>
-      <p>Supported SQL column types are <code>uint64</code>, <code>int64</code>, <code>bool</code>, <code>float64</code>, <code>string(N)</code>, <code>string[N]</code>, <code>blob_ptr</code> and <code>row_ref</code>. <code>WHERE</code> supports one <code>=</code> or <code>LIKE</code> predicate, including the synthetic <code>row_id</code> column. <code>ORDER BY</code> supports <code>ASC</code> and <code>DESC</code>. Joins, ranges, aggregates, <code>ALTER TABLE</code>, <code>DROP TABLE</code> and multi-statement batches are not implemented.</p>
+      <p>Supported SQL column types are <code>uint64</code>, <code>int64</code>, <code>bool</code>, <code>float64</code>, <code>string(N)</code>, <code>string[N]</code>, <code>blob_ptr</code> and <code>row_ref</code>. <code>WHERE</code> supports one <code>=</code> or <code>LIKE</code> predicate, including the synthetic <code>row_id</code> column. <code>ORDER BY</code> supports <code>ASC</code> and <code>DESC</code>. <code>ALTER TABLE ... MODIFY COLUMN</code> and <code>ALTER TABLE ... CHANGE COLUMN</code> are implemented only for changes that keep the fixed row layout compatible. Joins, ranges, aggregates, <code>DROP TABLE</code> and multi-statement batches are not implemented.</p>
+
+      <h2 id="mysql-compatibility-endpoint">MySQL Compatibility Endpoint</h2>
+      <p>TsunamiDB also starts a minimal MySQL wire-protocol server backed by the same relational engine. It is intended for SQL clients and database GUI tools that expect a MySQL/MariaDB connection, including HeidiSQL. Default endpoint: <code>127.0.0.1:3307</code>. Set <code>TSU_MYSQL_PORT</code> before startup to use another port.</p>
+      <pre><code class="language-powershell">$env:TSU_MYSQL_PORT="3310"
+.dist/TsunamiDB.exe</code></pre>
+
+      <h3>HeidiSQL Connection</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Value</th></tr></thead>
+        <tbody>
+          <tr><td>Network type</td><td><code>MySQL (TCP/IP)</code></td></tr>
+          <tr><td>Host</td><td><code>127.0.0.1</code></td></tr>
+          <tr><td>Port</td><td><code>3307</code></td></tr>
+          <tr><td>User</td><td>Any value accepted by the compatibility layer.</td></tr>
+          <tr><td>Password</td><td>Optional; authentication is not enforced by the compatibility layer.</td></tr>
+          <tr><td>Database</td><td><code>tsunamidb</code></td></tr>
+        </tbody>
+      </table>
+
+      <h3>Supported MySQL Client Behavior</h3>
+      <ul>
+        <li>Protocol handshake, login, <code>PING</code>, <code>USE</code>, session <code>SET</code>, <code>COM_QUERY</code> and <code>COM_FIELD_LIST</code>.</li>
+        <li>Metadata used by GUI clients: <code>SHOW DATABASES</code>, <code>SHOW TABLES</code>, <code>SHOW FULL TABLES</code>, <code>SHOW TABLE STATUS</code>, <code>SHOW COLUMNS</code>, <code>SHOW INDEXES</code>, <code>SHOW CREATE TABLE</code>, <code>SHOW VARIABLES</code>, empty procedure/trigger/event result sets and selected <code>information_schema</code> tables.</li>
+        <li>Data statements: <code>CREATE TABLE</code>, <code>INSERT</code>, <code>SELECT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>CREATE INDEX</code>, <code>CREATE TRIGRAM INDEX</code> and limited <code>ALTER TABLE ... MODIFY/CHANGE COLUMN</code>.</li>
+      </ul>
+
+      <h3>MySQL Compatibility Limits</h3>
+      <ul>
+        <li>This is not a full MySQL or MariaDB server. It implements the protocol and metadata subset needed by common clients.</li>
+        <li>Prepared statements (<code>COM_STMT_*</code>), transactions, joins, aggregates, range predicates, <code>DROP TABLE</code> and multi-statement batches are not implemented.</li>
+        <li><code>SELECT *</code> returns real table columns. The synthetic <code>row_id</code> column is available only when explicitly selected.</li>
+        <li><code>ALTER TABLE</code> accepts only fixed-layout-compatible changes; for example MySQL <code>INT</code> maps to TsunamiDB <code>int64</code>, while changing a fixed string size is rejected.</li>
+      </ul>
+
+      <p>Compatibility tests use a real MySQL Go client driver in <code>servers/mysqlcompat/client_integration_test.go</code>. To run the main flow directly:</p>
+      <pre><code class="language-bash">go test ./servers/mysqlcompat -run TestMySQLClientCompatibilityFlow -v</code></pre>
 
       <h2>Create Table</h2>
       <pre><code class="language-bash">curl -X POST http://localhost:5844/rel/schema/products \
@@ -269,10 +307,13 @@ curl -X POST http://localhost:5844/rel/products/compact</code></pre>
         <li>Update and delete rebuild configured indexes instead of applying a minimal delta update.</li>
         <li>Row-reference joins are currently available in the Go package, not through HTTP.</li>
         <li>The SQL layer is intentionally compact: one statement per request, no joins, no aggregates and no multi-statement batches.</li>
+        <li>The MySQL compatibility layer targets simple SQL clients and GUI workflows; it does not aim to emulate the complete MySQL server surface.</li>
       </ul>
 
-      <div class="machine-block">ai_keywords: relational db, fixed rows, schema, CRUD, select, sql, /rel/sql, eq, like, order by, trigram index, compaction, row_id
-source_files: data/relational/*.go, servers/public-api/v1/routes/relational.go, tools/relational-admin.html</div>
+      <div class="machine-block">ai_keywords: relational db, fixed rows, schema, CRUD, select, sql, /rel/sql, mysql compat, heidisql, mysql wire protocol, COM_QUERY, COM_FIELD_LIST, information_schema, show tables, show columns, show indexes, alter table, eq, like, order by, trigram index, compaction, row_id
+mysql_compat_url: 127.0.0.1:3307
+mysql_compat_port_env: TSU_MYSQL_PORT
+source_files: data/relational/*.go, servers/public-api/v1/routes/relational.go, servers/mysqlcompat/*.go, tools/relational-admin.html</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

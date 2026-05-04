@@ -45,7 +45,11 @@ const (
 )
 
 type column struct {
+	schema   string
+	table    string
+	orgTable string
 	name     string
+	orgName  string
 	typ      byte
 	flags    uint16
 	length   uint32

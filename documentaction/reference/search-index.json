@@ -4,6 +4,7 @@
   "root": "documentaction/docs.html",
   "ports": {
     "http_public_api": "http://localhost:5844",
+    "mysql_compat": "127.0.0.1:3307; change with TSU_MYSQL_PORT",
     "subscriptions_websocket": "ws://localhost:5845/sub",
     "network_manager": "optional CLI argument, example 5845; disabled when omitted"
   },
@@ -55,6 +56,14 @@
       "page": "../http/relational.html",
       "keywords": ["relational", "schema", "fixed rows", "row_id", "CRUD", "select", "sql", "SQLResult", "eq", "like", "order by", "index", "trigram", "compact", "benchmark", "benchmarks", "performance", "throughput", "actions/s", "reads/s", "rows/s", "selects/s", "related/s", "wide select", "wide-ms", "wide-rows"],
       "source": ["data/relational/*.go", "servers/public-api/v1/routes/relational.go", "tools/relational-admin.html"]
+    },
+    {
+      "id": "mysql-compat",
+      "method": "TCP/MySQL",
+      "path": "127.0.0.1:3307",
+      "page": "../http/relational.html#mysql-compatibility-endpoint",
+      "keywords": ["mysql compat", "mysql compatibility", "mysql wire protocol", "heidisql", "TSU_MYSQL_PORT", "COM_QUERY", "COM_FIELD_LIST", "SHOW DATABASES", "SHOW TABLES", "SHOW FULL TABLES", "SHOW TABLE STATUS", "SHOW COLUMNS", "SHOW INDEXES", "SHOW CREATE TABLE", "SHOW VARIABLES", "information_schema", "CREATE TABLE", "INSERT", "SELECT", "UPDATE", "DELETE", "ALTER TABLE", "MODIFY COLUMN", "CHANGE COLUMN"],
+      "source": ["servers/mysqlcompat/*.go", "servers/mysqlcompat/client_integration_test.go", "data/relational/*.go"]
     },
     {
       "id": "relational-benchmark",

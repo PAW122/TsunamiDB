@@ -67,6 +67,7 @@ func TestExecuteCompatQuerySupportsHeidiMetadata(t *testing.T) {
 		{query: "SELECT * FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA='tsunamidb' AND TABLE_NAME='test' AND REFERENCED_TABLE_NAME IS NOT NULL", wantResultset: true},
 		{query: "SHOW CREATE TABLE `tsunamidb`.`test`", wantResultset: true},
 		{query: "SHOW INDEXES FROM `test` FROM `tsunamidb`", wantResultset: true},
+		{query: "ALTER TABLE `test` CHANGE COLUMN `id` `id` INT(11) NOT NULL FIRST", wantResultset: false},
 	}
 
 	for _, test := range tests {
