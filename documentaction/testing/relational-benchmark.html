@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Relational Benchmark</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">Testing &amp; Benchmarks</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="../http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="../http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/relational.html">Relational</a>
+        <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="../examples/http-go.html">Overview</a>
+          <a class="nav-child" href="../examples/http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="../examples/http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="../examples/http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-health">Meta and Health</a>
+          <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Testing &amp; Benchmarks</p>
+        <a class="nav-parent" href="./relational-benchmark.html">Relational db</a>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Relational db</h1>
+      <p class="lead">Benchmark page for relational storage, indexed selects, relation lookups and throughput-style stress tests.</p>
+
+      <div class="note">
+        Source files: <code>data/relational/relational_benchmark_test.go</code>, <code>tests/special_relational_performance_test.go</code>, and <code>tools/relational-perf-report.ps1</code>.
+      </div>
+
+      <h2>Microbenchmarks</h2>
+      <pre><code class="language-powershell"># microbenchmarks: insert, read, select scan, select indexes, LIKE trigram, row_ref join
+# use fixed benchtime so Go does not repeat expensive table setup during benchmark calibration
+go test ./data/relational -run '^$' -bench BenchmarkRelational -benchmem -benchtime=100x -count=1
+
+# smaller/larger seeded tables for read/select/join benchmarks
+$env:TSU_REL_BENCH_ROWS='1000'
+go test ./data/relational -run '^$' -bench 'BenchmarkRelational/(ReadByRowID|Select|Join)' -benchmem -benchtime=100x -count=1</code></pre>
+
+      <table>
+        <thead><tr><th>Benchmark</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>InsertNoIndex</code></td><td>Insert into a table without secondary indexes.</td></tr>
+          <tr><td><code>InsertEqualityAndTrigramIndexes</code></td><td>Insert into a table with equality and trigram indexes enabled.</td></tr>
+          <tr><td><code>ReadByRowID</code></td><td>Direct lookup of one row by <code>row_id</code>.</td></tr>
+          <tr><td><code>SelectEqualityScan</code></td><td>Equality <code>SELECT</code> without an equality index, so the table is scanned.</td></tr>
+          <tr><td><code>SelectEqualityIndex</code></td><td>Equality <code>SELECT</code> using an equality index.</td></tr>
+          <tr><td><code>SelectLikeScan</code></td><td><code>LIKE</code> query without a trigram index, so the table is scanned.</td></tr>
+          <tr><td><code>SelectLikeTrigramIndex</code></td><td><code>LIKE</code> query using a trigram index.</td></tr>
+          <tr><td><code>JoinRowRefIndexedPredicate</code></td><td>Relation lookup with <code>row_ref</code> and an indexed predicate.</td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>Runs</code></td><td>Number of benchmark iterations.</td></tr>
+          <tr><td><code>Time/op</code></td><td>Average time for one benchmark operation.</td></tr>
+          <tr><td><code>Throughput</code></td><td>Processed MB/s when Go can derive byte volume for that benchmark.</td></tr>
+          <tr><td><code>Memory/op</code></td><td>Heap bytes allocated per operation.</td></tr>
+          <tr><td><code>Allocs/op</code></td><td>Heap allocation count per operation.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Throughput and Saturation Tests</h2>
+      <pre><code class="language-powershell"># throughput-style relational performance test with useful logs
+$env:TSU_SPECIAL_TESTS='1'
+$env:TSU_REL_PERF_DURATION='30s'
+$env:TSU_REL_PERF_WORKERS='1'
+$env:TSU_REL_PERF_ROWS='1000'
+go test ./tests -run TestSpecialRelationalPerformance -count=1 -v
+
+# saturation profiles for pushing the relational layer harder
+$env:TSU_REL_SAT_DURATION='30s'
+$env:TSU_REL_SAT_WORKERS='12'
+$env:TSU_REL_SAT_ROWS='1000'
+$env:TSU_REL_SAT_MODE='read'        # read, insert, select-eq, select-like, related-select, mixed
+go test ./tests -run TestSpecialRelationalSaturation -count=1 -v
+
+# one-command complex relational report
+powershell -ExecutionPolicy Bypass -File .\tools\relational-perf-report.ps1</code></pre>
+
+      <table>
+        <thead><tr><th>Metric</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>actions/s</code></td><td>Total API operations per second: reads, inserts, equality selects, LIKE selects and related selects.</td></tr>
+          <tr><td><code>reads/s</code></td><td><code>ReadRow(...)</code> calls per second. In <code>read</code> mode one read means one row lookup.</td></tr>
+          <tr><td><code>inserts/s</code></td><td><code>InsertRow(...)</code> calls per second.</td></tr>
+          <tr><td><code>selects/s</code></td><td><code>SelectRows(...)</code> calls per second for equality and/or LIKE selects.</td></tr>
+          <tr><td><code>related/s</code></td><td><code>JoinRowRef(...)</code> calls per second.</td></tr>
+          <tr><td><code>rows/s</code></td><td>Rows returned per second by <code>SelectRows(...)</code> and <code>JoinRowRef(...)</code>. This is not the same as <code>actions/s</code>.</td></tr>
+          <tr><td><code>wide-ms</code></td><td>Wall-clock time of an extra broad <code>SelectRows(...)</code> probe that returns many rows before the throughput loop starts. For <code>insert</code> mode the value is <code>n/a</code>.</td></tr>
+          <tr><td><code>wide-rows</code></td><td>Total rows returned by that broad select probe across worker tables.</td></tr>
+        </tbody>
+      </table>
+
+      <table>
+        <thead><tr><th>Mode</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>read</code></td><td>Repeated <code>ReadRow(...)</code> lookups.</td></tr>
+          <tr><td><code>insert</code></td><td>Repeated <code>InsertRow(...)</code> writes.</td></tr>
+          <tr><td><code>select-eq</code></td><td>Repeated equality <code>SelectRows(...)</code> queries.</td></tr>
+          <tr><td><code>select-like</code></td><td>Repeated LIKE <code>SelectRows(...)</code> queries.</td></tr>
+          <tr><td><code>related-select</code></td><td>Repeated <code>JoinRowRef(...)</code> relation queries.</td></tr>
+          <tr><td><code>mixed</code></td><td>Combined loop of <code>ReadRow + SelectRows(eq) + SelectRows(like) + InsertRow</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Example Output</h2>
+      <table>
+        <thead><tr><th>Mode</th><th>Workers</th><th>Rows</th><th>Setup</th><th>Actions/s</th><th>Reads/s</th><th>Inserts/s</th><th>Selects/s</th><th>Related/s</th><th>Rows/s</th><th>Wide-ms</th><th>Wide-rows</th><th>Disk</th></tr></thead>
+        <tbody>
+          <tr><td><code>read</code></td><td>16</td><td>1000</td><td>161ms</td><td>142839.32</td><td>142839.32</td><td>0.00</td><td>0.00</td><td>0.00</td><td>0.00</td><td>7ms</td><td>10672</td><td>2.0 MiB</td></tr>
+          <tr><td><code>insert</code></td><td>16</td><td>1000</td><td>27ms</td><td>125038.72</td><td>0.00</td><td>125038.72</td><td>0.00</td><td>0.00</td><td>0.00</td><td>n/a</td><td>0</td><td>153.9 MiB</td></tr>
+          <tr><td><code>select-eq</code></td><td>16</td><td>1000</td><td>196ms</td><td>5295.16</td><td>0.00</td><td>0.00</td><td>5295.16</td><td>0.00</td><td>41384.20</td><td>8ms</td><td>10672</td><td>2.2 MiB</td></tr>
+          <tr><td><code>select-like</code></td><td>16</td><td>1000</td><td>255ms</td><td>793.31</td><td>0.00</td><td>0.00</td><td>793.31</td><td>0.00</td><td>7933.06</td><td>9ms</td><td>10672</td><td>7.3 MiB</td></tr>
+          <tr><td><code>related-select</code></td><td>16</td><td>1000</td><td>217ms</td><td>2969.17</td><td>0.00</td><td>0.00</td><td>0.00</td><td>2969.17</td><td>46399.61</td><td>10ms</td><td>16000</td><td>1011.6 KiB</td></tr>
+          <tr><td><code>mixed</code></td><td>16</td><td>1000</td><td>299ms</td><td>2740.55</td><td>685.14</td><td>685.14</td><td>1370.27</td><td>0.00</td><td>12217.45</td><td>9ms</td><td>10672</td><td>8.4 MiB</td></tr>
+        </tbody>
+      </table>
+
+      <div class="machine-block">ai_keywords: testing, benchmarks, relational benchmark, Relational db, actions/s, reads/s, rows/s, saturation, throughput, wide select, wide-ms, wide-rows
+source_files: data/relational/relational_benchmark_test.go, tests/special_relational_performance_test.go, tools/relational-perf-report.ps1</div>
+    </main>
+  </div>
+  <script src="../assets/syntax-highlight.js"></script>
+</body>
+</html>

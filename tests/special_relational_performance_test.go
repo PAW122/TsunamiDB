@@ -48,6 +48,8 @@ type relationalReportResult struct {
 	diskBytes      int64
 	actionsPerSec  float64
 	rowsPerSec     float64
+	wideSelectRows int64
+	wideSelectTime time.Duration
 }
 
 func (c *relationalPerformanceCounters) totalActions() int64 {
@@ -235,12 +237,17 @@ func runRelationalReportProfile(mode string, duration time.Duration, workers int
 	}
 	setupDuration := time.Since(setupStart)
 
+	wideSelectRows, wideSelectDuration, err := measureRelationalWideSelect(mode, workers)
+	if err != nil {
+		return relationalReportResult{}, err
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), duration)
 	defer cancel()
 
 	counters := &relationalPerformanceCounters{}
 	start := time.Now()
-	err := runWorkers(ctx, workers, func(ctx context.Context, workerID int) error {
+	err = runWorkers(ctx, workers, func(ctx context.Context, workerID int) error {
 		return runRelationalSaturationWorker(ctx, workerID, seedRows, mode, counters)
 	})
 	elapsed := time.Since(start)
@@ -266,7 +273,42 @@ func runRelationalReportProfile(mode string, duration time.Duration, workers int
 		diskBytes:      dirSize("db"),
 		actionsPerSec:  float64(counters.totalActions()) / seconds,
 		rowsPerSec:     float64(counters.rowsReturned.Load()) / seconds,
+		wideSelectRows: wideSelectRows,
+		wideSelectTime: wideSelectDuration,
 	}, nil
+}
+
+func measureRelationalWideSelect(mode string, workers int) (int64, time.Duration, error) {
+	if workers <= 0 {
+		workers = 1
+	}
+
+	var predicate relational.Predicate
+	var tableForWorker func(workerID int) string
+	switch mode {
+	case "read", "select-eq", "select-like", "mixed":
+		predicate = relational.Equal("active", true)
+		tableForWorker = relationalPerformanceReadTable
+	case "related-select":
+		predicate = relational.Like("status", "status_%")
+		tableForWorker = relationalRelatedOrdersTable
+	default:
+		return 0, 0, nil
+	}
+
+	var rowsReturned atomic.Int64
+	start := time.Now()
+	if err := runRelationalSetupWorkers(workers, func(workerID int) error {
+		rows, err := relational.SelectRows(tableForWorker(workerID), predicate)
+		if err != nil {
+			return fmt.Errorf("wide select %s: %w", tableForWorker(workerID), err)
+		}
+		rowsReturned.Add(int64(len(rows)))
+		return nil
+	}); err != nil {
+		return 0, 0, err
+	}
+	return rowsReturned.Load(), time.Since(start), nil
 }
 
 func setupRelationalSaturationMode(mode string, workers int, seedRows int) error {
@@ -549,12 +591,12 @@ func formatRelationalPerformanceReport(results []relationalReportResult, total t
 	fmt.Fprintf(&b, "Relational performance report\n")
 	fmt.Fprintf(&b, "  total: %s\n", total.Round(time.Millisecond))
 	fmt.Fprintf(&b, "  host_cpus: %d\n\n", runtime.NumCPU())
-	fmt.Fprintf(&b, "%-15s %7s %8s %9s %11s %11s %11s %11s %11s %12s %10s\n",
-		"mode", "workers", "rows", "setup", "actions/s", "reads/s", "inserts/s", "selects/s", "related/s", "rows/s", "disk")
+	fmt.Fprintf(&b, "%-15s %7s %8s %9s %11s %11s %11s %11s %11s %12s %10s %10s %10s\n",
+		"mode", "workers", "rows", "setup", "actions/s", "reads/s", "inserts/s", "selects/s", "related/s", "rows/s", "wide-ms", "wide-rows", "disk")
 	for _, result := range results {
 		seconds := math.Max(result.measured.Seconds(), 0.001)
 		selects := result.eqSelects + result.likeSelects
-		fmt.Fprintf(&b, "%-15s %7d %8d %9s %11.2f %11.2f %11.2f %11.2f %11.2f %12.2f %10s\n",
+		fmt.Fprintf(&b, "%-15s %7d %8d %9s %11.2f %11.2f %11.2f %11.2f %11.2f %12.2f %10s %10d %10s\n",
 			result.mode,
 			result.workers,
 			result.rows,
@@ -565,10 +607,22 @@ func formatRelationalPerformanceReport(results []relationalReportResult, total t
 			float64(selects)/seconds,
 			float64(result.relatedSelects)/seconds,
 			result.rowsPerSec,
+			formatRelationalWideSelectDuration(result.wideSelectTime),
+			result.wideSelectRows,
 			formatBytes(result.diskBytes),
 		)
 	}
 	return b.String()
+}
+
+func formatRelationalWideSelectDuration(duration time.Duration) string {
+	if duration <= 0 {
+		return "n/a"
+	}
+	if duration < time.Millisecond {
+		return duration.Round(100 * time.Microsecond).String()
+	}
+	return duration.Round(time.Millisecond).String()
 }
 
 func reportRelationalPerformance(t *testing.T, name string, setupDuration time.Duration, elapsed time.Duration, workers int, seedRows int, counters *relationalPerformanceCounters) {

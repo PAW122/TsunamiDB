@@ -141,7 +141,8 @@ $env:TSU_TENSOR_KEEP_DIR='1'
 go test ./tests -run TestTensorAcuricy -count=1 -v
 ```
 
-## Relational DB Benchmark
+## Benchmarks
+### Relational Microbenchmarks
 ```powershell
 # microbenchmarks: insert, read, select scan, select indexes, LIKE trigram, row_ref join
 # use fixed benchtime so Go does not repeat expensive table setup during benchmark calibration
@@ -150,7 +151,33 @@ go test ./data/relational -run '^$' -bench BenchmarkRelational -benchmem -bencht
 # smaller/larger seeded tables for read/select/join benchmarks
 $env:TSU_REL_BENCH_ROWS='1000'
 go test ./data/relational -run '^$' -bench 'BenchmarkRelational/(ReadByRowID|Select|Join)' -benchmem -benchtime=100x -count=1
+```
 
+Microbenchmark names:
+
+| Benchmark | Meaning |
+|---|---|
+| `InsertNoIndex` | insert into table without secondary indexes |
+| `InsertEqualityAndTrigramIndexes` | insert into table with equality and trigram indexes enabled |
+| `ReadByRowID` | direct single-row lookup by `row_id` |
+| `SelectEqualityScan` | equality `SELECT` without equality index, full scan |
+| `SelectEqualityIndex` | equality `SELECT` with equality index |
+| `SelectLikeScan` | `LIKE` query without trigram index, full scan |
+| `SelectLikeTrigramIndex` | `LIKE` query using trigram index |
+| `JoinRowRefIndexedPredicate` | `row_ref` join with indexed predicate |
+
+Microbenchmark columns:
+
+| Column | Meaning |
+|---|---|
+| `Runs` | number of benchmark iterations |
+| `Time/op` | average time per operation |
+| `Throughput` | processed MB per second when Go can derive byte volume for that benchmark |
+| `Memory/op` | heap bytes allocated per operation |
+| `Allocs/op` | number of heap allocations per operation |
+
+### Relational Throughput Tests
+```powershell
 # throughput-style relational performance test with useful logs
 $env:TSU_SPECIAL_TESTS='1'
 $env:TSU_REL_PERF_DURATION='30s'
@@ -171,6 +198,41 @@ go test ./tests -run TestSpecialRelationalSaturation -count=1 -v
 # one-command complex relational report
 powershell -ExecutionPolicy Bypass -File .\tools\relational-perf-report.ps1
 ```
+
+Throughput metrics:
+
+| Metric | Meaning |
+|---|---|
+| `actions/s` | total API operations per second: `reads + inserts + equality selects + like selects + related selects` |
+| `reads/s` | `ReadRow(...)` calls per second; in `read` mode one read is one row lookup |
+| `inserts/s` | `InsertRow(...)` calls per second |
+| `selects/s` | `SelectRows(...)` calls per second for equality and/or `LIKE` selects |
+| `related/s` | `JoinRowRef(...)` calls per second |
+| `rows/s` | rows returned per second by `SelectRows(...)` and `JoinRowRef(...)`; this is not the same as `actions/s` |
+
+Mode meanings in `relational-perf-report.ps1`:
+
+| Mode | Meaning |
+|---|---|
+| `read` | repeated `ReadRow(...)` lookups |
+| `insert` | repeated `InsertRow(...)` writes |
+| `select-eq` | repeated equality `SelectRows(...)` queries |
+| `select-like` | repeated `LIKE` `SelectRows(...)` queries |
+| `related-select` | repeated `JoinRowRef(...)` relation queries |
+| `mixed` | combined loop of `ReadRow + SelectRows(eq) + SelectRows(like) + InsertRow` |
+
+Example output:
+
+| Benchmark | Runs | Time/op | Throughput | Memory/op | Allocs/op |
+|---|---:|---:|---:|---:|---:|
+| `BenchmarkRelational/InsertNoIndex-16` | 100 | 34,511 ns/op | 3.74 MB/s | 3,226 B/op | 52 allocs/op |
+| `BenchmarkRelational/InsertEqualityAndTrigramIndexes-16` | 100 | 2,743,240 ns/op | 0.05 MB/s | 155,426 B/op | 1,324 allocs/op |
+| `BenchmarkRelational/ReadByRowID-16` | 100 | 22,406 ns/op | 5.76 MB/s | 2,631 B/op | 50 allocs/op |
+| `BenchmarkRelational/SelectEqualityScan-16` | 100 | 67,153,182 ns/op | 19.21 MB/s | 4,509,936 B/op | 91,986 allocs/op |
+| `BenchmarkRelational/SelectEqualityIndex-16` | 100 | 2,601,748 ns/op | - | 449,419 B/op | 2,061 allocs/op |
+| `BenchmarkRelational/SelectLikeScan-16` | 100 | 82,068,315 ns/op | 15.72 MB/s | 10,417,794 B/op | 449,818 allocs/op |
+| `BenchmarkRelational/SelectLikeTrigramIndex-16` | 100 | 59,264,156 ns/op | - | 14,430,471 B/op | 31,642 allocs/op |
+| `BenchmarkRelational/JoinRowRefIndexedPredicate-16` | 100 | 2,913,305 ns/op | - | 560,132 B/op | 5,235 allocs/op |
 
 ## Relational SQL
 The relational engine accepts a compact SQL subset through `POST /rel/sql`.

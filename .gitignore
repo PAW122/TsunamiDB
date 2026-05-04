@@ -1,6 +1,3 @@
-db/maps/data_map.json
-db/maps/free_blocks.json
-data.bin
 /db
 /_trash
 data.bin
@@ -19,3 +16,5 @@ config.json
 relationalDB.md
 ai_layer.md
 x_tensor_tests.md
+coverage
+coverage.html

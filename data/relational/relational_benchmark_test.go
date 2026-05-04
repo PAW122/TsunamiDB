@@ -198,6 +198,7 @@ func withRelationalBenchmarkDir(b *testing.B) {
 		b.Fatalf("chdir temp benchmark dir: %v", err)
 	}
 	b.Cleanup(func() {
+		ResetForTests()
 		_ = os.Chdir(wd)
 	})
 }

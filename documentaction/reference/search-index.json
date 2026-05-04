@@ -53,8 +53,16 @@
       "method": "POST/GET/PATCH/DELETE",
       "path": "/rel/schema/{table}, /rel/{table}/insert, /rel/{table}/row/{rowID}, /rel/{table}/select, /rel/{table}/index/{column}, /rel/{table}/trigram-index/{column}, /rel/{table}/compact, /rel/sql",
       "page": "../http/relational.html",
-      "keywords": ["relational", "schema", "fixed rows", "row_id", "CRUD", "select", "sql", "SQLResult", "eq", "like", "order by", "index", "trigram", "compact"],
+      "keywords": ["relational", "schema", "fixed rows", "row_id", "CRUD", "select", "sql", "SQLResult", "eq", "like", "order by", "index", "trigram", "compact", "benchmark", "benchmarks", "performance", "throughput", "actions/s", "reads/s", "rows/s", "selects/s", "related/s", "wide select", "wide-ms", "wide-rows"],
       "source": ["data/relational/*.go", "servers/public-api/v1/routes/relational.go", "tools/relational-admin.html"]
+    },
+    {
+      "id": "relational-benchmark",
+      "method": "testing",
+      "path": "Relational db",
+      "page": "../testing/relational-benchmark.html",
+      "keywords": ["relational benchmark", "testing", "benchmarks", "throughput", "saturation", "actions/s", "reads/s", "rows/s", "selects/s", "related/s", "wide select", "wide-ms", "wide-rows", "go test", "relational-perf-report"],
+      "source": ["data/relational/relational_benchmark_test.go", "tests/special_relational_performance_test.go", "tools/relational-perf-report.ps1"]
     },
     {
       "id": "subscriptions",
