@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TsunamiDB Subscription Benchmark</title>
+  <link rel="stylesheet" href="../assets/site.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1 class="brand">TsunamiDB</h1>
+      <p class="version">Testing &amp; Benchmarks</p>
+      <nav>
+        <p class="nav-group">Start</p>
+        <a class="nav-parent" href="../docs.html">Overview</a>
+        <a class="nav-parent" href="../reference/ai-index.html">AI Index</a>
+        <p class="nav-group">HTTP API</p>
+        <a class="nav-parent" href="../http/overview.html">HTTP Overview</a>
+        <a class="nav-child" href="../http/key-value.html">Key-Value</a>
+        <a class="nav-child" href="../http/encrypted.html">Encrypted</a>
+        <a class="nav-child" href="../http/incremental.html">Incremental</a>
+        <a class="nav-child" href="../http/relational.html">Relational</a>
+        <a class="nav-child" href="../http/subscriptions.html">Subscriptions</a>
+        <a class="nav-child" href="../http/network-manager.html">Network Manager</a>
+        <a class="nav-child" href="../http/meta.html">Meta</a>
+        <p class="nav-group">Examples</p>
+        <details class="nav-details">
+          <summary>HTTP examples in Go</summary>
+          <a class="nav-child" href="../examples/http-go.html">Overview</a>
+          <a class="nav-child" href="../examples/http-go.html#common-imports">Common Imports</a>
+          <a class="nav-child" href="../examples/http-go.html#basic-key-value">Basic Key-Value</a>
+          <a class="nav-child" href="../examples/http-go.html#nested-json">Nested JSON</a>
+          <a class="nav-child" href="../examples/http-go.html#encrypted-values">Encrypted Values</a>
+          <a class="nav-child" href="../examples/http-go.html#incremental-tables">Incremental Tables</a>
+          <a class="nav-child" href="../examples/http-go.html#subscriptions-example">Subscriptions</a>
+          <a class="nav-child" href="../examples/http-go.html#meta-health">Meta and Health</a>
+          <a class="nav-child" href="../examples/http-go.html#minimal-demo">Minimal Demo</a>
+        </details>
+        <p class="nav-group">Testing &amp; Benchmarks</p>
+        <a class="nav-parent" href="./relational-benchmark.html">Relational db</a>
+        <a class="nav-parent" href="./subscription-benchmark.html">Subscriptions</a>
+        <p class="nav-group">Downloads</p>
+        <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
+        <p class="nav-group">Libraries</p>
+        <a class="nav-parent" href="../go-lib/overview.html">Go Lib</a>
+        <a class="nav-parent" href="../dll-lib/overview.html">DLL Lib</a>
+      </nav>
+    </aside>
+    <main class="content">
+      <h1>Subscriptions</h1>
+      <p class="lead">Benchmark page for WebSocket subscription fan-out, client scaling and per-key notification distribution.</p>
+
+      <div class="note">
+        Source files: <code>servers/subscriptions/subServer_benchmark_test.go</code> and <code>servers/subscriptions/subServer.go</code>.
+      </div>
+
+      <h2>What It Measures</h2>
+      <p><code>BenchmarkSubscriptionServer</code> opens real WebSocket clients against <code>HandleWS</code>, subscribes them to one or more keys, then measures how fast <code>NotifySubscribers(...)</code> can fan out updates.</p>
+      <p>This benchmark measures the subscription server path itself, not the full <code>save -&gt; db write -&gt; async notify</code> path. The regular save flow dispatches notifications in a goroutine, so database writes/s should be measured separately.</p>
+
+      <h2>Basic Commands</h2>
+      <pre><code class="language-powershell"># default scenarios: clients=10,100 and keys=1,10
+go test ./servers/subscriptions -run '^$' -bench BenchmarkSubscriptionServer -benchmem
+
+# fixed-iteration run for easier comparisons between machines
+go test ./servers/subscriptions -run '^$' -bench BenchmarkSubscriptionServer -benchmem -benchtime=100x -count=1
+
+# one small local smoke run
+$env:TSU_SUB_BENCH_CLIENTS='4'
+$env:TSU_SUB_BENCH_KEYS='2'
+$env:TSU_SUB_BENCH_KEYS_PER_CLIENT='1'
+$env:TSU_SUB_BENCH_PARALLELISM='1'
+$env:TSU_SUB_BENCH_PAYLOAD_BYTES='64'
+go test ./servers/subscriptions -run '^$' -bench BenchmarkSubscriptionServer -benchtime=20x -count=1</code></pre>
+
+      <h2>Scaling Scenarios</h2>
+      <pre><code class="language-powershell"># more clients and more keys
+$env:TSU_SUB_BENCH_CLIENTS='100,500,1000'
+$env:TSU_SUB_BENCH_KEYS='10,100'
+$env:TSU_SUB_BENCH_KEYS_PER_CLIENT='1'
+$env:TSU_SUB_BENCH_PARALLELISM='4'
+$env:TSU_SUB_BENCH_PAYLOAD_BYTES='256'
+go test ./servers/subscriptions -run '^$' -bench BenchmarkSubscriptionServer -benchmem -benchtime=100x -count=1
+
+# heavier fan-out per client: every client listens to multiple keys
+$env:TSU_SUB_BENCH_CLIENTS='200'
+$env:TSU_SUB_BENCH_KEYS='50'
+$env:TSU_SUB_BENCH_KEYS_PER_CLIENT='5'
+$env:TSU_SUB_BENCH_PARALLELISM='4'
+$env:TSU_SUB_BENCH_PAYLOAD_BYTES='512'
+go test ./servers/subscriptions -run '^$' -bench BenchmarkSubscriptionServer -benchmem -benchtime=100x -count=1</code></pre>
+
+      <table>
+        <thead><tr><th>Variable</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>TSU_SUB_BENCH_CLIENTS</code></td><td>Comma-separated client counts. Each value becomes a benchmark scenario.</td></tr>
+          <tr><td><code>TSU_SUB_BENCH_KEYS</code></td><td>Comma-separated key counts. Each value is combined with every client count.</td></tr>
+          <tr><td><code>TSU_SUB_BENCH_KEYS_PER_CLIENT</code></td><td>How many keys each client subscribes to.</td></tr>
+          <tr><td><code>TSU_SUB_BENCH_PARALLELISM</code></td><td>Parallel send factor passed to <code>b.SetParallelism(...)</code>.</td></tr>
+          <tr><td><code>TSU_SUB_BENCH_PAYLOAD_BYTES</code></td><td>Payload size of each synthetic update body.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Benchmark Metrics</h2>
+      <table>
+        <thead><tr><th>Metric</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>writes/s</code></td><td>Calls per second to <code>NotifySubscribers(...)</code>. One write targets one key.</td></tr>
+          <tr><td><code>notifications/s</code></td><td>Total WebSocket messages delivered per second across all subscribed clients.</td></tr>
+          <tr><td><code>notifs/write</code></td><td>Average fan-out of one write. Example: value <code>50</code> means every update reaches 50 clients on average.</td></tr>
+          <tr><td><code>clients</code></td><td>Configured number of connected WebSocket clients.</td></tr>
+          <tr><td><code>keys</code></td><td>Configured number of benchmark keys.</td></tr>
+          <tr><td><code>active_keys</code></td><td>Keys that actually ended up with at least one subscriber in that scenario.</td></tr>
+          <tr><td><code>keys/client</code></td><td>Number of subscribed keys per client.</td></tr>
+          <tr><td><code>subscriptions</code></td><td>Total active subscriptions, usually <code>clients * keys/client</code>.</td></tr>
+          <tr><td><code>subs/key</code></td><td>Average subscribers per active key.</td></tr>
+          <tr><td><code>payload_B</code></td><td>Bytes in each benchmark payload.</td></tr>
+          <tr><td><code>Time/op</code></td><td>Average wall-clock time of one benchmark write operation.</td></tr>
+          <tr><td><code>Memory/op</code></td><td>Heap bytes allocated per benchmark write.</td></tr>
+          <tr><td><code>Allocs/op</code></td><td>Heap allocation count per benchmark write.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>How To Read Results</h2>
+      <table>
+        <thead><tr><th>If This Changes</th><th>Interpretation</th></tr></thead>
+        <tbody>
+          <tr><td><code>writes/s</code> drops while <code>notifs/write</code> stays flat</td><td>The server is getting slower per update even though fan-out stayed similar. Compare payload size and parallelism.</td></tr>
+          <tr><td><code>notifications/s</code> rises but <code>writes/s</code> falls</td><td>You are pushing broader fan-out per update. Total delivered traffic increased, but each write became heavier.</td></tr>
+          <tr><td><code>notifs/write</code> rises sharply</td><td>Each key has more subscribers. This is expected when you increase clients or reduce the key count.</td></tr>
+          <tr><td><code>active_keys</code> is below <code>keys</code></td><td>Some configured keys received no subscribers. This can happen when <code>clients * keys/client</code> is smaller than the total key count.</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Example Output</h2>
+      <pre><code class="language-text">BenchmarkSubscriptionServer/clients=100/keys=10/keys_per_client=1/parallel=4/payload=256B-16
+    100   41800 ns/op   23923 writes/s   239230 notifications/s   10.000 notifs/write   3450 B/op   36 allocs/op</code></pre>
+      <p>Interpretation: one benchmark write targets one key, and each key has about 10 subscribers on average, so <code>notifications/s</code> is about 10x higher than <code>writes/s</code>.</p>
+
+      <div class="machine-block">ai_keywords: subscriptions, websocket benchmark, BenchmarkSubscriptionServer, NotifySubscribers, fan-out, notifications/s, writes/s, notifs/write, clients, keys, payload bytes
+source_files: servers/subscriptions/subServer_benchmark_test.go, servers/subscriptions/subServer.go</div>
+    </main>
+  </div>
+  <script src="../assets/syntax-highlight.js"></script>
+</body>
+</html>

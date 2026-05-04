@@ -40,6 +40,7 @@
         </details>
         <p class="nav-group">Testing &amp; Benchmarks</p>
         <a class="nav-parent" href="../testing/relational-benchmark.html">Relational db</a>
+        <a class="nav-parent" href="../testing/subscription-benchmark.html">Subscriptions</a>
         <p class="nav-group">Downloads</p>
         <a class="nav-parent" href="../downloads/index.html">Insomnia endpoints</a>
         <p class="nav-group">Libraries</p>
@@ -78,6 +79,15 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
           <tr><td>Regex key search</td><td><code>GET /key_by_regex/{table}?regex=...&amp;max=...</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/keyByRegex.go</code></td></tr>
           <tr><td>Health</td><td><code>GET /health</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/health.go</code></td></tr>
           <tr><td>Go HTTP snippets</td><td><code>net/http</code> functions for all HTTP groups</td><td><a href="../examples/http-go.html">HTTP examples in Go</a></td><td><code>docs_api/*.md</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>Testing Lookup</h2>
+      <table>
+        <thead><tr><th>Need</th><th>Benchmark Page</th><th>Use For</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Relational microbenchmarks and throughput</td><td><a href="../testing/relational-benchmark.html">Relational db</a></td><td><code>InsertRow</code>, <code>SelectRows</code>, <code>JoinRowRef</code>, saturation tests</td><td><code>data/relational/relational_benchmark_test.go</code>, <code>tests/special_relational_performance_test.go</code></td></tr>
+          <tr><td>Subscription WebSocket fan-out load</td><td><a href="../testing/subscription-benchmark.html">Subscriptions</a></td><td><code>NotifySubscribers</code>, client fan-out, keys-per-client, payload-size scaling</td><td><code>servers/subscriptions/subServer_benchmark_test.go</code></td></tr>
         </tbody>
       </table>
 

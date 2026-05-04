@@ -65,12 +65,20 @@
       "source": ["data/relational/relational_benchmark_test.go", "tests/special_relational_performance_test.go", "tools/relational-perf-report.ps1"]
     },
     {
+      "id": "subscription-benchmark",
+      "method": "testing",
+      "path": "Subscriptions",
+      "page": "../testing/subscription-benchmark.html",
+      "keywords": ["subscription benchmark", "subscriptions", "websocket benchmark", "notifysubscribers", "fan-out", "notifications/s", "writes/s", "notifs/write", "clients", "keys", "payload bytes", "go test", "BenchmarkSubscriptionServer"],
+      "source": ["servers/subscriptions/subServer_benchmark_test.go", "servers/subscriptions/subServer.go"]
+    },
+    {
       "id": "subscriptions",
       "method": "POST/WS",
       "path": "/subscriptions/enable, /subscriptions/disable, ws://localhost:5845/sub",
       "page": "../http/subscriptions.html",
-      "keywords": ["websocket", "auth_key", "updated", "deleted", "inc_table_update", "unsubscribed"],
-      "source": ["servers/subscriptions/subServer.go"]
+      "keywords": ["websocket", "auth_key", "updated", "deleted", "inc_table_update", "unsubscribed", "benchmark", "notifications/s", "writes/s"],
+      "source": ["servers/subscriptions/subServer.go", "servers/subscriptions/subServer_benchmark_test.go"]
     },
     {
       "id": "network-manager",

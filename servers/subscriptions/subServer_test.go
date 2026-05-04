@@ -12,8 +12,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func resetSubscriptionsForTests(t *testing.T) {
-	t.Helper()
+func resetSubscriptionsForTests(tb testing.TB) {
+	tb.Helper()
 	mu.Lock()
 	for c := range connToKeys {
 		_ = c.Close()
@@ -24,7 +24,7 @@ func resetSubscriptionsForTests(t *testing.T) {
 	connLocks = make(map[*websocket.Conn]*sync.Mutex)
 	connDone = make(map[*websocket.Conn]chan struct{})
 	mu.Unlock()
-	t.Cleanup(func() {
+	tb.Cleanup(func() {
 		mu.Lock()
 		for c := range connToKeys {
 			_ = c.Close()

@@ -350,7 +350,9 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			log.Println("Disconnected/read error:", err)
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+				log.Println("Disconnected/read error:", err)
+			}
 			break
 		}
 
