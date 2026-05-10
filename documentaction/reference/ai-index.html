@@ -62,6 +62,7 @@ mysql_compat_url: 127.0.0.1:3307
 mysql_compat_port_env: TSU_MYSQL_PORT
 subscription_ws_url: ws://localhost:5845/sub
 network_manager: optional CLI port; disabled when omitted
+patch_endpoint: POST /patch/{table}/{key}
 go_import: github.com/PAW122/TsunamiDB/lib/dbclient
 go_package_name: TsuClient
 dll_status: implemented as c-shared wrapper in lib/dll</div>
@@ -71,6 +72,7 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
         <thead><tr><th>Need</th><th>Endpoint or Function</th><th>Page</th><th>Source</th></tr></thead>
         <tbody>
           <tr><td>Save bytes</td><td><code>POST /save/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/save.go</code></td></tr>
+          <tr><td>Patch existing value</td><td><code>POST /patch/{table}/{key}</code>, <code>ops[].offset</code>, <code>ops[].delete</code>, <code>ops[].insert</code>, <code>ops[].insert_b64</code></td><td><a href="../http/key-value.html#patch-values">Key-Value</a></td><td><code>routes/patch.go</code>, <code>data/valuepatch/patch.go</code></td></tr>
           <tr><td>Read bytes</td><td><code>GET /read/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/read.go</code></td></tr>
           <tr><td>Delete key</td><td><code>GET /free/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/free.go</code></td></tr>
           <tr><td>Nested JSON</td><td><code>mode: save_nested_json</code>, <code>read_nested</code>, <code>read_only_nested</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/nested.go</code></td></tr>
@@ -78,7 +80,7 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
           <tr><td>Incremental append/read/delete</td><td><code>/save_inc</code>, <code>/read_inc</code>, <code>/delete_inc</code></td><td><a href="../http/incremental.html">Incremental</a></td><td><code>routes/inc_*.go</code></td></tr>
           <tr><td>Relational schema, CRUD, select and SQL</td><td><code>/rel/schema/{table}</code>, <code>/rel/{table}/row/{rowID}</code>, <code>/rel/{table}/select</code>, <code>/rel/sql</code></td><td><a href="../http/relational.html">Relational</a></td><td><code>routes/relational.go</code>, <code>data/relational/*.go</code></td></tr>
           <tr><td>MySQL-compatible SQL clients</td><td><code>127.0.0.1:3307</code>, <code>TSU_MYSQL_PORT</code>, HeidiSQL, MySQL TCP protocol</td><td><a href="../http/relational.html#mysql-compatibility-endpoint">Relational</a></td><td><code>servers/mysqlcompat/*.go</code>, <code>data/relational/*.go</code></td></tr>
-          <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
+          <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code>, events <code>updated</code> and <code>patched</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
           <tr><td>P2P network layer</td><td><code>network manager</code>, table catalogs, distributed reads</td><td><a href="../http/network-manager.html">Network Manager</a></td><td><code>servers/network-manager/*.go</code></td></tr>
           <tr><td>Regex key search</td><td><code>GET /key_by_regex/{table}?regex=...&amp;max=...</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/keyByRegex.go</code></td></tr>
           <tr><td>Health</td><td><code>GET /health</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/health.go</code></td></tr>
@@ -99,6 +101,7 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
       <h2>Go Lookup</h2>
       <div class="machine-block">Save(key, table string, data []byte) error
 Read(key, table string) ([]byte, error)
+Patch(key, table string, ops []PatchOperation) ([]byte, error)
 Free(key, table string) error
 SaveEncrypted(key, table, encryption_key string, data []byte) error
 ReadEncrypted(key, table, encryption_key string) ([]byte, error)

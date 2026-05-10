@@ -36,6 +36,7 @@ type SaveIncOptions = export.SaveIncOptions
 type SaveIncResult = export.SaveIncResult
 type ReadIncOptions = export.ReadIncOptions
 type IncEntry = export.IncEntry
+type PatchOperation = export.PatchOperation
 
 func Save(key, table string, data []byte) error {
 	defer debug.MeasureTime("[lib.dbclient] [save]")()
@@ -45,6 +46,11 @@ func Save(key, table string, data []byte) error {
 func Read(key, table string) ([]byte, error) {
 	defer debug.MeasureTime("[lib.dbclient] [read]")()
 	return export.Read(key, table)
+}
+
+func Patch(key, table string, ops []PatchOperation) ([]byte, error) {
+	defer debug.MeasureTime("[lib.dbclient] [patch]")()
+	return export.Patch(key, table, ops)
 }
 
 func Free(key, table string) error {

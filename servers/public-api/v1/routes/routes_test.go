@@ -110,6 +110,55 @@ func TestSaveAndReadEndpoints(t *testing.T) {
 	}
 }
 
+func TestPatchValueEndpoint(t *testing.T) {
+	setupRoutesTest(t)
+
+	saveResp := perform(AsyncSave, http.MethodPost, "/save/docs/doc1", bytes.NewBufferString("hello world"), nil)
+	if saveResp.Code != http.StatusOK {
+		t.Fatalf("save status: %d body=%s", saveResp.Code, saveResp.Body.String())
+	}
+
+	patchBody := bytes.NewBufferString(`{"ops":[{"offset":5,"insert":","},{"offset":7,"delete":5,"insert":"TsuDB"}]}`)
+	patchResp := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", patchBody, nil)
+	if patchResp.Code != http.StatusOK {
+		t.Fatalf("patch status: %d body=%s", patchResp.Code, patchResp.Body.String())
+	}
+	var patched patchResponse
+	if err := json.Unmarshal(patchResp.Body.Bytes(), &patched); err != nil {
+		t.Fatalf("decode patch response: %v", err)
+	}
+	if patched.Status != "patched" || patched.Key != "doc1" || patched.Size != len("hello, TsuDB") {
+		t.Fatalf("unexpected patch response: %+v", patched)
+	}
+
+	readResp := perform(AsyncRead, http.MethodGet, "/read/docs/doc1", nil, nil)
+	if readResp.Code != http.StatusOK {
+		t.Fatalf("read status: %d body=%s", readResp.Code, readResp.Body.String())
+	}
+	if got := readResp.Body.String(); got != "hello, TsuDB" {
+		t.Fatalf("patched value = %q", got)
+	}
+}
+
+func TestPatchValueValidation(t *testing.T) {
+	setupRoutesTest(t)
+
+	if resp := perform(PatchValue, http.MethodGet, "/patch/docs/doc1", nil, nil); resp.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("method status = %d", resp.Code)
+	}
+	if resp := perform(PatchValue, http.MethodPost, "/patch/docs", bytes.NewBufferString(`{"ops":[]}`), nil); resp.Code != http.StatusBadRequest {
+		t.Fatalf("short path status = %d", resp.Code)
+	}
+	if resp := perform(PatchValue, http.MethodPost, "/patch/docs/missing", bytes.NewBufferString(`{"ops":[{"offset":0,"insert":"x"}]}`), nil); resp.Code != http.StatusNotFound {
+		t.Fatalf("missing key status = %d body=%s", resp.Code, resp.Body.String())
+	}
+
+	perform(AsyncSave, http.MethodPost, "/save/docs/doc1", bytes.NewBufferString("abc"), nil)
+	if resp := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", bytes.NewBufferString(`{"ops":[{"offset":9,"insert":"x"}]}`), nil); resp.Code != http.StatusBadRequest {
+		t.Fatalf("invalid offset status = %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
 func TestRelationalEndpointsCRUD(t *testing.T) {
 	setupRoutesTest(t)
 

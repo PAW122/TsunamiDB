@@ -90,6 +90,7 @@ func main() {
         <tbody>
           <tr><td><code>Save</code></td><td><code>Save(key, table string, data []byte) error</code></td><td>Saves bytes under key/table. Empty key or table returns an error.</td></tr>
           <tr><td><code>Read</code></td><td><code>Read(key, table string) ([]byte, error)</code></td><td>Reads local data or asks P2P peers. Requires NetworkManager.</td></tr>
+          <tr><td><code>Patch</code></td><td><code>Patch(key, table string, ops []PatchOperation) ([]byte, error)</code></td><td>Applies byte-range patch operations to an existing value and returns the merged value.</td></tr>
           <tr><td><code>Free</code></td><td><code>Free(key, table string) error</code></td><td>Deletes key metadata and marks storage span as free.</td></tr>
           <tr><td><code>SaveEncrypted</code></td><td><code>SaveEncrypted(key, table, encryption_key string, data []byte) error</code></td><td>Encrypts bytes before saving.</td></tr>
           <tr><td><code>ReadEncrypted</code></td><td><code>ReadEncrypted(key, table, encryption_key string) ([]byte, error)</code></td><td>Reads encrypted data and decrypts it. Requires NetworkManager.</td></tr>
@@ -135,6 +136,22 @@ if err != nil {
 
 fmt.Println(string(entries[0].Data))</code></pre>
 
+      <h2>Patch Example</h2>
+      <p><code>Patch</code> updates an existing value without sending the entire replacement value. Subscribers to the key receive a <code>patched</code> event with the same operations.</p>
+      <pre><code class="language-go">if err := TsuClient.Save("doc-1", "docs", []byte("Hello world")); err != nil {
+	panic(err)
+}
+
+updated, err := TsuClient.Patch("doc-1", "docs", []TsuClient.PatchOperation{
+	{Offset: 5, Insert: ","},
+	{Offset: 7, Delete: 5, Insert: "TsuDB"},
+})
+if err != nil {
+	panic(err)
+}
+
+fmt.Println(string(updated)) // Hello, TsuDB</code></pre>
+
       <h2>Subscriptions Example</h2>
       <p>A practical pattern is a live <code>Online Users</code> field. Start <code>InitSubscriptionServer</code>, subscribe clients to a key such as <code>online-users</code>, and update that key whenever the count changes.</p>
       <p>Each connected WebSocket client then receives the new value automatically, which is a better fit than repeated polling when the UI should refresh immediately.</p>
@@ -160,7 +177,7 @@ if err := TsuClient.DisableSubscription("online-users"); err != nil {
         <li>Public API and subscription server use goroutines; give them a short startup window before first request in tests or examples.</li>
       </ul>
 
-      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Free SaveEncrypted ReadEncrypted SaveInc ReadInc InitNetworkManager InitPublicApi subscriptions online users realtime
+      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Patch Free SaveEncrypted ReadEncrypted SaveInc ReadInc InitNetworkManager InitPublicApi subscriptions online users realtime document edits
 source_files: lib/dbclient/client.go, lib/export/*.go, lib/dbclient/client_test.go</div>
     </main>
   </div>

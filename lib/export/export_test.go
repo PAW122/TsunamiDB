@@ -166,6 +166,35 @@ func TestSaveRejectsEmptyKeyOrTable(t *testing.T) {
 	}
 }
 
+func TestPatchUpdatesStoredValue(t *testing.T) {
+	resetStorageForTest(t)
+
+	table := testTable("lib_export_patch")
+	key := "doc"
+	if err := Save(key, table, []byte("hello world")); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	updated, err := Patch(key, table, []PatchOperation{
+		{Offset: 5, Insert: ","},
+		{Offset: 7, Delete: 5, Insert: "TsuDB"},
+	})
+	if err != nil {
+		t.Fatalf("Patch() error = %v", err)
+	}
+	if !bytes.Equal(updated, []byte("hello, TsuDB")) {
+		t.Fatalf("Patch() = %q", updated)
+	}
+
+	got, err := Read(key, table)
+	if err != nil {
+		t.Fatalf("Read() error = %v", err)
+	}
+	if !bytes.Equal(got, updated) {
+		t.Fatalf("Read() = %q, want %q", got, updated)
+	}
+}
+
 func TestSavePropagatesDependencyErrors(t *testing.T) {
 	resetStorageForTest(t)
 	boom := stderrors.New("boom")

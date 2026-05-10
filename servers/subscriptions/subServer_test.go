@@ -9,6 +9,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/PAW122/TsunamiDB/data/valuepatch"
 	"github.com/gorilla/websocket"
 )
 
@@ -124,6 +125,19 @@ func TestWebSocketSubscribeNotifyAndDisable(t *testing.T) {
 	}
 	if update.Event != "updated" || update.Key != "item" || update.Data != "value" {
 		t.Fatalf("unexpected update: %+v", update)
+	}
+
+	NotifyPatchSubscribers("item", []valuepatch.Operation{{Offset: 5, Insert: "!"}})
+	var patched struct {
+		Event string                 `json:"event"`
+		Key   string                 `json:"key"`
+		Patch []valuepatch.Operation `json:"patch"`
+	}
+	if err := conn.ReadJSON(&patched); err != nil {
+		t.Fatalf("read patch: %v", err)
+	}
+	if patched.Event != "patched" || patched.Key != "item" || len(patched.Patch) != 1 || patched.Patch[0].Insert != "!" {
+		t.Fatalf("unexpected patch: %+v", patched)
 	}
 
 	notified, err := DisableSubscriptionInternal("item")

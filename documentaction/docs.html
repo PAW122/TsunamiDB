@@ -51,12 +51,12 @@
     </aside>
     <main class="content">
       <h1>TsunamiDB Documentation</h1>
-      <p class="lead">TsunamiDB is a fast key-value database with HTTP endpoints, an in-process Go client library, P2P reads, encrypted values, incremental tables, WebSocket subscriptions and a minimal MySQL-compatible endpoint for relational tables.</p>
+      <p class="lead">TsunamiDB is a fast key-value database with HTTP endpoints, partial value patching, an in-process Go client library, P2P reads, encrypted values, incremental tables, WebSocket subscriptions and a minimal MySQL-compatible endpoint for relational tables.</p>
 
       <div class="grid">
         <section class="card">
           <h3>HTTP API</h3>
-          <p>Public API for any language over HTTP. Includes raw key-value operations, encrypted values, incremental tables, relational tables, nested JSON, subscriptions, regex key lookup and health.</p>
+          <p>Public API for any language over HTTP. Includes raw key-value operations, partial patch updates, encrypted values, incremental tables, relational tables, nested JSON, subscriptions, regex key lookup and health.</p>
           <a href="./http/overview.html">Open HTTP docs</a>
         </section>
         <section class="card">
@@ -124,7 +124,7 @@ go build -buildvcs=false -buildmode=c-shared -o .dist/libtsunamidb.so ./lib/dll<
       <table>
         <thead><tr><th>Service</th><th>Default</th><th>Purpose</th></tr></thead>
         <tbody>
-          <tr><td>HTTP Public API</td><td><code>http://localhost:5844</code></td><td>Application reads, writes, deletes, incremental tables, health and subscription token endpoints.</td></tr>
+          <tr><td>HTTP Public API</td><td><code>http://localhost:5844</code></td><td>Application reads, writes, patch updates, deletes, incremental tables, health and subscription token endpoints.</td></tr>
           <tr><td>MySQL Compatibility</td><td><code>127.0.0.1:3307</code></td><td>MySQL wire-protocol endpoint for HeidiSQL and simple MySQL clients. Change with <code>TSU_MYSQL_PORT</code>.</td></tr>
           <tr><td>WebSocket Subscriptions</td><td><code>ws://localhost:5845/sub</code></td><td>Client-side real-time events after a one-time auth key is minted.</td></tr>
           <tr><td>P2P Network Manager</td><td>Optional CLI argument, for example <code>5845</code></td><td>Internal node-to-node WebSocket mesh used for distributed reads. Disabled when no port is provided.</td></tr>
@@ -187,7 +187,8 @@ network_manager: optional CLI port; disabled when omitted
 p2p_table_routing: read requests prefer peers advertising the requested table
 p2p_network_secret_env: TSUNAMI_NETWORK_SECRET
 p2p_advertise_addr_env: TSUNAMI_NETWORK_ADVERTISE_ADDR
-go_import: github.com/PAW122/TsunamiDB/lib/dbclient</div>
+go_import: github.com/PAW122/TsunamiDB/lib/dbclient
+patch_endpoint: POST /patch/{table}/{key}</div>
     </main>
   </div>
   <script src="./assets/syntax-highlight.js"></script>

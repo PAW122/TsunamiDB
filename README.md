@@ -53,6 +53,24 @@ bash ./lib/dll/build.sh
 
 The wrapper exports the key-value, encrypted, network manager, public API, subscription and regex-key functions from `lib/dbclient`.
 
+## Partial value patches
+Use `POST /patch/{table}/{key}` when an application should send only a small change instead of saving the whole value again. TsunamiDB reads the current value, applies patch operations in order, stores the merged value, and streams a `patched` event to subscribers of that key.
+
+```bash
+curl -X POST http://localhost:5844/patch/docs/doc-1 \
+  -H "Content-Type: application/json" \
+  --data '{"ops":[{"offset":5,"insert":","},{"offset":7,"delete":5,"insert":"TsuDB"}]}'
+```
+
+Go client:
+
+```go
+updated, err := TsuClient.Patch("doc-1", "docs", []TsuClient.PatchOperation{
+	{Offset: 5, Insert: ","},
+	{Offset: 7, Delete: 5, Insert: "TsuDB"},
+})
+```
+
 + execute:
     go build -buildvcs=false -tags debug
 

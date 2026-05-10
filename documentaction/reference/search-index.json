@@ -18,6 +18,14 @@
       "source": ["servers/public-api/v1/routes/save.go"]
     },
     {
+      "id": "kv-patch",
+      "method": "POST",
+      "path": "/patch/{table}/{key}",
+      "page": "../http/key-value.html#patch-values",
+      "keywords": ["patch", "partial update", "byte range patch", "document editing", "merge value", "offset", "delete", "insert", "insert_b64", "patched event"],
+      "source": ["servers/public-api/v1/routes/patch.go", "data/valuepatch/patch.go"]
+    },
+    {
       "id": "kv-read",
       "method": "GET",
       "path": "/read/{table}/{key}",
@@ -94,8 +102,8 @@
       "method": "POST/WS",
       "path": "/subscriptions/enable, /subscriptions/disable, ws://localhost:5845/sub",
       "page": "../http/subscriptions.html",
-      "keywords": ["websocket", "auth_key", "updated", "deleted", "inc_table_update", "unsubscribed", "benchmark", "notifications/s", "writes/s"],
-      "source": ["servers/subscriptions/subServer.go", "servers/subscriptions/subServer_benchmark_test.go"]
+      "keywords": ["websocket", "auth_key", "updated", "patched", "deleted", "inc_table_update", "unsubscribed", "document edits", "benchmark", "notifications/s", "writes/s"],
+      "source": ["servers/subscriptions/subServer.go", "servers/subscriptions/subServer_benchmark_test.go", "servers/public-api/v1/routes/patch.go"]
     },
     {
       "id": "network-manager",
@@ -129,6 +137,7 @@
     "functions": [
       "Save(key, table string, data []byte) error",
       "Read(key, table string) ([]byte, error)",
+      "Patch(key, table string, ops []PatchOperation) ([]byte, error)",
       "Free(key, table string) error",
       "SaveEncrypted(key, table, encryption_key string, data []byte) error",
       "ReadEncrypted(key, table, encryption_key string) ([]byte, error)",

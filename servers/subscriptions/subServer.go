@@ -427,6 +427,14 @@ func NotifySubscribers(key string, data []byte) {
 	})
 }
 
+func NotifyPatchSubscribers(key string, patch any) {
+	notifySubscribersWithPayload(key, map[string]any{
+		"event": "patched",
+		"key":   key,
+		"patch": patch,
+	})
+}
+
 func NotifyIncTableSubscribers(key string, changeType string, entryID uint64, entryData []byte) {
 	notifySubscribersWithPayload(key, map[string]any{
 		"event": "inc_table_update",
