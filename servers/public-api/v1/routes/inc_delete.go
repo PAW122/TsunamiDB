@@ -70,7 +70,7 @@ func DeleteIncremental(w http.ResponseWriter, r *http.Request, client *http.Clie
 
 	fileSystem_v1.RemoveElementByKey(file, key)
 	defragmentationManager.MarkAsFree(key, file, int64(fsData.StartPtr), int64(fsData.EndPtr))
-	go subServer.NotifyDeleteAndRemove(key)
+	go subServer.NotifyTableDeleteAndRemove(file, key)
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "delete_inc")

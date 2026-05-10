@@ -62,6 +62,8 @@ Optional revision tracking can be enabled per key:
 - `current` - stores current `rev`; patch requests must include matching `base_rev`.
 - `history` - stores current `rev` and retained patch records for reconnect catch-up.
 
+Patch history is bounded by `TSU_REVISION_HISTORY_MAX_PATCHES` (default `1000`). Set it to `0` or a negative value to disable trimming. When an offline client asks for patches older than the retained window, TsunamiDB returns a history-unavailable conflict and the client should reload the full value.
+
 ```bash
 curl -X POST http://localhost:5844/revision/docs/doc-1 \
   -H "Content-Type: application/json" \
@@ -72,16 +74,25 @@ curl -X POST http://localhost:5844/patch/docs/doc-1 \
   --data '{"base_rev":0,"ops":[{"offset":5,"insert":","},{"offset":7,"delete":5,"insert":"TsuDB"}]}'
 
 curl "http://localhost:5844/revision/docs/doc-1/patches?from_rev=0"
+
+curl http://localhost:5844/read_with_revision/docs/doc-1
 ```
 
 Go client:
 
 ```go
 state, err := TsuClient.SetRevisionPolicy("doc-1", "docs", TsuClient.RevisionModeHistory)
+snapshot, err := TsuClient.ReadWithRevision("doc-1", "docs")
 updated, state, err := TsuClient.PatchWithRevision("doc-1", "docs", state.Rev, []TsuClient.PatchOperation{
 	{Offset: 5, Insert: ","},
 	{Offset: 7, Delete: 5, Insert: "TsuDB"},
 })
+```
+
+Subscriptions can still be requested by legacy key-only names, but document-style applications should request table-aware scopes to avoid collisions between tables:
+
+```json
+{"subscriptions":[{"table":"docs","key":"doc-1"}]}
 ```
 
 + execute:

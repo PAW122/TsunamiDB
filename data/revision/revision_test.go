@@ -75,6 +75,46 @@ func TestRevisionPolicyAndHistory(t *testing.T) {
 	}
 }
 
+func TestRevisionHistoryLimit(t *testing.T) {
+	t.Setenv("TSU_REVISION_HISTORY_MAX_PATCHES", "2")
+	wd := t.TempDir()
+	old, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(wd); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(old)
+	})
+
+	if _, err := SetPolicy("docs", "doc-limit", ModeHistory); err != nil {
+		t.Fatalf("SetPolicy() error = %v", err)
+	}
+	for i := uint64(0); i < 3; i++ {
+		base := i
+		if _, _, _, err := AdvancePatch("docs", "doc-limit", &base, []valuepatch.Operation{{Offset: 0, Insert: "x"}}); err != nil {
+			t.Fatalf("AdvancePatch(%d) error = %v", i, err)
+		}
+	}
+
+	if _, _, err := History("docs", "doc-limit", 0, 0); !errors.Is(err, ErrHistoryUnavailable) {
+		t.Fatalf("stale history error = %v", err)
+	}
+
+	records, state, err := History("docs", "doc-limit", 1, 0)
+	if err != nil {
+		t.Fatalf("History() error = %v", err)
+	}
+	if state.Rev != 3 || state.HistoryFromRev != 1 {
+		t.Fatalf("unexpected state after trim: %+v", state)
+	}
+	if len(records) != 2 || records[0].Rev != 2 || records[1].Rev != 3 {
+		t.Fatalf("unexpected retained records: %+v", records)
+	}
+}
+
 func TestRevisionValidation(t *testing.T) {
 	wd := t.TempDir()
 	old, err := os.Getwd()

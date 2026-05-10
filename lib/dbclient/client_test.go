@@ -207,8 +207,31 @@ func TestClient_SubscriptionWrappers(t *testing.T) {
 	assert.NoError(t, TsuClient.DisableSubscription("client_sub_key"))
 	assert.Error(t, TsuClient.DisableSubscription(""))
 
+	targetAuthKey, err := TsuClient.EnableSubscriptionForTargets([]TsuClient.SubscriptionTarget{{Table: "docs", Key: "client_sub_doc"}})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, targetAuthKey)
+	assert.NoError(t, TsuClient.DisableSubscriptionForTarget("docs", "client_sub_doc"))
+	assert.Error(t, TsuClient.DisableSubscriptionForTarget("docs", ""))
+
 	err = TsuClient.InitSubscriptionServer("bad-port")
 	assert.Error(t, err)
+}
+
+func TestClient_ReadWithRevision(t *testing.T) {
+	table := "client_docs"
+	key := "read_with_revision"
+
+	assert.NoError(t, TsuClient.Save(key, table, []byte("hello")))
+	state, err := TsuClient.SetRevisionPolicy(key, table, TsuClient.RevisionModeCurrent)
+	assert.NoError(t, err)
+	_, state, err = TsuClient.PatchWithRevision(key, table, state.Rev, []TsuClient.PatchOperation{{Offset: 5, Insert: "!"}})
+	assert.NoError(t, err)
+
+	result, err := TsuClient.ReadWithRevision(key, table)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("hello!"), result.Data)
+	assert.Equal(t, TsuClient.RevisionModeCurrent, result.State.Mode)
+	assert.Equal(t, state.Rev, result.State.Rev)
 }
 
 // func TestClient_PersistenceAfterRestart(t *testing.T) {

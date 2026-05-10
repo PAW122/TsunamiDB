@@ -90,6 +90,7 @@ func main() {
         <tbody>
           <tr><td><code>Save</code></td><td><code>Save(key, table string, data []byte) error</code></td><td>Saves bytes under key/table. Empty key or table returns an error.</td></tr>
           <tr><td><code>Read</code></td><td><code>Read(key, table string) ([]byte, error)</code></td><td>Reads local data or asks P2P peers. Requires NetworkManager.</td></tr>
+          <tr><td><code>ReadWithRevision</code></td><td><code>ReadWithRevision(key, table string) (ReadWithRevisionResult, error)</code></td><td>Reads value bytes and revision state under one per-key lock.</td></tr>
           <tr><td><code>Patch</code></td><td><code>Patch(key, table string, ops []PatchOperation) ([]byte, error)</code></td><td>Applies byte-range patch operations to an existing value and returns the merged value.</td></tr>
           <tr><td><code>PatchWithRevision</code></td><td><code>PatchWithRevision(key, table string, baseRev uint64, ops []PatchOperation) ([]byte, RevisionState, error)</code></td><td>Applies a patch only when <code>baseRev</code> matches the current key revision.</td></tr>
           <tr><td><code>SetRevisionPolicy</code></td><td><code>SetRevisionPolicy(key, table string, mode RevisionMode) (RevisionState, error)</code></td><td>Sets revision mode <code>off</code>, <code>current</code> or <code>history</code> for one key.</td></tr>
@@ -105,7 +106,9 @@ func main() {
           <tr><td><code>InitPublicApi</code></td><td><code>InitPublicApi(port int)</code></td><td>Starts HTTP public API in a goroutine.</td></tr>
           <tr><td><code>InitSubscriptionServer</code></td><td><code>InitSubscriptionServer(port string) error</code></td><td>Starts WebSocket subscription server.</td></tr>
           <tr><td><code>EnableSubscription</code></td><td><code>EnableSubscription(keys []string) (string, error)</code></td><td>Creates one-time auth key for selected keys.</td></tr>
+          <tr><td><code>EnableSubscriptionForTargets</code></td><td><code>EnableSubscriptionForTargets(targets []SubscriptionTarget) (string, error)</code></td><td>Creates one-time auth key for table/key scoped subscriptions.</td></tr>
           <tr><td><code>DisableSubscription</code></td><td><code>DisableSubscription(key string) error</code></td><td>Removes subscribers for a key and sends unsubscribe event.</td></tr>
+          <tr><td><code>DisableSubscriptionForTarget</code></td><td><code>DisableSubscriptionForTarget(table, key string) error</code></td><td>Removes subscribers for one table/key scoped subscription.</td></tr>
         </tbody>
       </table>
 
@@ -151,6 +154,11 @@ if err != nil {
 	panic(err)
 }
 
+snapshot, err := TsuClient.ReadWithRevision("doc-1", "docs")
+if err != nil {
+	panic(err)
+}
+
 updated, state, err := TsuClient.PatchWithRevision("doc-1", "docs", state.Rev, []TsuClient.PatchOperation{
 	{Offset: 5, Insert: ","},
 	{Offset: 7, Delete: 5, Insert: "TsuDB"},
@@ -159,12 +167,14 @@ if err != nil {
 	panic(err)
 }
 
-fmt.Println(string(updated), state.Rev) // Hello, TsuDB 1</code></pre>
+fmt.Println(string(snapshot.Data), string(updated), state.Rev) // Hello world Hello, TsuDB 1</code></pre>
 
       <h2>Subscriptions Example</h2>
-      <p>A practical pattern is a live <code>Online Users</code> field. Start <code>InitSubscriptionServer</code>, subscribe clients to a key such as <code>online-users</code>, and update that key whenever the count changes.</p>
+      <p>A practical pattern is a live <code>Online Users</code> field. Start <code>InitSubscriptionServer</code>, subscribe clients to a table/key target such as <code>stats/online-users</code>, and update that key whenever the count changes.</p>
       <p>Each connected WebSocket client then receives the new value automatically, which is a better fit than repeated polling when the UI should refresh immediately.</p>
-      <pre><code class="language-go">authKey, err := TsuClient.EnableSubscription([]string{"online-users"})
+      <pre><code class="language-go">authKey, err := TsuClient.EnableSubscriptionForTargets([]TsuClient.SubscriptionTarget{
+	{Table: "stats", Key: "online-users"},
+})
 if err != nil {
 	panic(err)
 }
@@ -175,7 +185,7 @@ if err := TsuClient.Save("online-users", "stats", []byte("128")); err != nil {
 	panic(err)
 }
 
-if err := TsuClient.DisableSubscription("online-users"); err != nil {
+if err := TsuClient.DisableSubscriptionForTarget("stats", "online-users"); err != nil {
 	panic(err)
 }</code></pre>
 
@@ -186,7 +196,7 @@ if err := TsuClient.DisableSubscription("online-users"); err != nil {
         <li>Public API and subscription server use goroutines; give them a short startup window before first request in tests or examples.</li>
       </ul>
 
-      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read Patch PatchWithRevision SetRevisionPolicy GetRevisionState GetRevisionHistory Free SaveEncrypted ReadEncrypted SaveInc ReadInc InitNetworkManager InitPublicApi subscriptions online users realtime document edits
+      <div class="machine-block">ai_keywords: go lib dbclient TsuClient Save Read ReadWithRevision Patch PatchWithRevision SetRevisionPolicy GetRevisionState GetRevisionHistory Free SaveEncrypted ReadEncrypted SaveInc ReadInc InitNetworkManager InitPublicApi subscriptions table key EnableSubscriptionForTargets DisableSubscriptionForTarget online users realtime document edits
 source_files: lib/dbclient/client.go, lib/export/*.go, lib/dbclient/client_test.go</div>
     </main>
   </div>

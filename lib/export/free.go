@@ -14,6 +14,6 @@ func Free(key, table string) error {
 	removeElementByKey(table, key)
 	markAsFree(key, table, int64(fs_data.StartPtr), int64(fs_data.EndPtr))
 	networkmanager.NotifyKVTable(table)
-	go notifyDeleteAndRemove(key)
+	go notifyTableDeleteAndRemove(table, key)
 	return nil
 }

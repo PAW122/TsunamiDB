@@ -110,9 +110,9 @@ func patchWithOptionalRevisionState(key, table string, baseRev *uint64, ops []va
 		return nil, revision.State{}, nil, hasRevision, err
 	}
 	if hasRevision && record != nil {
-		go notifyPatchSubscribersWithRevision(key, ops, record.BaseRev, record.Rev)
+		go notifyTablePatchSubscribersWithRevision(table, key, ops, record.BaseRev, record.Rev)
 	} else {
-		go notifyPatchSubscribers(key, ops)
+		go notifyTablePatchSubscribers(table, key, ops)
 	}
 	return updated, revState, record, hasRevision, nil
 }

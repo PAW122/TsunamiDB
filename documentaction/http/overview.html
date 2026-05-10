@@ -60,6 +60,7 @@
           <tr><td>POST</td><td><code>/patch/{table}/{key}</code></td><td>Apply byte-range patch operations to an existing value and notify subscribers with the patch.</td><td><a href="./key-value.html#patch-values">Key-Value</a></td></tr>
           <tr><td>GET/POST</td><td><code>/revision/{table}/{key}</code></td><td>Read or set optional revision tracking mode for one key.</td><td><a href="./key-value.html#revision-tracking">Key-Value</a></td></tr>
           <tr><td>GET</td><td><code>/revision/{table}/{key}/patches?from_rev=...</code></td><td>Read retained patch history for keys using <code>history</code> revision mode.</td><td><a href="./key-value.html#revision-tracking">Key-Value</a></td></tr>
+          <tr><td>GET</td><td><code>/read_with_revision/{table}/{key}</code></td><td>Read value bytes and revision state as one atomic snapshot.</td><td><a href="./key-value.html#read-with-revision">Key-Value</a></td></tr>
           <tr><td>GET</td><td><code>/read/{table}/{key}</code></td><td>Read raw bytes or selected nested JSON paths.</td><td><a href="./key-value.html">Key-Value</a></td></tr>
           <tr><td>GET</td><td><code>/free/{table}/{key}</code></td><td>Delete a key and mark data as reusable.</td><td><a href="./key-value.html">Key-Value</a></td></tr>
           <tr><td>POST</td><td><code>/save_encrypted/{table}/{key}</code></td><td>Encrypt and save bytes.</td><td><a href="./encrypted.html">Encrypted</a></td></tr>
@@ -85,7 +86,7 @@
           <tr><td><code>400</code></td><td>Invalid URL args, missing required header, invalid JSON or invalid numeric header.</td></tr>
           <tr><td><code>404</code></td><td>Key or incremental entry not found.</td></tr>
           <tr><td><code>405</code></td><td>Wrong HTTP method.</td></tr>
-          <tr><td><code>409</code></td><td>Incremental <code>entry_key</code> already exists.</td></tr>
+          <tr><td><code>409</code></td><td>Incremental <code>entry_key</code> already exists, revision conflict, or requested patch history is no longer retained.</td></tr>
           <tr><td><code>500</code></td><td>Storage, encryption, index, network or serialization failure.</td></tr>
         </tbody>
       </table>
@@ -113,10 +114,10 @@ curl -X POST http://localhost:5844/revision/users/user-1 \
 curl http://localhost:5844/read/users/user-1
 curl http://localhost:5844/free/users/user-1</code></pre>
 
-      <div class="machine-block">ai_keywords: http api, endpoint list, status codes, base url, public api, patch value, byte range patch, revision tracking, base_rev, patch history, mysql compat, heidisql, mysql wire protocol
+      <div class="machine-block">ai_keywords: http api, endpoint list, status codes, base url, public api, patch value, byte range patch, read_with_revision, atomic read, revision tracking, base_rev, patch history, history limit, table key subscriptions, mysql compat, heidisql, mysql wire protocol
 mysql_compat_url: 127.0.0.1:3307
 mysql_compat_port_env: TSU_MYSQL_PORT
-source_files: servers/public-api/v1/Api.go, servers/public-api/v1/routes/*.go, servers/mysqlcompat/*.go, data/valuepatch/patch.go, data/revision/revision.go</div>
+source_files: servers/public-api/v1/Api.go, servers/public-api/v1/routes/*.go, servers/mysqlcompat/*.go, data/valuepatch/patch.go, data/revision/revision.go, servers/subscriptions/subServer.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

@@ -283,7 +283,7 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 			return
 		}
 
-		go subServer.NotifyIncTableSubscribers(key, "add", id, body)
+		go subServer.NotifyTableIncTableSubscribers(file, key, "add", id, body)
 
 		if entryKey != "" {
 			if err := incindex.Insert(inc_table_data.TableFileName, id, entryKey); err != nil {
@@ -312,7 +312,7 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 				return
 			}
 
-			go subServer.NotifyIncTableSubscribers(key, "overwrite", id, body)
+			go subServer.NotifyTableIncTableSubscribers(file, key, "overwrite", id, body)
 
 			if needIndexOverwrite {
 				if err := incindex.Set(inc_table_data.TableFileName, id, entryKey); err != nil {
@@ -338,7 +338,7 @@ func SaveIncremental(w http.ResponseWriter, r *http.Request, client *http.Client
 				return
 			}
 
-			go subServer.NotifyIncTableSubscribers(key, "insert", id, body)
+			go subServer.NotifyTableIncTableSubscribers(file, key, "insert", id, body)
 
 			if entryKey != "" {
 				if err := incindex.Insert(inc_table_data.TableFileName, id, entryKey); err != nil {

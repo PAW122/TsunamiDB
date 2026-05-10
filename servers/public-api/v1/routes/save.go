@@ -128,9 +128,9 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 	if hasRevision {
-		go subServer.NotifySubscribersWithRevision(key, encodedBody, revState.Rev)
+		go subServer.NotifyTableSubscribersWithRevision(file, key, encodedBody, revState.Rev)
 	} else {
-		go subServer.NotifySubscribers(key, encodedBody)
+		go subServer.NotifyTableSubscribers(file, key, encodedBody)
 	}
 
 	w.WriteHeader(http.StatusOK)

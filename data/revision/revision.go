@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -43,6 +44,10 @@ type PatchRecord struct {
 	Rev       uint64                 `json:"rev"`
 	Ops       []valuepatch.Operation `json:"ops"`
 	CreatedAt string                 `json:"created_at"`
+}
+
+type HistoryLimit struct {
+	MaxPatches int `json:"max_patches"`
 }
 
 type ConflictError struct {
@@ -158,6 +163,9 @@ func AdvancePatch(table, key string, baseRev *uint64, ops []valuepatch.Operation
 	state.Rev = nextRev
 	if state.Mode == ModeHistory {
 		if err := appendHistoryLocked(table, key, *record); err != nil {
+			return State{}, nil, true, err
+		}
+		if err := enforceHistoryLimitLocked(table, key, &state); err != nil {
 			return State{}, nil, true, err
 		}
 	}
@@ -300,6 +308,98 @@ func appendHistoryLocked(table, key string, record PatchRecord) error {
 		return err
 	}
 	return nil
+}
+
+func enforceHistoryLimitLocked(table, key string, state *State) error {
+	limit := historyLimit()
+	if limit.MaxPatches <= 0 {
+		return nil
+	}
+	if state.Rev >= state.HistoryFromRev && state.Rev-state.HistoryFromRev <= uint64(limit.MaxPatches) {
+		return nil
+	}
+
+	records, err := readHistoryRecordsLocked(table, key)
+	if err != nil {
+		return err
+	}
+	if len(records) <= limit.MaxPatches {
+		return nil
+	}
+
+	keepFrom := len(records) - limit.MaxPatches
+	records = records[keepFrom:]
+	if len(records) > 0 {
+		state.HistoryFromRev = records[0].BaseRev
+	} else {
+		state.HistoryFromRev = state.Rev
+	}
+	return writeHistoryRecordsLocked(table, key, records)
+}
+
+func readHistoryRecordsLocked(table, key string) ([]PatchRecord, error) {
+	file, err := os.Open(historyPath(table, key))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	records := make([]PatchRecord, 0)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		var record PatchRecord
+		if err := json.Unmarshal(scanner.Bytes(), &record); err != nil {
+			return nil, err
+		}
+		records = append(records, record)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
+func writeHistoryRecordsLocked(table, key string, records []PatchRecord) error {
+	if err := os.MkdirAll(filepath.Dir(historyPath(table, key)), 0755); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(historyPath(table, key), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	for _, record := range records {
+		data, err := json.Marshal(record)
+		if err != nil {
+			return err
+		}
+		if _, err := file.Write(append(data, '\n')); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func historyLimit() HistoryLimit {
+	return HistoryLimit{
+		MaxPatches: intEnv("TSU_REVISION_HISTORY_MAX_PATCHES", 1000),
+	}
+}
+
+func intEnv(name string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		return fallback
+	}
+	return value
 }
 
 func truncateHistoryLocked(table, key string) error {

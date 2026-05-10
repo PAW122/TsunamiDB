@@ -49,9 +49,9 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 		return err
 	}
 	if hasRevision {
-		go notifySubscribersWithRevision(key, data, revState.Rev)
+		go notifyTableSubscribersWithRevision(table, key, data, revState.Rev)
 	} else {
-		go notifySubscribers(key, data)
+		go notifyTableSubscribers(table, key, data)
 	}
 	return nil
 }

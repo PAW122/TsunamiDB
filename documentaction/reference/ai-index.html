@@ -65,6 +65,8 @@ network_manager: optional CLI port; disabled when omitted
 patch_endpoint: POST /patch/{table}/{key}
 revision_endpoint: GET/POST /revision/{table}/{key}
 revision_history_endpoint: GET /revision/{table}/{key}/patches?from_rev=N
+read_with_revision_endpoint: GET /read_with_revision/{table}/{key}
+revision_history_limit_env: TSU_REVISION_HISTORY_MAX_PATCHES
 go_import: github.com/PAW122/TsunamiDB/lib/dbclient
 go_package_name: TsuClient
 dll_status: implemented as c-shared wrapper in lib/dll</div>
@@ -75,7 +77,8 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
         <tbody>
           <tr><td>Save bytes</td><td><code>POST /save/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/save.go</code></td></tr>
           <tr><td>Patch existing value</td><td><code>POST /patch/{table}/{key}</code>, <code>ops[].offset</code>, <code>ops[].delete</code>, <code>ops[].insert</code>, <code>ops[].insert_b64</code></td><td><a href="../http/key-value.html#patch-values">Key-Value</a></td><td><code>routes/patch.go</code>, <code>data/valuepatch/patch.go</code></td></tr>
-          <tr><td>Track key revision and patch history</td><td><code>GET/POST /revision/{table}/{key}</code>, <code>GET /revision/{table}/{key}/patches?from_rev=...</code>, modes <code>off</code>, <code>current</code>, <code>history</code></td><td><a href="../http/key-value.html#revision-tracking">Key-Value</a></td><td><code>routes/revision.go</code>, <code>data/revision/revision.go</code></td></tr>
+          <tr><td>Track key revision and patch history</td><td><code>GET/POST /revision/{table}/{key}</code>, <code>GET /revision/{table}/{key}/patches?from_rev=...</code>, modes <code>off</code>, <code>current</code>, <code>history</code>, <code>TSU_REVISION_HISTORY_MAX_PATCHES</code></td><td><a href="../http/key-value.html#revision-tracking">Key-Value</a></td><td><code>routes/revision.go</code>, <code>data/revision/revision.go</code></td></tr>
+          <tr><td>Read atomic value and revision snapshot</td><td><code>GET /read_with_revision/{table}/{key}</code>, response <code>data_b64</code>, <code>rev</code>, <code>revision_mode</code></td><td><a href="../http/key-value.html#read-with-revision">Key-Value</a></td><td><code>routes/read_with_revision.go</code>, <code>data/valuepatch/patch.go</code></td></tr>
           <tr><td>Read bytes</td><td><code>GET /read/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/read.go</code></td></tr>
           <tr><td>Delete key</td><td><code>GET /free/{table}/{key}</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/free.go</code></td></tr>
           <tr><td>Nested JSON</td><td><code>mode: save_nested_json</code>, <code>read_nested</code>, <code>read_only_nested</code></td><td><a href="../http/key-value.html">Key-Value</a></td><td><code>routes/nested.go</code></td></tr>
@@ -83,7 +86,7 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
           <tr><td>Incremental append/read/delete</td><td><code>/save_inc</code>, <code>/read_inc</code>, <code>/delete_inc</code></td><td><a href="../http/incremental.html">Incremental</a></td><td><code>routes/inc_*.go</code></td></tr>
           <tr><td>Relational schema, CRUD, select and SQL</td><td><code>/rel/schema/{table}</code>, <code>/rel/{table}/row/{rowID}</code>, <code>/rel/{table}/select</code>, <code>/rel/sql</code></td><td><a href="../http/relational.html">Relational</a></td><td><code>routes/relational.go</code>, <code>data/relational/*.go</code></td></tr>
           <tr><td>MySQL-compatible SQL clients</td><td><code>127.0.0.1:3307</code>, <code>TSU_MYSQL_PORT</code>, HeidiSQL, MySQL TCP protocol</td><td><a href="../http/relational.html#mysql-compatibility-endpoint">Relational</a></td><td><code>servers/mysqlcompat/*.go</code>, <code>data/relational/*.go</code></td></tr>
-          <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code>, events <code>updated</code> and <code>patched</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
+          <tr><td>Subscriptions</td><td><code>/subscriptions/enable</code>, <code>/subscriptions/disable</code>, <code>ws://.../sub</code>, <code>subscriptions:[{table,key}]</code>, events <code>updated</code> and <code>patched</code></td><td><a href="../http/subscriptions.html">Subscriptions</a></td><td><code>servers/subscriptions/subServer.go</code></td></tr>
           <tr><td>P2P network layer</td><td><code>network manager</code>, table catalogs, distributed reads</td><td><a href="../http/network-manager.html">Network Manager</a></td><td><code>servers/network-manager/*.go</code></td></tr>
           <tr><td>Regex key search</td><td><code>GET /key_by_regex/{table}?regex=...&amp;max=...</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/keyByRegex.go</code></td></tr>
           <tr><td>Health</td><td><code>GET /health</code></td><td><a href="../http/meta.html">Meta</a></td><td><code>routes/health.go</code></td></tr>
@@ -104,6 +107,7 @@ dll_status: implemented as c-shared wrapper in lib/dll</div>
       <h2>Go Lookup</h2>
       <div class="machine-block">Save(key, table string, data []byte) error
 Read(key, table string) ([]byte, error)
+ReadWithRevision(key, table string) (ReadWithRevisionResult, error)
 Patch(key, table string, ops []PatchOperation) ([]byte, error)
 PatchWithRevision(key, table string, baseRev uint64, ops []PatchOperation) ([]byte, RevisionState, error)
 SetRevisionPolicy(key, table string, mode RevisionMode) (RevisionState, error)
@@ -116,7 +120,9 @@ InitNetworkManager(port int, knownPeers []string)
 InitPublicApi(port int)
 InitSubscriptionServer(port string) error
 EnableSubscription(keys []string) (string, error)
+EnableSubscriptionForTargets(targets []SubscriptionTarget) (string, error)
 DisableSubscription(key string) error
+DisableSubscriptionForTarget(table, key string) error
 GetKeysByRegex(table, regex string, max int) ([]string, error)</div>
     </main>
   </div>

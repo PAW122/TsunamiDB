@@ -103,9 +103,9 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 	if hasRevision {
-		go subServer.NotifySubscribersWithRevision(key, body, revState.Rev)
+		go subServer.NotifyTableSubscribersWithRevision(file, key, body, revState.Rev)
 	} else {
-		go subServer.NotifySubscribers(key, body)
+		go subServer.NotifyTableSubscribers(file, key, body)
 	}
 
 	w.WriteHeader(http.StatusOK)

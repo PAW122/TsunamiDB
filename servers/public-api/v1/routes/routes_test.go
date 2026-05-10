@@ -2,6 +2,7 @@ package routes
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -237,6 +238,36 @@ func TestRevisionHistoryEndpoint(t *testing.T) {
 	stale := perform(Revision, http.MethodGet, "/revision/docs/doc1/patches?from_rev=0", nil, nil)
 	if stale.Code != http.StatusConflict {
 		t.Fatalf("stale history status = %d body=%s", stale.Code, stale.Body.String())
+	}
+}
+
+func TestReadWithRevisionEndpoint(t *testing.T) {
+	setupRoutesTest(t)
+
+	perform(AsyncSave, http.MethodPost, "/save/docs/doc-read-rev", bytes.NewBufferString("hello"), nil)
+	policy := perform(Revision, http.MethodPost, "/revision/docs/doc-read-rev", bytes.NewBufferString(`{"mode":"current"}`), nil)
+	if policy.Code != http.StatusOK {
+		t.Fatalf("revision policy status: %d body=%s", policy.Code, policy.Body.String())
+	}
+	patch := perform(PatchValue, http.MethodPost, "/patch/docs/doc-read-rev", bytes.NewBufferString(`{"base_rev":0,"ops":[{"offset":5,"insert":"!"}]}`), nil)
+	if patch.Code != http.StatusOK {
+		t.Fatalf("patch status: %d body=%s", patch.Code, patch.Body.String())
+	}
+
+	read := perform(ReadWithRevision, http.MethodGet, "/read_with_revision/docs/doc-read-rev", nil, nil)
+	if read.Code != http.StatusOK {
+		t.Fatalf("read_with_revision status: %d body=%s", read.Code, read.Body.String())
+	}
+	var out readWithRevisionResponse
+	if err := json.Unmarshal(read.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode read_with_revision response: %v", err)
+	}
+	data, err := base64.StdEncoding.DecodeString(out.DataBase64)
+	if err != nil {
+		t.Fatalf("decode data_b64: %v", err)
+	}
+	if string(data) != "hello!" || out.Rev != 1 || out.RevisionMode != revision.ModeCurrent {
+		t.Fatalf("unexpected read_with_revision response: %+v data=%q", out, string(data))
 	}
 }
 

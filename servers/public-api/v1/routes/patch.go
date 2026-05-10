@@ -65,9 +65,9 @@ func PatchValue(w http.ResponseWriter, r *http.Request, _ *http.Client) {
 
 	networkmanager.NotifyKVTable(file)
 	if hasRevision && record != nil {
-		go subServer.NotifyPatchSubscribersWithRevision(key, req.Ops, record.BaseRev, record.Rev)
+		go subServer.NotifyTablePatchSubscribersWithRevision(file, key, req.Ops, record.BaseRev, record.Rev)
 	} else {
-		go subServer.NotifyPatchSubscribers(key, req.Ops)
+		go subServer.NotifyTablePatchSubscribers(file, key, req.Ops)
 	}
 
 	resp := patchResponse{

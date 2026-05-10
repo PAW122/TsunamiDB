@@ -109,7 +109,7 @@ func SaveInc(key, table string, data []byte, options SaveIncOptions) (SaveIncRes
 			err = incindex.Insert(incTable.TableFileName, id, options.EntryKey)
 		}
 		if err == nil {
-			go subServer.NotifyIncTableSubscribers(key, "add", id, data)
+			go subServer.NotifyTableIncTableSubscribers(table, key, "add", id, data)
 		}
 	} else if mode == SaveIncModeOverwrite {
 		id, err = saveIncDataOverwrite(encoded, incTable.TableFileName, incTable.EntrySize, *options.ID, string(countFrom))
@@ -117,7 +117,7 @@ func SaveInc(key, table string, data []byte, options SaveIncOptions) (SaveIncRes
 			err = incindex.Set(incTable.TableFileName, id, options.EntryKey)
 		}
 		if err == nil {
-			go subServer.NotifyIncTableSubscribers(key, "overwrite", id, data)
+			go subServer.NotifyTableIncTableSubscribers(table, key, "overwrite", id, data)
 		}
 	} else {
 		id, err = saveIncDataPut(encoded, incTable.TableFileName, incTable.EntrySize, *options.ID, string(countFrom))
@@ -125,7 +125,7 @@ func SaveInc(key, table string, data []byte, options SaveIncOptions) (SaveIncRes
 			err = incindex.Insert(incTable.TableFileName, id, options.EntryKey)
 		}
 		if err == nil {
-			go subServer.NotifyIncTableSubscribers(key, "insert", id, data)
+			go subServer.NotifyTableIncTableSubscribers(table, key, "insert", id, data)
 		}
 	}
 	if err != nil {

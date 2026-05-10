@@ -30,8 +30,16 @@
       "method": "GET/POST",
       "path": "/revision/{table}/{key}, /revision/{table}/{key}/patches",
       "page": "../http/key-value.html#revision-tracking",
-      "keywords": ["revision", "versioning", "rev", "base_rev", "current", "history", "patch history", "reconnect", "resync", "revision_conflict"],
+      "keywords": ["revision", "versioning", "rev", "base_rev", "current", "history", "patch history", "history limit", "TSU_REVISION_HISTORY_MAX_PATCHES", "reconnect", "resync", "revision_conflict"],
       "source": ["servers/public-api/v1/routes/revision.go", "data/revision/revision.go"]
+    },
+    {
+      "id": "kv-read-with-revision",
+      "method": "GET",
+      "path": "/read_with_revision/{table}/{key}",
+      "page": "../http/key-value.html#read-with-revision",
+      "keywords": ["read_with_revision", "atomic read", "revision snapshot", "data_b64", "rev", "revision_mode", "document editing", "initial sync"],
+      "source": ["servers/public-api/v1/routes/read_with_revision.go", "data/valuepatch/patch.go", "data/revision/revision.go"]
     },
     {
       "id": "kv-read",
@@ -110,7 +118,7 @@
       "method": "POST/WS",
       "path": "/subscriptions/enable, /subscriptions/disable, ws://localhost:5845/sub",
       "page": "../http/subscriptions.html",
-      "keywords": ["websocket", "auth_key", "updated", "patched", "base_rev", "rev", "deleted", "inc_table_update", "unsubscribed", "document edits", "benchmark", "notifications/s", "writes/s"],
+      "keywords": ["websocket", "auth_key", "table key subscriptions", "scoped subscription", "subscriptions table key", "updated", "patched", "base_rev", "rev", "deleted", "inc_table_update", "unsubscribed", "document edits", "benchmark", "notifications/s", "writes/s"],
       "source": ["servers/subscriptions/subServer.go", "servers/subscriptions/subServer_benchmark_test.go", "servers/public-api/v1/routes/patch.go", "servers/public-api/v1/routes/revision.go"]
     },
     {
@@ -145,6 +153,7 @@
     "functions": [
       "Save(key, table string, data []byte) error",
       "Read(key, table string) ([]byte, error)",
+      "ReadWithRevision(key, table string) (ReadWithRevisionResult, error)",
       "Patch(key, table string, ops []PatchOperation) ([]byte, error)",
       "PatchWithRevision(key, table string, baseRev uint64, ops []PatchOperation) ([]byte, RevisionState, error)",
       "SetRevisionPolicy(key, table string, mode RevisionMode) (RevisionState, error)",
@@ -157,7 +166,9 @@
       "InitPublicApi(port int)",
       "InitSubscriptionServer(port string) error",
       "EnableSubscription(keys []string) (string, error)",
+      "EnableSubscriptionForTargets(targets []SubscriptionTarget) (string, error)",
       "DisableSubscription(key string) error",
+      "DisableSubscriptionForTarget(table, key string) error",
       "GetKeysByRegex(table, regex string, max int) ([]string, error)"
     ],
     "source": ["lib/dbclient/client.go", "lib/export/*.go"]

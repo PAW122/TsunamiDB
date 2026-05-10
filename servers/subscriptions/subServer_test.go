@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/PAW122/TsunamiDB/data/valuepatch"
 	"github.com/gorilla/websocket"
@@ -159,6 +160,75 @@ func TestWebSocketSubscribeNotifyAndDisable(t *testing.T) {
 	}
 	if _, err := DisableSubscriptionInternal(""); err != ErrNoKeyArg {
 		t.Fatalf("expected ErrNoKeyArg, got %v", err)
+	}
+}
+
+func TestWebSocketTableKeySubscription(t *testing.T) {
+	resetSubscriptionsForTests(t)
+
+	authKey, err := EnableSubscriptionForTargetsInternal([]SubscriptionTarget{{Table: "docs", Key: "doc1"}})
+	if err != nil {
+		t.Fatalf("enable target subscription: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(HandleWS))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+
+	if err := conn.WriteJSON(map[string]string{"auth_key": authKey}); err != nil {
+		t.Fatalf("write auth: %v", err)
+	}
+	var subscribed struct {
+		Event string   `json:"event"`
+		Keys  []string `json:"keys"`
+	}
+	if err := conn.ReadJSON(&subscribed); err != nil {
+		t.Fatalf("read subscribed: %v", err)
+	}
+	if subscribed.Event != "subscribed" || len(subscribed.Keys) != 1 || subscribed.Keys[0] != "docs/doc1" {
+		t.Fatalf("unexpected subscribed response: %+v", subscribed)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	NotifyTablePatchSubscribersWithRevision("docs", "doc1", []valuepatch.Operation{{Offset: 0, Insert: "x"}}, 0, 1)
+	var patched struct {
+		Event   string                 `json:"event"`
+		Table   string                 `json:"table"`
+		Key     string                 `json:"key"`
+		BaseRev uint64                 `json:"base_rev"`
+		Rev     uint64                 `json:"rev"`
+		Patch   []valuepatch.Operation `json:"patch"`
+	}
+	if err := conn.ReadJSON(&patched); err != nil {
+		t.Fatalf("read table/key patch: %v", err)
+	}
+	if patched.Event != "patched" || patched.Table != "docs" || patched.Key != "doc1" || patched.BaseRev != 0 || patched.Rev != 1 || len(patched.Patch) != 1 {
+		t.Fatalf("unexpected table/key patch: %+v", patched)
+	}
+
+	notified, err := DisableSubscriptionForTargetInternal("docs", "doc1")
+	if err != nil {
+		t.Fatalf("disable table/key subscription: %v", err)
+	}
+	if notified != 1 {
+		t.Fatalf("expected one disable notification, got %d", notified)
+	}
+	var unsub struct {
+		Event string `json:"event"`
+		Table string `json:"table"`
+		Key   string `json:"key"`
+	}
+	if err := conn.ReadJSON(&unsub); err != nil {
+		t.Fatalf("read table/key unsubscribed: %v", err)
+	}
+	if unsub.Event != "unsubscribed" || unsub.Table != "docs" || unsub.Key != "doc1" {
+		t.Fatalf("unexpected table/key unsubscribe: %+v", unsub)
 	}
 }
 

@@ -108,6 +108,20 @@ curl -X POST http://localhost:5844/patch/docs/doc-1 \
 
 curl "http://localhost:5844/revision/docs/doc-1/patches?from_rev=0"</code></pre>
       <p>Full <code>/save</code> operations on a versioned key increment <code>rev</code>. In <code>history</code> mode, a full save resets the patch history start, so older clients should perform a full resync instead of replaying stale patches.</p>
+      <p>Patch history is bounded by <code>TSU_REVISION_HISTORY_MAX_PATCHES</code>. The default is <code>1000</code> retained patch records per key; set it to <code>0</code> or a negative value to disable trimming. If a client asks for <code>from_rev</code> older than <code>history_from_rev</code>, the server returns <code>409</code> and the client should reload the full value.</p>
+
+      <h2 id="read-with-revision"><span class="endpoint">GET</span> /read_with_revision/{table}/{key}</h2>
+      <p>Reads the stored value and revision state under the same per-key lock used by <code>/patch</code>. Use this endpoint when a client needs a consistent initial snapshot before applying streamed patch events.</p>
+      <table>
+        <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>data_b64</code></td><td>Base64-encoded value bytes, safe for binary documents.</td></tr>
+          <tr><td><code>rev</code></td><td>Current revision for the key.</td></tr>
+          <tr><td><code>revision_mode</code></td><td><code>off</code>, <code>current</code> or <code>history</code>.</td></tr>
+          <tr><td><code>history_from_rev</code></td><td>First revision from which retained history can be replayed, present when non-zero.</td></tr>
+        </tbody>
+      </table>
+      <pre><code class="language-bash">curl http://localhost:5844/read_with_revision/docs/doc-1</code></pre>
 
       <h2><span class="endpoint">GET</span> /read/{table}/{key}</h2>
       <p>Returns the decoded user bytes. If the key is not local, TsunamiDB asks connected P2P peers.</p>
@@ -155,8 +169,8 @@ curl "http://localhost:5844/revision/docs/doc-1/patches?from_rev=0"</code></pre>
       <pre><code class="language-bash">curl http://localhost:5844/read/users/user-2 -H "read_nested: profile.bio logs"
 curl http://localhost:5844/read/users/user-2 -H "read_only_nested: [\"profile.bio\"]"</code></pre>
 
-      <div class="machine-block">ai_keywords: save patch revision base_rev rev current history patch history read free key value nested json mode save_nested_json read_nested read_only_nested byte range patch document editing partial update
-source_files: servers/public-api/v1/routes/save.go, patch.go, revision.go, read.go, free.go, nested.go, data/valuepatch/patch.go, data/revision/revision.go</div>
+      <div class="machine-block">ai_keywords: save patch revision base_rev rev current history patch history history limit TSU_REVISION_HISTORY_MAX_PATCHES read_with_revision atomic read data_b64 free key value nested json mode save_nested_json read_nested read_only_nested byte range patch document editing partial update
+source_files: servers/public-api/v1/routes/save.go, patch.go, revision.go, read.go, read_with_revision.go, free.go, nested.go, data/valuepatch/patch.go, data/revision/revision.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

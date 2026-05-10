@@ -40,6 +40,8 @@ type PatchOperation = export.PatchOperation
 type RevisionMode = export.RevisionMode
 type RevisionState = export.RevisionState
 type RevisionPatchRecord = export.RevisionPatchRecord
+type ReadWithRevisionResult = export.ReadWithRevisionResult
+type SubscriptionTarget = subServer.SubscriptionTarget
 
 const (
 	RevisionModeOff     = export.RevisionModeOff
@@ -55,6 +57,11 @@ func Save(key, table string, data []byte) error {
 func Read(key, table string) ([]byte, error) {
 	defer debug.MeasureTime("[lib.dbclient] [read]")()
 	return export.Read(key, table)
+}
+
+func ReadWithRevision(key, table string) (ReadWithRevisionResult, error) {
+	defer debug.MeasureTime("[lib.dbclient] [read-with-revision]")()
+	return export.ReadWithRevision(key, table)
 }
 
 func Patch(key, table string, ops []PatchOperation) ([]byte, error) {
@@ -133,8 +140,19 @@ func EnableSubscription(keys []string) (string, error) {
 	return subServer.EnableSubscriptionInternal(keys)
 }
 
+func EnableSubscriptionForTargets(targets []SubscriptionTarget) (string, error) {
+	defer debug.MeasureTime("[lib.dbclient] [EnableSubscriptionForTargets]")()
+	return subServer.EnableSubscriptionForTargetsInternal(targets)
+}
+
 func DisableSubscription(key string) error {
 	defer debug.MeasureTime("[lib.dbclient] [DisableSubscription]")()
 	_, error := subServer.DisableSubscriptionInternal(key)
+	return error
+}
+
+func DisableSubscriptionForTarget(table, key string) error {
+	defer debug.MeasureTime("[lib.dbclient] [DisableSubscriptionForTarget]")()
+	_, error := subServer.DisableSubscriptionForTargetInternal(table, key)
 	return error
 }

@@ -45,6 +45,6 @@ func Free(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	defragmentationManager.MarkAsFree(key, file, int64(fsData.StartPtr), int64(fsData.EndPtr))
 
 	networkmanager.NotifyKVTable(file)
-	go subServer.NotifyDeleteAndRemove(key)
+	go subServer.NotifyTableDeleteAndRemove(file, key)
 	fmt.Fprint(w, "free")
 }

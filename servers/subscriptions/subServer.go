@@ -19,7 +19,13 @@ import (
 
 type Pending struct {
 	Keys      []string
+	Scopes    []string
 	ExpiresAt time.Time
+}
+
+type SubscriptionTarget struct {
+	Table string `json:"table,omitempty"`
+	Key   string `json:"key"`
 }
 
 var (
@@ -160,9 +166,15 @@ func cleanupConn(conn *websocket.Conn) {
 
 func HandleEnableSubscription(w http.ResponseWriter, r *http.Request, _ *http.Client) {
 	var req struct {
-		Keys []string `json:"keys"`
+		Keys          []string             `json:"keys"`
+		Subscriptions []SubscriptionTarget `json:"subscriptions"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Keys) == 0 {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	keys, scopes := subscriptionRequestScopes(req.Keys, req.Subscriptions)
+	if len(scopes) == 0 {
 		http.Error(w, "invalid request", http.StatusBadRequest)
 		return
 	}
@@ -171,7 +183,8 @@ func HandleEnableSubscription(w http.ResponseWriter, r *http.Request, _ *http.Cl
 
 	mu.Lock()
 	pendingAuthKeys[authKey] = &Pending{
-		Keys:      req.Keys,
+		Keys:      keys,
+		Scopes:    scopes,
 		ExpiresAt: time.Now().Add(60 * time.Second),
 	}
 	mu.Unlock()
@@ -199,6 +212,7 @@ func EnableSubscriptionInternal(keys []string) (string, error) {
 	mu.Lock()
 	pendingAuthKeys[authKey] = &Pending{
 		Keys:      append([]string(nil), keys...),
+		Scopes:    append([]string(nil), keys...),
 		ExpiresAt: time.Now().Add(60 * time.Second),
 	}
 	mu.Unlock()
@@ -218,9 +232,40 @@ func EnableSubscriptionInternal(keys []string) (string, error) {
 	return authKey, nil
 }
 
+func EnableSubscriptionForTargetsInternal(targets []SubscriptionTarget) (string, error) {
+	keys, scopes := subscriptionRequestScopes(nil, targets)
+	if len(scopes) == 0 {
+		return "", ErrNoKeys
+	}
+
+	authKey := uuid.NewString()
+
+	mu.Lock()
+	pendingAuthKeys[authKey] = &Pending{
+		Keys:      keys,
+		Scopes:    scopes,
+		ExpiresAt: time.Now().Add(60 * time.Second),
+	}
+	mu.Unlock()
+
+	go func(k string) {
+		timer := time.NewTimer(60 * time.Second)
+		defer timer.Stop()
+		<-timer.C
+		mu.Lock()
+		if p, ok := pendingAuthKeys[k]; ok && time.Now().After(p.ExpiresAt) {
+			delete(pendingAuthKeys, k)
+		}
+		mu.Unlock()
+	}(authKey)
+
+	return authKey, nil
+}
+
 func HandleDisableSubscription(w http.ResponseWriter, r *http.Request, _ *http.Client) {
 	var req struct {
-		Key string `json:"key"`
+		Table string `json:"table"`
+		Key   string `json:"key"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req.Key == "" {
@@ -228,34 +273,7 @@ func HandleDisableSubscription(w http.ResponseWriter, r *http.Request, _ *http.C
 		_, _ = w.Write([]byte("missing key"))
 		return
 	}
-
-	// Snapshot połączeń, sprzątamy mapy pod lockiem
-	mu.Lock()
-	set := activeSubs[req.Key]
-	conns := make([]*websocket.Conn, 0, len(set))
-	for c := range set {
-		conns = append(conns, c)
-		// usuń odwrotne mapowanie
-		if m := connToKeys[c]; m != nil {
-			delete(m, req.Key)
-			if len(m) == 0 {
-				delete(connToKeys, c)
-			}
-		}
-	}
-	delete(activeSubs, req.Key)
-	mu.Unlock()
-
-	// Wysyłka poza lockiem
-	for _, c := range conns {
-		if err := writeJSON(c, map[string]string{
-			"event": "unsubscribed",
-			"key":   req.Key,
-		}); err != nil {
-			log.Println("unsub notify write failed -> cleanup:", err)
-			cleanupConn(c)
-		}
-	}
+	_, _ = disableSubscriptionScope(subscriptionScope(req.Table, req.Key), req.Table, req.Key)
 
 	w.WriteHeader(http.StatusOK)
 }
@@ -264,30 +282,38 @@ func DisableSubscriptionInternal(key string) (int, error) {
 	if key == "" {
 		return 0, ErrNoKeyArg
 	}
+	return disableSubscriptionScope(key, "", key)
+}
 
-	// Snapshot połączeń + sprzątanie map pod lockiem
+func DisableSubscriptionForTargetInternal(table, key string) (int, error) {
+	if key == "" {
+		return 0, ErrNoKeyArg
+	}
+	return disableSubscriptionScope(subscriptionScope(table, key), table, key)
+}
+
+func disableSubscriptionScope(scope, table, key string) (int, error) {
 	mu.Lock()
-	set := activeSubs[key]
+	set := activeSubs[scope]
 	conns := make([]*websocket.Conn, 0, len(set))
 	for c := range set {
 		conns = append(conns, c)
-		// usuń odwrotne mapowanie
 		if m := connToKeys[c]; m != nil {
-			delete(m, key)
+			delete(m, scope)
 			if len(m) == 0 {
 				delete(connToKeys, c)
 			}
 		}
 	}
-	delete(activeSubs, key)
+	delete(activeSubs, scope)
 	mu.Unlock()
 
-	// Wysyłka poza lockiem
 	notified := 0
 	for _, c := range conns {
 		if err := writeJSON(c, map[string]string{
 			"event": "unsubscribed",
 			"key":   key,
+			"table": table,
 		}); err != nil {
 			log.Println("unsub notify write failed -> cleanup:", err)
 			cleanupConn(c)
@@ -373,15 +399,19 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
 			if _, ok := connToKeys[conn]; !ok {
 				connToKeys[conn] = make(map[string]struct{})
 			}
-			// Dla każdego key: dodaj do setów (idempotentnie)
-			for _, key := range pend.Keys {
-				if _, ok := activeSubs[key]; !ok {
-					activeSubs[key] = make(map[*websocket.Conn]struct{})
+			scopes := pend.Scopes
+			if len(scopes) == 0 {
+				scopes = pend.Keys
+			}
+			// Dla każdego scope: dodaj do setów (idempotentnie)
+			for _, scope := range scopes {
+				if _, ok := activeSubs[scope]; !ok {
+					activeSubs[scope] = make(map[*websocket.Conn]struct{})
 				}
 				// jeśli już zasubskrybowane przez ten conn, nic nie robi
-				if _, already := connToKeys[conn][key]; !already {
-					activeSubs[key][conn] = struct{}{}
-					connToKeys[conn][key] = struct{}{}
+				if _, already := connToKeys[conn][scope]; !already {
+					activeSubs[scope][conn] = struct{}{}
+					connToKeys[conn][scope] = struct{}{}
 				}
 			}
 			// Jednorazowo konsumuj auth_key
@@ -427,12 +457,26 @@ func NotifySubscribers(key string, data []byte) {
 	})
 }
 
+func NotifyTableSubscribers(table, key string, data []byte) {
+	notifySubscribersWithPayloadForScopes(tableKeyPayload(table, key, map[string]any{
+		"event": "updated",
+		"data":  string(data),
+	}), key, subscriptionScope(table, key))
+}
+
 func NotifyPatchSubscribers(key string, patch any) {
 	notifySubscribersWithPayload(key, map[string]any{
 		"event": "patched",
 		"key":   key,
 		"patch": patch,
 	})
+}
+
+func NotifyTablePatchSubscribers(table, key string, patch any) {
+	notifySubscribersWithPayloadForScopes(tableKeyPayload(table, key, map[string]any{
+		"event": "patched",
+		"patch": patch,
+	}), key, subscriptionScope(table, key))
 }
 
 func NotifyPatchSubscribersWithRevision(key string, patch any, baseRev, rev uint64) {
@@ -445,6 +489,15 @@ func NotifyPatchSubscribersWithRevision(key string, patch any, baseRev, rev uint
 	})
 }
 
+func NotifyTablePatchSubscribersWithRevision(table, key string, patch any, baseRev, rev uint64) {
+	notifySubscribersWithPayloadForScopes(tableKeyPayload(table, key, map[string]any{
+		"event":    "patched",
+		"base_rev": baseRev,
+		"rev":      rev,
+		"patch":    patch,
+	}), key, subscriptionScope(table, key))
+}
+
 func NotifySubscribersWithRevision(key string, data []byte, rev uint64) {
 	notifySubscribersWithPayload(key, map[string]any{
 		"event": "updated",
@@ -452,6 +505,14 @@ func NotifySubscribersWithRevision(key string, data []byte, rev uint64) {
 		"data":  string(data),
 		"rev":   rev,
 	})
+}
+
+func NotifyTableSubscribersWithRevision(table, key string, data []byte, rev uint64) {
+	notifySubscribersWithPayloadForScopes(tableKeyPayload(table, key, map[string]any{
+		"event": "updated",
+		"data":  string(data),
+		"rev":   rev,
+	}), key, subscriptionScope(table, key))
 }
 
 func NotifyIncTableSubscribers(key string, changeType string, entryID uint64, entryData []byte) {
@@ -468,8 +529,25 @@ func NotifyIncTableSubscribers(key string, changeType string, entryID uint64, en
 	})
 }
 
+func NotifyTableIncTableSubscribers(table string, key string, changeType string, entryID uint64, entryData []byte) {
+	notifySubscribersWithPayloadForScopes(tableKeyPayload(table, key, map[string]any{
+		"event": "inc_table_update",
+		"data": map[string]any{
+			"type": changeType,
+			"new_data": map[string]string{
+				"id":   strconv.FormatUint(entryID, 10),
+				"data": string(entryData),
+			},
+		},
+	}), key, subscriptionScope(table, key))
+}
+
 func notifySubscribersWithPayload(key string, payload any) {
-	conns := snapshotSubscribers(key)
+	notifySubscribersWithPayloadForScopes(payload, key)
+}
+
+func notifySubscribersWithPayloadForScopes(payload any, scopes ...string) {
+	conns := snapshotSubscribers(scopes...)
 	if len(conns) == 0 {
 		return
 	}
@@ -482,14 +560,21 @@ func notifySubscribersWithPayload(key string, payload any) {
 	}
 }
 
-func snapshotSubscribers(key string) []*websocket.Conn {
+func snapshotSubscribers(scopes ...string) []*websocket.Conn {
 	mu.Lock()
 	defer mu.Unlock()
 
-	set := activeSubs[key]
-	conns := make([]*websocket.Conn, 0, len(set))
-	for c := range set {
-		conns = append(conns, c)
+	seen := make(map[*websocket.Conn]struct{})
+	conns := make([]*websocket.Conn, 0)
+	for _, scope := range uniqueScopes(scopes...) {
+		set := activeSubs[scope]
+		for c := range set {
+			if _, ok := seen[c]; ok {
+				continue
+			}
+			seen[c] = struct{}{}
+			conns = append(conns, c)
+		}
 	}
 	return conns
 }
@@ -522,4 +607,98 @@ func NotifyDeleteAndRemove(key string) {
 			cleanupConn(c)
 		}
 	}
+}
+
+func NotifyTableDeleteAndRemove(table, key string) {
+	notifyDeleteAndRemoveScopes(table, key, key, subscriptionScope(table, key))
+}
+
+func notifyDeleteAndRemoveScopes(table, key string, scopes ...string) {
+	mu.Lock()
+	seen := make(map[*websocket.Conn]struct{})
+	conns := make([]*websocket.Conn, 0)
+	for _, scope := range uniqueScopes(scopes...) {
+		set := activeSubs[scope]
+		for c := range set {
+			if _, ok := seen[c]; !ok {
+				seen[c] = struct{}{}
+				conns = append(conns, c)
+			}
+			if m := connToKeys[c]; m != nil {
+				delete(m, scope)
+				if len(m) == 0 {
+					delete(connToKeys, c)
+				}
+			}
+		}
+		delete(activeSubs, scope)
+	}
+	mu.Unlock()
+
+	for _, c := range conns {
+		if err := writeJSON(c, tableKeyPayload(table, key, map[string]any{
+			"event": "deleted",
+		})); err != nil {
+			log.Println("delete notify write failed -> cleanup:", err)
+			cleanupConn(c)
+		}
+	}
+}
+
+func subscriptionRequestScopes(keys []string, targets []SubscriptionTarget) ([]string, []string) {
+	labels := make([]string, 0, len(keys)+len(targets))
+	scopes := make([]string, 0, len(keys)+len(targets))
+	for _, key := range keys {
+		if key == "" {
+			continue
+		}
+		labels = append(labels, key)
+		scopes = append(scopes, subscriptionScope("", key))
+	}
+	for _, target := range targets {
+		if target.Key == "" {
+			continue
+		}
+		labels = append(labels, displaySubscriptionScope(target.Table, target.Key))
+		scopes = append(scopes, subscriptionScope(target.Table, target.Key))
+	}
+	return labels, uniqueScopes(scopes...)
+}
+
+func subscriptionScope(table, key string) string {
+	if table == "" {
+		return key
+	}
+	return table + "\x00" + key
+}
+
+func displaySubscriptionScope(table, key string) string {
+	if table == "" {
+		return key
+	}
+	return table + "/" + key
+}
+
+func uniqueScopes(scopes ...string) []string {
+	seen := make(map[string]struct{}, len(scopes))
+	out := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if scope == "" {
+			continue
+		}
+		if _, ok := seen[scope]; ok {
+			continue
+		}
+		seen[scope] = struct{}{}
+		out = append(out, scope)
+	}
+	return out
+}
+
+func tableKeyPayload(table, key string, payload map[string]any) map[string]any {
+	payload["key"] = key
+	if table != "" {
+		payload["table"] = table
+	}
+	return payload
 }
