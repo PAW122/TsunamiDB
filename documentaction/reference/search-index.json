@@ -22,8 +22,16 @@
       "method": "POST",
       "path": "/patch/{table}/{key}",
       "page": "../http/key-value.html#patch-values",
-      "keywords": ["patch", "partial update", "byte range patch", "document editing", "merge value", "offset", "delete", "insert", "insert_b64", "patched event"],
-      "source": ["servers/public-api/v1/routes/patch.go", "data/valuepatch/patch.go"]
+      "keywords": ["patch", "partial update", "byte range patch", "document editing", "merge value", "offset", "delete", "insert", "insert_b64", "base_rev", "rev", "patched event"],
+      "source": ["servers/public-api/v1/routes/patch.go", "data/valuepatch/patch.go", "data/revision/revision.go"]
+    },
+    {
+      "id": "kv-revision",
+      "method": "GET/POST",
+      "path": "/revision/{table}/{key}, /revision/{table}/{key}/patches",
+      "page": "../http/key-value.html#revision-tracking",
+      "keywords": ["revision", "versioning", "rev", "base_rev", "current", "history", "patch history", "reconnect", "resync", "revision_conflict"],
+      "source": ["servers/public-api/v1/routes/revision.go", "data/revision/revision.go"]
     },
     {
       "id": "kv-read",
@@ -102,8 +110,8 @@
       "method": "POST/WS",
       "path": "/subscriptions/enable, /subscriptions/disable, ws://localhost:5845/sub",
       "page": "../http/subscriptions.html",
-      "keywords": ["websocket", "auth_key", "updated", "patched", "deleted", "inc_table_update", "unsubscribed", "document edits", "benchmark", "notifications/s", "writes/s"],
-      "source": ["servers/subscriptions/subServer.go", "servers/subscriptions/subServer_benchmark_test.go", "servers/public-api/v1/routes/patch.go"]
+      "keywords": ["websocket", "auth_key", "updated", "patched", "base_rev", "rev", "deleted", "inc_table_update", "unsubscribed", "document edits", "benchmark", "notifications/s", "writes/s"],
+      "source": ["servers/subscriptions/subServer.go", "servers/subscriptions/subServer_benchmark_test.go", "servers/public-api/v1/routes/patch.go", "servers/public-api/v1/routes/revision.go"]
     },
     {
       "id": "network-manager",
@@ -138,6 +146,10 @@
       "Save(key, table string, data []byte) error",
       "Read(key, table string) ([]byte, error)",
       "Patch(key, table string, ops []PatchOperation) ([]byte, error)",
+      "PatchWithRevision(key, table string, baseRev uint64, ops []PatchOperation) ([]byte, RevisionState, error)",
+      "SetRevisionPolicy(key, table string, mode RevisionMode) (RevisionState, error)",
+      "GetRevisionState(key, table string) (RevisionState, error)",
+      "GetRevisionHistory(key, table string, fromRev, toRev uint64) ([]RevisionPatchRecord, RevisionState, error)",
       "Free(key, table string) error",
       "SaveEncrypted(key, table, encryption_key string, data []byte) error",
       "ReadEncrypted(key, table, encryption_key string) ([]byte, error)",

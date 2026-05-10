@@ -10,6 +10,7 @@ import (
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	"github.com/PAW122/TsunamiDB/data/revision"
 	"github.com/PAW122/TsunamiDB/data/valuepatch"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
@@ -18,13 +19,17 @@ import (
 )
 
 type patchRequest struct {
-	Ops []valuepatch.Operation `json:"ops"`
+	BaseRev *uint64                `json:"base_rev,omitempty"`
+	Ops     []valuepatch.Operation `json:"ops"`
 }
 
 type patchResponse struct {
-	Status string `json:"status"`
-	Key    string `json:"key"`
-	Size   int    `json:"size"`
+	Status       string        `json:"status"`
+	Key          string        `json:"key"`
+	Size         int           `json:"size"`
+	RevisionMode revision.Mode `json:"revision_mode,omitempty"`
+	BaseRev      *uint64       `json:"base_rev,omitempty"`
+	Rev          *uint64       `json:"rev,omitempty"`
 }
 
 func PatchValue(w http.ResponseWriter, r *http.Request, _ *http.Client) {
@@ -52,50 +57,65 @@ func PatchValue(w http.ResponseWriter, r *http.Request, _ *http.Client) {
 	unlock := valuepatch.LockKey(file, key)
 	defer unlock()
 
-	updated, err := patchStoredValue(file, key, req.Ops)
+	updated, revState, record, hasRevision, err := patchStoredValue(file, key, req.BaseRev, req.Ops)
 	if err != nil {
-		http.Error(w, err.Error(), patchHTTPStatus(err))
+		writePatchError(w, err)
 		return
 	}
 
 	networkmanager.NotifyKVTable(file)
-	go subServer.NotifyPatchSubscribers(key, req.Ops)
+	if hasRevision && record != nil {
+		go subServer.NotifyPatchSubscribersWithRevision(key, req.Ops, record.BaseRev, record.Rev)
+	} else {
+		go subServer.NotifyPatchSubscribers(key, req.Ops)
+	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(patchResponse{
+	resp := patchResponse{
 		Status: "patched",
 		Key:    key,
 		Size:   len(updated),
-	})
+	}
+	if hasRevision && record != nil {
+		resp.RevisionMode = revState.Mode
+		resp.BaseRev = &record.BaseRev
+		resp.Rev = &record.Rev
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func patchStoredValue(file, key string, ops []valuepatch.Operation) ([]byte, error) {
+func patchStoredValue(file, key string, baseRev *uint64, ops []valuepatch.Operation) ([]byte, revision.State, *revision.PatchRecord, bool, error) {
+	_, hasRevision, err := revision.CheckPatch(file, key, baseRev)
+	if err != nil {
+		return nil, revision.State{}, nil, hasRevision, err
+	}
+
 	fsData, err := fileSystem_v1.GetElementByKey(file, key)
 	if err != nil {
-		return nil, fmt.Errorf("patch read metadata: %w", err)
+		return nil, revision.State{}, nil, hasRevision, fmt.Errorf("patch read metadata: %w", err)
 	}
 
 	data, err := dataManager_v2.ReadDataFromFileAsync(file, int64(fsData.StartPtr), int64(fsData.EndPtr))
 	if err != nil {
-		return nil, fmt.Errorf("patch read data: %w", err)
+		return nil, revision.State{}, nil, hasRevision, fmt.Errorf("patch read data: %w", err)
 	}
 
 	decoded := encoder_v1.Decode(data)
 	updated, err := valuepatch.Apply([]byte(decoded.Data), ops)
 	if err != nil {
-		return nil, err
+		return nil, revision.State{}, nil, hasRevision, err
 	}
 
 	encoded, meta := encoder_v1.Encode(updated, decoded.HasNested)
 	startPtr, endPtr, err := dataManager_v2.SaveDataToFileAsync(encoded, file)
 	if err != nil {
-		return nil, fmt.Errorf("patch save data: %w", err)
+		return nil, revision.State{}, nil, hasRevision, fmt.Errorf("patch save data: %w", err)
 	}
 
 	prevMeta, existed, err := fileSystem_v1.SaveElementByKey(file, key, int(startPtr), int(endPtr), meta.HasNested)
 	if err != nil {
 		_ = defragmentationManager.MarkAsFree(key, file, startPtr, endPtr)
-		return nil, fmt.Errorf("patch save metadata: %w", err)
+		return nil, revision.State{}, nil, hasRevision, fmt.Errorf("patch save metadata: %w", err)
 	}
 	if existed {
 		if prevMeta.FileName != file || prevMeta.StartPtr != int(startPtr) || prevMeta.EndPtr != int(endPtr) {
@@ -106,7 +126,30 @@ func patchStoredValue(file, key string, ops []valuepatch.Operation) ([]byte, err
 		}
 	}
 
-	return updated, nil
+	revState, record, hasRevision, err := revision.AdvancePatch(file, key, baseRev, ops)
+	if err != nil {
+		return nil, revision.State{}, nil, hasRevision, err
+	}
+
+	return updated, revState, record, hasRevision, nil
+}
+
+func writePatchError(w http.ResponseWriter, err error) {
+	if conflict := (*revision.ConflictError)(nil); errors.As(err, &conflict) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"error":       "revision_conflict",
+			"base_rev":    conflict.BaseRev,
+			"current_rev": conflict.CurrentRev,
+		})
+		return
+	}
+	if errors.Is(err, revision.ErrMissingBaseRev) {
+		http.Error(w, "missing base_rev", http.StatusBadRequest)
+		return
+	}
+	http.Error(w, err.Error(), patchHTTPStatus(err))
 }
 
 func patchHTTPStatus(err error) int {
@@ -116,6 +159,10 @@ func patchHTTPStatus(err error) int {
 		errors.Is(err, valuepatch.ErrInvalidDelete),
 		errors.Is(err, valuepatch.ErrInvalidInsert):
 		return http.StatusBadRequest
+	case errors.Is(err, revision.ErrMissingBaseRev):
+		return http.StatusBadRequest
+	case errors.Is(err, revision.ErrRevisionConflict):
+		return http.StatusConflict
 	case strings.Contains(err.Error(), "patch read metadata"):
 		return http.StatusNotFound
 	default:

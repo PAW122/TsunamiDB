@@ -435,6 +435,25 @@ func NotifyPatchSubscribers(key string, patch any) {
 	})
 }
 
+func NotifyPatchSubscribersWithRevision(key string, patch any, baseRev, rev uint64) {
+	notifySubscribersWithPayload(key, map[string]any{
+		"event":    "patched",
+		"key":      key,
+		"base_rev": baseRev,
+		"rev":      rev,
+		"patch":    patch,
+	})
+}
+
+func NotifySubscribersWithRevision(key string, data []byte, rev uint64) {
+	notifySubscribersWithPayload(key, map[string]any{
+		"event": "updated",
+		"key":   key,
+		"data":  string(data),
+		"rev":   rev,
+	})
+}
+
 func NotifyIncTableSubscribers(key string, changeType string, entryID uint64, entryData []byte) {
 	notifySubscribersWithPayload(key, map[string]any{
 		"event": "inc_table_update",

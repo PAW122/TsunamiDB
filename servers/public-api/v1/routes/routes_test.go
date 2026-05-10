@@ -16,6 +16,7 @@ import (
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
 	relationalData "github.com/PAW122/TsunamiDB/data/relational"
+	"github.com/PAW122/TsunamiDB/data/revision"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 	metrics "github.com/PAW122/TsunamiDB/servers/public-api/v1/metrics"
 	types "github.com/PAW122/TsunamiDB/types"
@@ -28,6 +29,7 @@ func TestMain(m *testing.M) {
 	fileSystem_v1.ShutdownForTests()
 	relationalData.ResetForTests()
 	defrag.ResetForTests()
+	revision.ResetForTests()
 	networkmanager.SetInstanceForTests(nil)
 	metrics.ResetForTests()
 	incindex.ResetForTests()
@@ -37,7 +39,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func setupRoutesTest(t *testing.T) {
+func setupRoutesTest(t testing.TB) {
 	t.Helper()
 	release := acquireDBTestLock(t)
 	t.Cleanup(release)
@@ -45,6 +47,7 @@ func setupRoutesTest(t *testing.T) {
 	fileSystem_v1.ShutdownForTests()
 	relationalData.ResetForTests()
 	defrag.ResetForTests()
+	revision.ResetForTests()
 	_ = os.RemoveAll("./db")
 	dataManager_v2.EnsureDirsForTests()
 	networkmanager.SetInstanceForTests(&networkmanager.NetworkManager{ServerIP: "127.0.0.1"})
@@ -55,6 +58,7 @@ func setupRoutesTest(t *testing.T) {
 		fileSystem_v1.ShutdownForTests()
 		relationalData.ResetForTests()
 		defrag.ResetForTests()
+		revision.ResetForTests()
 		networkmanager.SetInstanceForTests(nil)
 		metrics.ResetForTests()
 		incindex.ResetForTests()
@@ -62,7 +66,7 @@ func setupRoutesTest(t *testing.T) {
 	})
 }
 
-func acquireDBTestLock(t *testing.T) func() {
+func acquireDBTestLock(t testing.TB) func() {
 	t.Helper()
 	lockPath := "./db_test.lock"
 	deadline := time.Now().Add(30 * time.Second)
@@ -156,6 +160,83 @@ func TestPatchValueValidation(t *testing.T) {
 	perform(AsyncSave, http.MethodPost, "/save/docs/doc1", bytes.NewBufferString("abc"), nil)
 	if resp := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", bytes.NewBufferString(`{"ops":[{"offset":9,"insert":"x"}]}`), nil); resp.Code != http.StatusBadRequest {
 		t.Fatalf("invalid offset status = %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
+func TestPatchValueWithRevisionCurrent(t *testing.T) {
+	setupRoutesTest(t)
+
+	perform(AsyncSave, http.MethodPost, "/save/docs/doc1", bytes.NewBufferString("hello world"), nil)
+
+	policy := perform(Revision, http.MethodPost, "/revision/docs/doc1", bytes.NewBufferString(`{"mode":"current"}`), nil)
+	if policy.Code != http.StatusOK {
+		t.Fatalf("revision policy status: %d body=%s", policy.Code, policy.Body.String())
+	}
+
+	missingBase := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", bytes.NewBufferString(`{"ops":[{"offset":5,"insert":"!"}]}`), nil)
+	if missingBase.Code != http.StatusBadRequest {
+		t.Fatalf("missing base_rev status = %d body=%s", missingBase.Code, missingBase.Body.String())
+	}
+
+	ok := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", bytes.NewBufferString(`{"base_rev":0,"ops":[{"offset":5,"insert":","}]}`), nil)
+	if ok.Code != http.StatusOK {
+		t.Fatalf("patch status: %d body=%s", ok.Code, ok.Body.String())
+	}
+	var patched patchResponse
+	if err := json.Unmarshal(ok.Body.Bytes(), &patched); err != nil {
+		t.Fatalf("decode patch response: %v", err)
+	}
+	if patched.Rev == nil || *patched.Rev != 1 || patched.BaseRev == nil || *patched.BaseRev != 0 {
+		t.Fatalf("unexpected revision response: %+v", patched)
+	}
+
+	conflict := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", bytes.NewBufferString(`{"base_rev":0,"ops":[{"offset":6,"insert":"!"}]}`), nil)
+	if conflict.Code != http.StatusConflict {
+		t.Fatalf("conflict status = %d body=%s", conflict.Code, conflict.Body.String())
+	}
+	var conflictBody map[string]any
+	if err := json.Unmarshal(conflict.Body.Bytes(), &conflictBody); err != nil {
+		t.Fatalf("decode conflict: %v", err)
+	}
+	if conflictBody["error"] != "revision_conflict" || conflictBody["current_rev"] != float64(1) {
+		t.Fatalf("unexpected conflict body: %+v", conflictBody)
+	}
+}
+
+func TestRevisionHistoryEndpoint(t *testing.T) {
+	setupRoutesTest(t)
+
+	perform(AsyncSave, http.MethodPost, "/save/docs/doc1", bytes.NewBufferString("hello"), nil)
+	policy := perform(Revision, http.MethodPost, "/revision/docs/doc1", bytes.NewBufferString(`{"mode":"history"}`), nil)
+	if policy.Code != http.StatusOK {
+		t.Fatalf("revision policy status: %d body=%s", policy.Code, policy.Body.String())
+	}
+
+	patch1 := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", bytes.NewBufferString(`{"base_rev":0,"ops":[{"offset":5,"insert":"!"}]}`), nil)
+	if patch1.Code != http.StatusOK {
+		t.Fatalf("patch1 status: %d body=%s", patch1.Code, patch1.Body.String())
+	}
+	patch2 := perform(PatchValue, http.MethodPost, "/patch/docs/doc1", bytes.NewBufferString(`{"base_rev":1,"ops":[{"offset":6,"insert":"?"}]}`), nil)
+	if patch2.Code != http.StatusOK {
+		t.Fatalf("patch2 status: %d body=%s", patch2.Code, patch2.Body.String())
+	}
+
+	history := perform(Revision, http.MethodGet, "/revision/docs/doc1/patches?from_rev=0", nil, nil)
+	if history.Code != http.StatusOK {
+		t.Fatalf("history status: %d body=%s", history.Code, history.Body.String())
+	}
+	var out revisionHistoryResponse
+	if err := json.Unmarshal(history.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode history: %v", err)
+	}
+	if out.CurrentRev != 2 || len(out.Patches) != 2 || out.Patches[0].Rev != 1 || out.Patches[1].Rev != 2 {
+		t.Fatalf("unexpected history: %+v", out)
+	}
+
+	perform(AsyncSave, http.MethodPost, "/save/docs/doc1", bytes.NewBufferString("snapshot"), nil)
+	stale := perform(Revision, http.MethodGet, "/revision/docs/doc1/patches?from_rev=0", nil, nil)
+	if stale.Code != http.StatusConflict {
+		t.Fatalf("stale history status = %d body=%s", stale.Code, stale.Body.String())
 	}
 }
 

@@ -41,6 +41,7 @@ func newMux() *http.ServeMux {
 
 	mux.HandleFunc("/save/", withClient(routes.AsyncSave))
 	mux.HandleFunc("/patch/", withClient(routes.PatchValue))
+	mux.HandleFunc("/revision/", withClient(routes.Revision))
 	mux.HandleFunc("/read/", withClient(routes.AsyncRead))
 	mux.HandleFunc("/free/", withClient(routes.Free))
 	mux.HandleFunc("/save_encrypted/", withClient(routes.SaveEncrypted))

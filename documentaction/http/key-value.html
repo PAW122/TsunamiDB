@@ -72,17 +72,42 @@
       <table>
         <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
         <tbody>
+          <tr><td><code>base_rev</code></td><td>Required when revision mode is <code>current</code> or <code>history</code>. Must match the stored revision before TsunamiDB accepts the patch.</td></tr>
           <tr><td><code>ops[].offset</code></td><td>Zero-based byte offset in the current value at the moment that operation is applied.</td></tr>
           <tr><td><code>ops[].delete</code></td><td>Optional number of bytes to remove starting at <code>offset</code>.</td></tr>
           <tr><td><code>ops[].insert</code></td><td>Optional UTF-8/string bytes to insert at <code>offset</code>.</td></tr>
           <tr><td><code>ops[].insert_b64</code></td><td>Optional base64 bytes for binary inserts. Do not combine with <code>insert</code> in the same operation.</td></tr>
-          <tr><td>Success body</td><td><code>{"status":"patched","key":"...","size":123}</code></td></tr>
+          <tr><td>Success body</td><td><code>{"status":"patched","key":"...","size":123,"base_rev":1,"rev":2}</code>. Revision fields are present only for versioned keys.</td></tr>
         </tbody>
       </table>
       <pre><code class="language-bash">curl -X POST http://localhost:5844/patch/users/user-1 \
   -H "Content-Type: application/json" \
   --data '{"ops":[{"offset":5,"insert":","},{"offset":7,"delete":9,"insert":"TsuDB"}]}'</code></pre>
       <p>Use <code>/patch</code> for live editing workflows where clients should send small changes instead of repeatedly saving the whole document. If the key does not exist, the endpoint returns <code>404</code>; invalid offsets, delete lengths or patch bodies return <code>400</code>.</p>
+      <p>When revision tracking is enabled and <code>base_rev</code> does not match the current stored revision, the endpoint returns <code>409</code> with <code>{"error":"revision_conflict","base_rev":...,"current_rev":...}</code>. The client should fetch missing patches or reload the full value.</p>
+
+      <h2 id="revision-tracking">Revision Tracking</h2>
+      <p>Revision tracking is optional per key. It is a storage policy, not a WebSocket-only setting, so it keeps working while all clients are disconnected.</p>
+      <table>
+        <thead><tr><th>Mode</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td><code>off</code></td><td>Default. No revision checks and no patch history.</td></tr>
+          <tr><td><code>current</code></td><td>Stores the current <code>rev</code>. Patch requests must include matching <code>base_rev</code>.</td></tr>
+          <tr><td><code>history</code></td><td>Stores current <code>rev</code> and retained patch records for reconnect catch-up.</td></tr>
+        </tbody>
+      </table>
+      <pre><code class="language-bash">curl -X POST http://localhost:5844/revision/docs/doc-1 \
+  -H "Content-Type: application/json" \
+  --data '{"mode":"history"}'
+
+curl http://localhost:5844/revision/docs/doc-1
+
+curl -X POST http://localhost:5844/patch/docs/doc-1 \
+  -H "Content-Type: application/json" \
+  --data '{"base_rev":0,"ops":[{"offset":0,"insert":"Hello"}]}'
+
+curl "http://localhost:5844/revision/docs/doc-1/patches?from_rev=0"</code></pre>
+      <p>Full <code>/save</code> operations on a versioned key increment <code>rev</code>. In <code>history</code> mode, a full save resets the patch history start, so older clients should perform a full resync instead of replaying stale patches.</p>
 
       <h2><span class="endpoint">GET</span> /read/{table}/{key}</h2>
       <p>Returns the decoded user bytes. If the key is not local, TsunamiDB asks connected P2P peers.</p>
@@ -130,8 +155,8 @@
       <pre><code class="language-bash">curl http://localhost:5844/read/users/user-2 -H "read_nested: profile.bio logs"
 curl http://localhost:5844/read/users/user-2 -H "read_only_nested: [\"profile.bio\"]"</code></pre>
 
-      <div class="machine-block">ai_keywords: save patch read free key value nested json mode save_nested_json read_nested read_only_nested byte range patch document editing partial update
-source_files: servers/public-api/v1/routes/save.go, patch.go, read.go, free.go, nested.go, data/valuepatch/patch.go</div>
+      <div class="machine-block">ai_keywords: save patch revision base_rev rev current history patch history read free key value nested json mode save_nested_json read_nested read_only_nested byte range patch document editing partial update
+source_files: servers/public-api/v1/routes/save.go, patch.go, revision.go, read.go, free.go, nested.go, data/valuepatch/patch.go, data/revision/revision.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

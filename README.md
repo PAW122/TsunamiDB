@@ -56,16 +56,29 @@ The wrapper exports the key-value, encrypted, network manager, public API, subsc
 ## Partial value patches
 Use `POST /patch/{table}/{key}` when an application should send only a small change instead of saving the whole value again. TsunamiDB reads the current value, applies patch operations in order, stores the merged value, and streams a `patched` event to subscribers of that key.
 
+Optional revision tracking can be enabled per key:
+
+- `off` - default, no revision checks.
+- `current` - stores current `rev`; patch requests must include matching `base_rev`.
+- `history` - stores current `rev` and retained patch records for reconnect catch-up.
+
 ```bash
+curl -X POST http://localhost:5844/revision/docs/doc-1 \
+  -H "Content-Type: application/json" \
+  --data '{"mode":"history"}'
+
 curl -X POST http://localhost:5844/patch/docs/doc-1 \
   -H "Content-Type: application/json" \
-  --data '{"ops":[{"offset":5,"insert":","},{"offset":7,"delete":5,"insert":"TsuDB"}]}'
+  --data '{"base_rev":0,"ops":[{"offset":5,"insert":","},{"offset":7,"delete":5,"insert":"TsuDB"}]}'
+
+curl "http://localhost:5844/revision/docs/doc-1/patches?from_rev=0"
 ```
 
 Go client:
 
 ```go
-updated, err := TsuClient.Patch("doc-1", "docs", []TsuClient.PatchOperation{
+state, err := TsuClient.SetRevisionPolicy("doc-1", "docs", TsuClient.RevisionModeHistory)
+updated, state, err := TsuClient.PatchWithRevision("doc-1", "docs", state.Rev, []TsuClient.PatchOperation{
 	{Offset: 5, Insert: ","},
 	{Offset: 7, Delete: 5, Insert: "TsuDB"},
 })

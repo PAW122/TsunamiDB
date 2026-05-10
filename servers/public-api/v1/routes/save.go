@@ -9,6 +9,8 @@ import (
 	dataManager_v2 "github.com/PAW122/TsunamiDB/data/dataManager/v2"
 	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	"github.com/PAW122/TsunamiDB/data/revision"
+	"github.com/PAW122/TsunamiDB/data/valuepatch"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
@@ -45,6 +47,9 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		http.Error(w, "Invalid body", http.StatusBadRequest)
 		return
 	}
+
+	unlock := valuepatch.LockKey(file, key)
+	defer unlock()
 
 	mode := strings.TrimSpace(r.Header.Get("mode"))
 	nestedMode := strings.EqualFold(mode, "save_nested_json")
@@ -117,7 +122,16 @@ func AsyncSave(w http.ResponseWriter, r *http.Request, c *http.Client) {
 	}
 
 	networkmanager.NotifyKVTable(file)
-	go subServer.NotifySubscribers(key, encodedBody)
+	revState, hasRevision, err := revision.AdvanceFullWrite(file, key)
+	if err != nil {
+		http.Error(w, "Error saving revision metadata", http.StatusInternalServerError)
+		return
+	}
+	if hasRevision {
+		go subServer.NotifySubscribersWithRevision(key, encodedBody, revState.Rev)
+	} else {
+		go subServer.NotifySubscribers(key, encodedBody)
+	}
 
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("save"))

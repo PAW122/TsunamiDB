@@ -105,9 +105,13 @@ type PatchOp struct {
 	InsertB64 string `json:"insert_b64,omitempty"`
 }
 
-func Patch(table, key string, ops []PatchOp) ([]byte, error) {
+func Patch(table, key string, baseRev *uint64, ops []PatchOp) ([]byte, error) {
 	url := fmt.Sprintf("%s/patch/%s/%s", baseURL, table, key)
-	payload, err := json.Marshal(map[string][]PatchOp{"ops": ops})
+	requestBody := map[string]any{"ops": ops}
+	if baseRev != nil {
+		requestBody["base_rev"] = *baseRev
+	}
+	payload, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, err
 	}
@@ -118,9 +122,40 @@ func Patch(table, key string, ops []PatchOp) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
+	responseBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("patch failed: %s: %s", resp.Status, string(responseBody))
+	}
+	return responseBody, nil
+}
+
+func SetRevisionMode(table, key, mode string) ([]byte, error) {
+	url := fmt.Sprintf("%s/revision/%s/%s", baseURL, table, key)
+	payload, _ := json.Marshal(map[string]string{"mode": mode})
+	resp, err := http.Post(url, "application/json", bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
 	body, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("patch failed: %s: %s", resp.Status, string(body))
+		return nil, fmt.Errorf("set revision failed: %s: %s", resp.Status, string(body))
+	}
+	return body, nil
+}
+
+func ReadRevisionHistory(table, key string, fromRev uint64) ([]byte, error) {
+	url := fmt.Sprintf("%s/revision/%s/%s/patches?from_rev=%d", baseURL, table, key, fromRev)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("read revision history failed: %s: %s", resp.Status, string(body))
 	}
 	return body, nil
 }
@@ -547,9 +582,9 @@ func FetchHealth() (map[string]any, error) {
 	}
 }</code></pre>
 
-      <div class="machine-block">ai_keywords: HTTP examples in Go net/http curl replacement save patch read free nested encrypted incremental subscriptions websocket health key_by_regex
+      <div class="machine-block">ai_keywords: HTTP examples in Go net/http curl replacement save patch revision base_rev read free nested encrypted incremental subscriptions websocket health key_by_regex
 source_docs: docs_api/kv.md, docs_api/encryption.md, docs_api/incremental.md, docs_api/subscriptions.md, docs_api/meta.md
-source_files: servers/public-api/v1/routes/patch.go, data/valuepatch/patch.go</div>
+source_files: servers/public-api/v1/routes/patch.go, servers/public-api/v1/routes/revision.go, data/valuepatch/patch.go, data/revision/revision.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

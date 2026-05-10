@@ -19,6 +19,7 @@ import (
 	defrag "github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
 	incindex "github.com/PAW122/TsunamiDB/data/incIndex"
+	"github.com/PAW122/TsunamiDB/data/revision"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	"github.com/PAW122/TsunamiDB/errors"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
@@ -66,6 +67,7 @@ func resetStorageForTest(t *testing.T) {
 	fileSystem_v1.ResetForTests()
 	incindex.ResetForTests()
 	defrag.ResetForTests()
+	revision.ResetForTests()
 	setLocalNetworkManager(t)
 }
 
@@ -192,6 +194,44 @@ func TestPatchUpdatesStoredValue(t *testing.T) {
 	}
 	if !bytes.Equal(got, updated) {
 		t.Fatalf("Read() = %q, want %q", got, updated)
+	}
+}
+
+func TestPatchWithRevisionHistory(t *testing.T) {
+	resetStorageForTest(t)
+
+	table := testTable("lib_export_revision")
+	key := "doc"
+	if err := Save(key, table, []byte("hello")); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	state, err := SetRevisionPolicy(key, table, RevisionModeHistory)
+	if err != nil {
+		t.Fatalf("SetRevisionPolicy() error = %v", err)
+	}
+	if state.Mode != RevisionModeHistory || state.Rev != 0 {
+		t.Fatalf("initial state = %+v", state)
+	}
+
+	updated, state, err := PatchWithRevision(key, table, 0, []PatchOperation{{Offset: 5, Insert: "!"}})
+	if err != nil {
+		t.Fatalf("PatchWithRevision() error = %v", err)
+	}
+	if !bytes.Equal(updated, []byte("hello!")) || state.Rev != 1 {
+		t.Fatalf("updated=%q state=%+v", updated, state)
+	}
+
+	if _, _, err := PatchWithRevision(key, table, 0, []PatchOperation{{Offset: 6, Insert: "?"}}); !stderrors.Is(err, revision.ErrRevisionConflict) {
+		t.Fatalf("conflict error = %v", err)
+	}
+
+	records, historyState, err := GetRevisionHistory(key, table, 0, 0)
+	if err != nil {
+		t.Fatalf("GetRevisionHistory() error = %v", err)
+	}
+	if historyState.Rev != 1 || len(records) != 1 || records[0].BaseRev != 0 || records[0].Rev != 1 {
+		t.Fatalf("history state=%+v records=%+v", historyState, records)
 	}
 }
 

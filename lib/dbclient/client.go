@@ -37,6 +37,15 @@ type SaveIncResult = export.SaveIncResult
 type ReadIncOptions = export.ReadIncOptions
 type IncEntry = export.IncEntry
 type PatchOperation = export.PatchOperation
+type RevisionMode = export.RevisionMode
+type RevisionState = export.RevisionState
+type RevisionPatchRecord = export.RevisionPatchRecord
+
+const (
+	RevisionModeOff     = export.RevisionModeOff
+	RevisionModeCurrent = export.RevisionModeCurrent
+	RevisionModeHistory = export.RevisionModeHistory
+)
 
 func Save(key, table string, data []byte) error {
 	defer debug.MeasureTime("[lib.dbclient] [save]")()
@@ -51,6 +60,26 @@ func Read(key, table string) ([]byte, error) {
 func Patch(key, table string, ops []PatchOperation) ([]byte, error) {
 	defer debug.MeasureTime("[lib.dbclient] [patch]")()
 	return export.Patch(key, table, ops)
+}
+
+func PatchWithRevision(key, table string, baseRev uint64, ops []PatchOperation) ([]byte, RevisionState, error) {
+	defer debug.MeasureTime("[lib.dbclient] [patch-with-revision]")()
+	return export.PatchWithRevision(key, table, baseRev, ops)
+}
+
+func SetRevisionPolicy(key, table string, mode RevisionMode) (RevisionState, error) {
+	defer debug.MeasureTime("[lib.dbclient] [set-revision-policy]")()
+	return export.SetRevisionPolicy(key, table, mode)
+}
+
+func GetRevisionState(key, table string) (RevisionState, error) {
+	defer debug.MeasureTime("[lib.dbclient] [get-revision-state]")()
+	return export.GetRevisionState(key, table)
+}
+
+func GetRevisionHistory(key, table string, fromRev, toRev uint64) ([]RevisionPatchRecord, RevisionState, error) {
+	defer debug.MeasureTime("[lib.dbclient] [get-revision-history]")()
+	return export.GetRevisionHistory(key, table, fromRev, toRev)
 }
 
 func Free(key, table string) error {

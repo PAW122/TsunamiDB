@@ -75,15 +75,17 @@
       <p>This is usually the best fit for values that change often and should be reflected on screen in real time.</p>
 
       <h2>Practical Example: Live Document Edits</h2>
-      <p>For document editing, use <code>/patch/{table}/{key}</code> instead of saving the whole document on each keystroke. TsunamiDB applies the patch to the stored value, then streams a <code>patched</code> event with only the operations that changed.</p>
+      <p>For document editing, enable revision tracking on the document key and use <code>/patch/{table}/{key}</code> instead of saving the whole document on each keystroke. TsunamiDB applies the patch to the stored value, increments <code>rev</code>, then streams a <code>patched</code> event with only the operations that changed.</p>
       <pre><code class="language-json">{
   "event": "patched",
   "key": "doc-1",
+  "base_rev": 42,
+  "rev": 43,
   "patch": [
     { "offset": 120, "insert": "hello" }
   ]
 }</code></pre>
-      <p>Clients should load the full value once through <code>/read</code>, subscribe to the document key, then apply incoming <code>patched</code> events locally. Use <code>updated</code> as a full-value refresh event and <code>patched</code> as an incremental edit event.</p>
+      <p>Clients should load the full value once through <code>/read</code>, read <code>/revision/{table}/{key}</code>, subscribe to the document key, then apply incoming <code>patched</code> events locally. On reconnect, compare local <code>rev</code> with the server revision. If the key uses <code>history</code>, fetch missing events from <code>/revision/{table}/{key}/patches?from_rev=LOCAL_REV</code>; otherwise reload the full value.</p>
 
       <h2>Example Communication Scheme</h2>
       <p>Recommended subscription communication pattern:</p>
@@ -111,8 +113,8 @@
       <table>
         <thead><tr><th>Event</th><th>Payload</th><th>Produced by</th></tr></thead>
         <tbody>
-          <tr><td><code>updated</code></td><td><code>{"event":"updated","key":"...","data":"..."}</code></td><td><code>/save</code>, <code>/save_encrypted</code>, Go <code>Save</code>, Go <code>SaveEncrypted</code></td></tr>
-          <tr><td><code>patched</code></td><td><code>{"event":"patched","key":"...","patch":[{"offset":0,"delete":0,"insert":"..."}]}</code></td><td><code>/patch</code>, Go <code>Patch</code></td></tr>
+          <tr><td><code>updated</code></td><td><code>{"event":"updated","key":"...","data":"...","rev":2}</code></td><td><code>/save</code>, <code>/save_encrypted</code>, Go <code>Save</code>, Go <code>SaveEncrypted</code>. <code>rev</code> appears only for versioned keys.</td></tr>
+          <tr><td><code>patched</code></td><td><code>{"event":"patched","key":"...","base_rev":1,"rev":2,"patch":[{"offset":0,"delete":0,"insert":"..."}]}</code></td><td><code>/patch</code>, Go <code>PatchWithRevision</code>. Revision fields appear only for versioned keys.</td></tr>
           <tr><td><code>deleted</code></td><td><code>{"event":"deleted","key":"..."}</code></td><td><code>/free</code>, <code>/delete_inc</code>, Go <code>Free</code></td></tr>
           <tr><td><code>inc_table_update</code></td><td><code>{"event":"inc_table_update","key":"...","data":{"type":"add|insert|overwrite","new_data":{"id":"...","data":"..."}}}</code></td><td><code>/save_inc</code></td></tr>
           <tr><td><code>unsubscribed</code></td><td><code>{"event":"unsubscribed","key":"..."}</code></td><td><code>/subscriptions/disable</code></td></tr>
@@ -122,8 +124,8 @@
 
       <div class="warning">Do not expose <code>/subscriptions/enable</code> and <code>/subscriptions/disable</code> directly to untrusted clients. Treat them as server-side endpoints.</div>
 
-      <div class="machine-block">ai_keywords: subscriptions websocket auth_key enable disable subscribed updated patched deleted inc_table_update online users live counter realtime document edits patch benchmark notifications/s writes/s
-source_files: servers/subscriptions/subServer.go, servers/subscriptions/subServer_benchmark_test.go, servers/public-api/v1/routes/patch.go</div>
+      <div class="machine-block">ai_keywords: subscriptions websocket auth_key enable disable subscribed updated patched base_rev rev revision history deleted inc_table_update online users live counter realtime document edits patch benchmark notifications/s writes/s
+source_files: servers/subscriptions/subServer.go, servers/subscriptions/subServer_benchmark_test.go, servers/public-api/v1/routes/patch.go, servers/public-api/v1/routes/revision.go</div>
     </main>
   </div>
   <script src="../assets/syntax-highlight.js"></script>

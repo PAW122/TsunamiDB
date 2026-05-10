@@ -8,6 +8,8 @@ import (
 	dataManager_v1 "github.com/PAW122/TsunamiDB/data/dataManager/v1"
 	"github.com/PAW122/TsunamiDB/data/defragmentationManager"
 	fileSystem_v1 "github.com/PAW122/TsunamiDB/data/fileSystem/v1"
+	"github.com/PAW122/TsunamiDB/data/revision"
+	"github.com/PAW122/TsunamiDB/data/valuepatch"
 	encoder_v1 "github.com/PAW122/TsunamiDB/encoding/v1"
 	debug "github.com/PAW122/TsunamiDB/servers/debug"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
@@ -57,6 +59,9 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 		return
 	}
 
+	unlock := valuepatch.LockKey(file, key)
+	defer unlock()
+
 	encrypted_data, err := encoder_v1.Encrypt(body, encryption_header)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -91,7 +96,17 @@ func SaveEncrypted(w http.ResponseWriter, r *http.Request, c *http.Client) {
 
 	// sends "plain text data" (not encrypted)
 	networkmanager.NotifyKVTable(file)
-	go subServer.NotifySubscribers(key, body)
+	revState, hasRevision, err := revision.AdvanceFullWrite(file, key)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, "Error saving revision metadata")
+		return
+	}
+	if hasRevision {
+		go subServer.NotifySubscribersWithRevision(key, body, revState.Rev)
+	} else {
+		go subServer.NotifySubscribers(key, body)
+	}
 
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, "save")

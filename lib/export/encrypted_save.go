@@ -3,6 +3,7 @@ package export
 import (
 	"fmt"
 
+	"github.com/PAW122/TsunamiDB/data/valuepatch"
 	networkmanager "github.com/PAW122/TsunamiDB/servers/network-manager"
 )
 
@@ -11,6 +12,9 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 	if key == "" || table == "" {
 		return fmt.Errorf("Invalid key or table value")
 	}
+
+	unlock := valuepatch.LockKey(table, key)
+	defer unlock()
 
 	encrypted_data, err := encrypt(data, encryption_key)
 	if err != nil {
@@ -40,6 +44,14 @@ func SaveEncrypted(key, table, encryption_key string, data []byte) error {
 	}
 
 	networkmanager.NotifyKVTable(table)
-	go notifySubscribers(key, data)
+	revState, hasRevision, err := advanceFullWriteRevision(table, key)
+	if err != nil {
+		return err
+	}
+	if hasRevision {
+		go notifySubscribersWithRevision(key, data, revState.Rev)
+	} else {
+		go notifySubscribers(key, data)
+	}
 	return nil
 }
